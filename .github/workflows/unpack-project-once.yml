@@ -53,6 +53,8 @@ jobs:
               seen = set()
               for i,p,mode in entries:
                   rel = pathlib.Path(*p.parts[int(strip):])
+                  if rel.parts[:2] == ('.github', 'workflows'):
+                      rel = pathlib.Path('.github', 'imported-workflows', *rel.parts[2:])
                   if rel in seen or (root/rel).exists() or any(parent.is_symlink() for parent in (root/rel).parents):
                       raise SystemExit(f"Duplicate or existing path: {rel}")
                   seen.add(rel)
