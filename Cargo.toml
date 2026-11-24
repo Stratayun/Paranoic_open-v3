@@ -1,0 +1,42 @@
+[workspace]
+members = ["crates/paranoic-core", "crates/paranoic-local", "crates/paranoic-crypto", "crates/paranoic-formats", "crates/paranoic-documents", "crates/paranoic-cloud", "crates/paranoic-server", "crates/paranoic-bridge", "crates/paranoic-notes", "crates/paranoic-windows"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.87"
+license = "LicenseRef-Proprietary"
+publish = false
+
+[workspace.dependencies]
+blake3 = "1.5"
+cap-std = "3.4"
+fs2 = "0.4"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+uuid = { version = "1.11", features = ["v4", "serde"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+overflow-checks = true
+
+# UniFFI 0.29 reads ELF .symtab, which release strip="symbols" removes.
+# Keep this host-only generation artifact separate from packaged release libs.
+[profile.bindings]
+inherits = "release"
+strip = "none"
+
+

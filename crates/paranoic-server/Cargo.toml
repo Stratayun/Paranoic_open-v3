@@ -1,0 +1,31 @@
+[package]
+name = "paranoic-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+dav-server = { version = "=0.8.0", default-features = false, features = ["localfs"] }
+futures-util = "0.3"
+uuid.workspace = true
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "time", "sync"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+rustls-pemfile = "2"
+blake3.workspace = true
+base64 = "0.22"
+bytes = "1"
+serde.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
+rustix = { version = "0.38", features = ["fs"] }
+
+[target.'cfg(windows)'.dependencies]
+paranoic-windows = { path = "../paranoic-windows" }
+
+[lints]
+workspace = true

@@ -1,0 +1,46 @@
+[package]
+name = "paranoic-bridge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+bindgen = ["uniffi/cli"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/bindgen.rs"
+required-features = ["bindgen"]
+
+[dependencies]
+paranoic-core = { path = "../paranoic-core" }
+paranoic-local = { path = "../paranoic-local" }
+# No "pdf" feature: PDFium is never linked into the app process (see pdf_client).
+paranoic-documents = { path = "../paranoic-documents" }
+paranoic-crypto = { path = "../paranoic-crypto" }
+paranoic-notes = { path = "../paranoic-notes" }
+paranoic-cloud = { path = "../paranoic-cloud" }
+paranoic-formats = { path = "../paranoic-formats" }
+serde_json.workspace = true
+serde.workspace = true
+base64 = "0.22"
+uniffi = "=0.29.4"
+thiserror.workspace = true
+uuid.workspace = true
+zeroize = "1.8"
+blake3.workspace = true
+
+[dev-dependencies]
+rusqlite.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+paranoic-windows = { path = "../paranoic-windows" }
+
+[lints]
+workspace = true
+

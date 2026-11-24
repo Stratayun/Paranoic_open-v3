@@ -1,0 +1,50 @@
+[package]
+name = "paranoic-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+paranoic-formats = { path = "../crates/paranoic-formats" }
+paranoic-crypto = { path = "../crates/paranoic-crypto" }
+
+# Not part of the main workspace: needs nightly and libFuzzer.
+[workspace]
+
+[[bin]]
+name = "v1_vault_header"
+path = "fuzz_targets/v1_vault_header.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "v1_entry_header"
+path = "fuzz_targets/v1_entry_header.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "v1_decrypt_file"
+path = "fuzz_targets/v1_decrypt_file.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "v1_roundtrip"
+path = "fuzz_targets/v1_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "v1_manifest"
+path = "fuzz_targets/v1_manifest.rs"
+test = false
+doc = false

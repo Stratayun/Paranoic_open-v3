@@ -1,0 +1,29 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <application android:name=".platform.ParanoicApplication" android:label="Paranoic" android:allowBackup="false" android:extractNativeLibs="true"
+        android:supportsRtl="true" android:theme="@android:style/Theme.Material.NoActionBar">
+        <service android:name=".platform.AndroidDocumentWorkerService" android:exported="false"
+            android:isolatedProcess="true" android:process=":document_worker" android:stopWithTask="true" />
+        <!-- Rotation, resize, keyboard or dark mode must not recreate the activity:
+             recreation passes ON_STOP, which locks every vault, notes and marks a
+             running write "outcome unknown". Compose re-lays out on these changes;
+             leaving the app still locks as before. -->
+        <activity android:name=".platform.MainActivity" android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|density|uiMode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+
+

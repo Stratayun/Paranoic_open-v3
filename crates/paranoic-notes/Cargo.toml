@@ -1,0 +1,18 @@
+[package]
+name = "paranoic-notes"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+paranoic-crypto = { path = "../paranoic-crypto" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+zeroize = { version = "1.8", features = ["derive"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,28 @@
+[package]
+name = "paranoic-cloud"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+paranoic-core = { path = "../paranoic-core" }
+paranoic-crypto = { path = "../paranoic-crypto" }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+sha2 = "0.10"
+base64 = "0.22"
+zeroize = "1.8"
+quick-xml = "=0.39.4"
+sha1 = "0.10"
+blake3.workspace = true
+
+[dev-dependencies]
+paranoic-local = { path = "../paranoic-local" }
+paranoic-formats = { path = "../paranoic-formats" }
+
+[lints]
+workspace = true

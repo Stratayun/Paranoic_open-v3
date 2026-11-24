@@ -1,0 +1,51 @@
+# Manual phone APK build; includes Rust Core, PDF worker and pinned PDFium.
+name: Phone APK (manual)
+run-name: Phone APK · ${{ github.ref_name }} · ${{ github.sha }}
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: phone-apk-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      ANDROID_NDK_VERSION: "28.2.13676358"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Android SDK and NDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;$ANDROID_NDK_VERSION"
+      - name: Rust Android toolchain
+        run: |
+          rustup toolchain install 1.87.0 --profile minimal
+          rustup default 1.87.0
+          rustup target add aarch64-linux-android
+          cargo install cargo-ndk --version 3.5.4 --locked
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
+      - name: Build complete phone APK (arm64, PDFium enabled)
+        working-directory: ui
+        run: ./gradlew --no-daemon --stacktrace -Pparanoic.androidAbis=arm64-v8a -Pparanoic.pdfium=fetch :composeApp:assembleDebug
+      - name: Verify complete native payload
+        run: python3 tools/validation/android_apk.py ui/composeApp/build/outputs/apk/debug/composeApp-debug.apk --abis arm64-v8a --profile pdf --packaging extracted
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Paranoic-phone-arm64-${{ github.sha }}
+          path: ui/composeApp/build/outputs/apk/debug/composeApp-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: APK summary
+        run: |
+          echo "Phone APK (arm64-v8a), debug-signed; Rust Core, PDF worker and PDFium included." >> "$GITHUB_STEP_SUMMARY"
+          echo "Source commit: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "Download the APK ZIP from the Artifacts section below." >> "$GITHUB_STEP_SUMMARY"

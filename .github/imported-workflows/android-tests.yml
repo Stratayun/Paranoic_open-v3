@@ -1,0 +1,77 @@
+# Separate opt-in device run. No push/PR/schedule triggers and no personal data.
+name: Android tests (manual)
+on:
+  workflow_dispatch:
+    inputs:
+      api:
+        description: "Android API (26: minimum; 35: includes SAF fixture tests)"
+        type: choice
+        options: ["26", "35"]
+        default: "35"
+permissions:
+  contents: read
+concurrency:
+  group: android-tests-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      ANDROID_NDK_VERSION: "28.2.13676358"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools  # default 'tools' fails with cmdline-tools 16
+      - name: Android SDK and NDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;$ANDROID_NDK_VERSION"
+      - name: Rust Android toolchain
+        run: |
+          rustup toolchain install 1.87.0 --profile minimal
+          rustup default 1.87.0
+          rustup target add x86_64-linux-android
+          cargo install cargo-ndk --version 3.5.4 --locked
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
+      - name: Enable KVM for the disposable emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Build app and test APKs for the emulator only
+        working-directory: ui
+        run: ./gradlew --no-daemon --stacktrace -Pparanoic.androidAbis=x86_64 :composeApp:assembleDebug :composeApp:assembleDebugAndroidTest
+      - name: Verify native payload in the APK
+        # Fixture-only tests cannot detect an APK missing the Rust runtime, the PDF
+        # worker or the bundled PDFium (B3, tools/build/native.py).
+        run: python3 tools/validation/android_apk.py ui/composeApp/build/outputs/apk/debug/composeApp-debug.apk --abis x86_64 --profile pdf --packaging extracted
+      - name: Free disk space for the emulator
+        # Run 43327184980: the emulator needs ~7.4 GB for userdata and only
+        # ~3.7 GB were left after the Rust/Gradle build.
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          rm -rf target/x86_64-linux-android/release/build target/x86_64-linux-android/release/deps target/release
+          df -h /
+      - name: Run Keystore, SAF and Compose tests on a fresh emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ inputs.api }}
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          disk-size: 3G
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: cd ui && ./gradlew --no-daemon --stacktrace -Pparanoic.androidAbis=x86_64 :composeApp:connectedDebugAndroidTest
+      - name: Upload Android test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-api-${{ inputs.api }}-reports
+          path: |
+            ui/composeApp/build/reports/androidTests
+            ui/composeApp/build/outputs/androidTest-results
+          if-no-files-found: warn

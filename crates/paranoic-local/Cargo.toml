@@ -1,0 +1,25 @@
+[package]
+name = "paranoic-local"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+cap-std.workspace = true
+cap-fs-ext = "=3.4.5"
+paranoic-core = { path = "../paranoic-core" }
+
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "0.38", features = ["fs", "process"] }
+
+[target.'cfg(windows)'.dependencies]
+paranoic-windows = { path = "../paranoic-windows" }
+
+[dev-dependencies]
+uuid.workspace = true
+
+[lints]
+workspace = true
+

@@ -1,0 +1,381 @@
+package io.github.stratayun.paranoic.ui
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import io.github.stratayun.paranoic.bridge.*
+import io.github.stratayun.paranoic.ui.components.*
+import io.github.stratayun.paranoic.ui.navigation.*
+import io.github.stratayun.paranoic.ui.screens.files.FilesScreen
+import io.github.stratayun.paranoic.ui.screens.files.FileWorkspaceScreen
+import io.github.stratayun.paranoic.ui.screens.encryption.EncryptionScreen
+import io.github.stratayun.paranoic.ui.screens.notes.NotesScreen
+import io.github.stratayun.paranoic.ui.screens.documents.FileViewer
+import io.github.stratayun.paranoic.ui.screens.operations.OperationsScreen
+import io.github.stratayun.paranoic.ui.screens.settings.AppearanceScreen
+import io.github.stratayun.paranoic.ui.screens.settings.VaultDefaultsSettings
+import io.github.stratayun.paranoic.ui.screens.settings.DiagnosticsScreen
+import io.github.stratayun.paranoic.ui.screens.settings.WelcomeFlow
+import io.github.stratayun.paranoic.ui.screens.sync.SyncScreen
+import io.github.stratayun.paranoic.ui.state.*
+import io.github.stratayun.paranoic.ui.theme.ParanoicTheme
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/** Platform composition roots inject one Core gateway, a preference store and a picker.
+ * No native library loading, OS paths, passwords or file operations in this module.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
+    folderPicker: @Composable ((FolderPick) -> Unit) -> (() -> Unit),
+    pngImage: @Composable (ByteArray, Modifier) -> Unit,
+    mediaPlayer: @Composable (CoreGateway, Location, PreviewInfo, Modifier) -> Unit,
+    vaultCatalogStore: VaultCatalogStore = remember { MemoryVaultCatalogStore() },
+    placeCatalogStore: PlaceCatalogStore = remember { MemoryPlaceCatalogStore() },
+    diagnosticEnvironment: DiagnosticEnvironment = NoDiagnosticEnvironment,
+    securitySettings: @Composable () -> Unit = {},
+    notesBiometric: NotesBiometric = NoNotesBiometric,
+    notesAttachmentPicker: NotesAttachmentPicker = NoNotesAttachmentPicker,
+    incomingDocuments: IncomingDocuments = NoIncomingDocuments,
+    notesImage: @Composable (ByteArray, Modifier) -> Unit = pngImage,
+    backHandler: @Composable (Boolean, () -> Unit) -> Unit = { _, _ -> },
+    onLanguageChange: (UiLanguage) -> Unit = {},
+    sessionLifecycle: @Composable (AppSession) -> Unit = { session ->
+        LaunchedEffect(session) { session.resume() }
+    }) {
+    val scope = rememberCoroutineScope()
+    val session = remember(core, scope, vaultCatalogStore, placeCatalogStore) {
+        AppSession(core, scope, catalogStore = vaultCatalogStore, placesStore = placeCatalogStore)
+    }
+    val placesDrawer = rememberDrawerState(DrawerValue.Closed)
+    var settings by remember { mutableStateOf(AppearanceSettings()) }
+    var loaded by remember { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
+    var saved by remember { mutableStateOf<Boolean?>(null) }
+    var destination by remember { mutableStateOf(Destination.Encryption) }
+    var pickerFailed by remember { mutableStateOf(false) }
+    val vaultFolderPicker = remember(session) { VaultFolderPickerFlow() }
+    var vaultFolderReturn by remember(session) { mutableStateOf<Pair<Long, VaultFolderReturn>?>(null) }
+    LaunchedEffect(session.secretsEpoch) {
+        if (vaultFolderReturn?.first != session.secretsEpoch) vaultFolderReturn = null
+        placesDrawer.close()
+    }
+    var moreMenu by remember { mutableStateOf(false) }
+    var openedFile by remember { mutableStateOf<FileItem?>(null) }
+    val openedParent = remember(openedFile?.location) { session.files.folder }
+    val documentExit = remember(core, openedFile?.location, destination, session.secretsEpoch) { DocumentExitGuard() }
+    val leaveDocument: (() -> Unit) -> Unit = { action ->
+        documentExit.request {
+            val wasOpen = openedFile != null
+            openedFile = null
+            if (wasOpen) session.refresh()
+            action()
+        }
+    }
+    LaunchedEffect(session.files.folder) {
+        // Security lifecycle invalidates the viewer even when edits exist.
+        if (session.files.folder == null) { documentExit.cancel(); openedFile = null }
+    }
+    LaunchedEffect(store) {
+        try { settings = withContext(Dispatchers.Default) { store.read() } }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { saved = false }
+        loaded = true
+    }
+    sessionLifecycle(session)
+    SideEffect { if (loaded) onLanguageChange(settings.language) }
+    val changeSettings: (AppearanceSettings) -> Unit = { next ->
+        if (!saving) {
+            settings = next
+            onLanguageChange(next.language)
+            saving = true
+            scope.launch {
+                try {
+                    saved = withContext(Dispatchers.Default) { store.write(next) }
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { saved = false }
+                finally { saving = false }
+            }
+        }
+    }
+    val pickFolder = folderPicker { result ->
+        when (result) {
+            is FolderPick.Selected -> { session.attach(result.folder); destination = Destination.Files }
+            FolderPick.Cancelled -> Unit
+            FolderPick.Failed -> pickerFailed = true
+        }
+    }
+    val guardedPickFolder: () -> Unit = { leaveDocument { pickFolder() } }
+    // Separate registration: after process recreation a late vault-picker result
+    // cannot accidentally open Files or recreate a discarded password dialog.
+    val pickVaultFolder = folderPicker { result ->
+        val request = vaultFolderPicker.acceptSelection()
+        if (request != null) {
+            fun deliver(folder: FolderNode? = null, fault: CoreFault? = null) {
+                val returned = vaultFolderPicker.finish(request, folder, fault)
+                if (returned != null && destination == Destination.Encryption)
+                    vaultFolderReturn = session.secretsEpoch to returned
+            }
+            when (result) {
+                is FolderPick.Selected -> session.attach(result.folder) { attached ->
+                    when (attached) {
+                        is CoreResult.Value -> deliver(FolderNode(attached.value.root, attached.value.name))
+                        is CoreResult.Failure -> deliver(fault = attached.fault)
+                    }
+                }
+                FolderPick.Cancelled -> deliver()
+                FolderPick.Failed -> deliver(fault = CoreFault.Unavailable)
+            }
+        }
+    }
+    val openSpace: (Space) -> Unit = { space -> leaveDocument { session.openSpace(space); destination = Destination.Files } }
+    val detachSpace: (Space) -> Unit = { space -> leaveDocument { session.detach(space) } }
+    val connectServer: (String, String, String) -> Unit = { url, user, token ->
+        leaveDocument { session.attachWebDav(url, user, token) }
+    }
+    backHandler(placesDrawer.isOpen || openedFile != null || destination != Destination.Encryption ||
+        (destination == Destination.Files && (session.archives.state.source != null || session.files.selected.isNotEmpty() || session.files.trail.size > 1))) {
+        when {
+            placesDrawer.isOpen -> scope.launch { placesDrawer.close() }
+            destination == Destination.Files && session.archives.state.source != null -> if (!session.writing) session.archives.close()
+            openedFile != null -> leaveDocument {}
+            destination == Destination.Files && session.files.selected.isNotEmpty() -> session.clearSelection()
+            destination == Destination.Files && session.files.trail.size > 1 -> session.breadcrumb(session.files.trail.lastIndex - 1)
+            destination != Destination.Encryption -> leaveDocument { destination = Destination.Encryption }
+        }
+    }
+    val vaultContent: @Composable () -> Unit = {
+        key(session.secretsEpoch) {
+            EncryptionScreen(session, exitGuard = documentExit, incoming = incomingDocuments, secureImage = notesImage, mediaPlayer = mediaPlayer,
+                folderReturn = vaultFolderReturn?.takeIf { it.first == session.secretsEpoch }?.second,
+                onFolderReturnConsumed = { vaultFolderReturn = null }, backHandler = backHandler,
+                onConnectFolder = { request -> leaveDocument { if (vaultFolderPicker.begin(request)) pickVaultFolder() } }) {
+                destination = Destination.Files
+            }
+        }
+    }
+    LaunchedEffect(destination) { if (destination == Destination.Files) session.refresh() }
+    CompositionLocalProvider(LocalUiLanguage provides settings.language, LocalErrorCore provides core) {
+        ParanoicTheme(settings) {
+            if (!loaded) {
+                Surface(Modifier.fillMaxSize()) {
+                    Box(contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                }
+                return@ParanoicTheme
+            }
+            if (!settings.welcomeCompleted) {
+                WelcomeFlow(core, settings.language, session.secretsEpoch, documentExit.busy || session.writing, saving, saved,
+                    onLanguage = { changeSettings(settings.copy(language = it)) }, onBusy = { documentExit.busy = it },
+                    onFinish = {
+                        if (!saving && !documentExit.busy && !session.writing) {
+                            session.pause(); session.resume(); destination = Destination.Encryption
+                            changeSettings(settings.copy(welcomeCompleted = true))
+                        }
+                    }, securitySettings = securitySettings, vaultContent = vaultContent, backHandler = backHandler)
+                return@ParanoicTheme
+            }
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val wide = maxWidth >= 840.dp
+                LaunchedEffect(wide) { if (wide) placesDrawer.close() }
+                // Read here: nested layout scopes share the DSL marker, so
+                // maxHeight is not reachable implicitly inside Column below.
+                val screenHeight = maxHeight
+                val fullScreenFile = openedFile
+                if (fullScreenFile != null && destination == Destination.Files) {
+                    FileViewer(core, fullScreenFile, { leaveDocument {} }, pngImage, mediaPlayer,
+                        textParent = openedParent, exitGuard = documentExit)
+                    return@BoxWithConstraints
+                }
+                ModalNavigationDrawer(drawerState = placesDrawer, gesturesEnabled = !wide && !documentExit.busy,
+                    drawerContent = {
+                        if (!wide) ModalDrawerSheet(Modifier.widthIn(max = 360.dp)) {
+                            Column(Modifier.fillMaxHeight().verticalScroll(rememberScrollState())) {
+                                TextButton(onClick = { scope.launch { placesDrawer.close() } }) { Text(tr("Закрыть меню", "Close menu")) }
+                                key(session.secretsEpoch) {
+                                SpacesPanel(session.files.spaces, session.places, core.connected, session.writing || documentExit.busy,
+                                    onConnect = { scope.launch { placesDrawer.close() }; guardedPickFolder() },
+                                    onOpen = { space -> openSpace(space); scope.launch { placesDrawer.close() } },
+                                    onDetach = detachSpace, onConnectServer = connectServer)
+                                }
+                            }
+                        }
+                    }) {
+                Scaffold(
+                    topBar = {
+                        TopAppBar(title = { Text("Paranoic · " + destination.label(), Modifier.sectionHeading(), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            navigationIcon = {
+                                if (destination !in mainDestinations) TextButton(onClick = { leaveDocument { destination = Destination.Encryption } }) {
+                                    Text(tr("Назад", "Back"))
+                                }
+                                else if (!wide) TextButton(onClick = { scope.launch { placesDrawer.open() } }) {
+                                    Text(tr("Места", "Places"))
+                                }
+                            },
+                            actions = {
+                                if (incomingDocuments.documents.isNotEmpty()) TextButton(onClick = {
+                                    leaveDocument { destination = Destination.Notes }
+                                }) { Text(tr("Входящие (${incomingDocuments.documents.size})", "Incoming (${incomingDocuments.documents.size})")) }
+                                TextButton(onClick = { leaveDocument { destination = Destination.Operations } }) {
+                                    Text(tr("Задачи", "Tasks") + " (${session.jobs.count { it.phase == JobPhase.Queued || it.phase == JobPhase.Running }})")
+                                }
+                                Box {
+                                    TextButton(onClick = { moreMenu = true }) { Text(tr("Ещё", "More")) }
+                                    DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
+                                        DropdownMenuItem(text = { Text(tr("Синхронизация и бэкап", "Sync and backup")) },
+                                            onClick = { moreMenu = false; leaveDocument { destination = Destination.Sync } })
+                                        DropdownMenuItem(text = { Text(tr("Настройки", "Settings")) },
+                                            onClick = { moreMenu = false; leaveDocument { destination = Destination.Settings } })
+                                        DropdownMenuItem(text = { Text(tr("Диагностика", "Diagnostics")) },
+                                            onClick = { moreMenu = false; leaveDocument { destination = Destination.Diagnostics } })
+                                    }
+                                }
+                            })
+                    },
+                    bottomBar = {
+                        if (!wide) NavigationBar {
+                            mainDestinations.forEach { item ->
+                                NavigationBarItem(selected = destination == item, onClick = { if (destination != item) leaveDocument { destination = item } },
+                                    icon = { AppIcon(item.symbol()) }, label = { Text(item.label()) })
+                            }
+                        }
+                    },
+                ) { insets ->
+                    Column(Modifier.fillMaxSize().padding(insets)) {
+                        Column(Modifier.fillMaxWidth().heightIn(max = screenHeight * 0.30f).verticalScroll(rememberScrollState())) {
+                        if (!core.connected) FaultNotice(CoreFault.Disconnected, Modifier.fillMaxWidth().padding(12.dp))
+                        if (destination != Destination.Notes) ProtectedWriteNotice(session)
+                        incomingDocuments.fault?.let { fault ->
+                            FaultNotice(fault, message = tr("Не удалось принять файл. Нужны временный доступ и точный размер; поделитесь файлом заново.",
+                                "The file could not be accepted. Temporary read access and an exact size are required; share the file again."))
+                            TextButton(onClick = incomingDocuments::clear) { Text(tr("Закрыть входящие", "Dismiss incoming files")) }
+                        }
+                        session.writeFault?.let { fault ->
+                            FaultNotice(fault, Modifier.padding(12.dp))
+                        }
+                        session.directWrite?.let { operation ->
+                            Text(when (operation.phase) {
+                                DirectWritePhase.Running -> tr("Выполняется операция… Исходные объекты сохраняются.", "Processing… Source entries are kept.")
+                                DirectWritePhase.Done -> tr("Новый результат создан.", "New output created.")
+                                DirectWritePhase.Failed -> if (operation.kind == DirectWriteKind.DecryptFile && session.writeFault == CoreFault.WrongPassword)
+                                    tr("Неверный пароль или повреждённый файл: эти случаи могут быть неразличимы.", "Wrong password or damaged file: these cases may be indistinguishable.")
+                                    else tr("Операция не завершена. Проверьте сообщение об ошибке и папку назначения.", "The operation did not complete. Check the error message and destination folder.")
+                                DirectWritePhase.Unknown -> tr("Ответ потерян или приложение ушло в фон. Проверьте папку назначения и журнал перед новой записью. Автоматического повтора нет.",
+                                    "The reply was lost or the app went into the background. Inspect the destination folder and journal before another write. There is no automatic retry.")
+                            }, Modifier.padding(horizontal = 12.dp))
+                            if (operation.phase == DirectWritePhase.Running) {
+                                LinearProgressIndicator(Modifier.fillMaxWidth())
+                                if (operation.requestId != null) TextButton(onClick = session::cancelDirectArchive,
+                                    enabled = !operation.cancelling) {
+                                    Text(if (operation.cancelling) tr("Отмена запрошена…", "Cancellation requested…") else tr("Отменить", "Cancel"))
+                                }
+                            } else TextButton(onClick = session::dismissDirectWrite) {
+                                Text(if (operation.phase == DirectWritePhase.Unknown) tr("Проверил(а), закрыть сообщение", "Inspected, dismiss message") else tr("Закрыть сообщение", "Dismiss message"))
+                            }
+                        }
+                        session.uncertain?.let { pending ->
+                            Text(when (pending.notInJournal) {
+                                true -> tr("Запроса нет в журнале: он не был принят. Можно отправить его ещё раз (с тем же ID повтора не будет).",
+                                    "The request is not in the journal: it was not accepted. It can be sent again (the same ID cannot run twice).")
+                                else -> tr("Запрос ${pending.requestId.take(8)}…: ответ потерян. Проверьте журнал по ID.",
+                                    "Request ${pending.requestId.take(8)}…: reply lost. Check the journal by ID.")
+                            }, Modifier.padding(horizontal = 12.dp))
+                            Row(Modifier.padding(horizontal = 12.dp)) {
+                                TextButton(onClick = session::checkUncertain, enabled = core.connected && !session.writing) {
+                                    Text(tr("Проверить в журнале", "Check journal"))
+                                }
+                                if (pending.notInJournal == true) TextButton(onClick = session::resendUncertain,
+                                    enabled = core.connected && !session.writing) { Text(tr("Отправить ещё раз", "Send again")) }
+                            }
+                        }
+                        session.uncertainAttention?.let { pending ->
+                            Text(tr("Решение по заданию ${pending.jobId.take(8)}…: ответ неизвестен. Обновите состояние; решение не повторялось автоматически.",
+                                "Decision for job ${pending.jobId.take(8)}…: reply unknown. Refresh its state; the decision was not repeated automatically."),
+                                Modifier.padding(horizontal = 12.dp))
+                            TextButton(onClick = session::checkAttentionDecision,
+                                enabled = core.connected && !session.writing && !session.attention.loading) {
+                                Text(tr("Проверить состояние решения", "Check decision state"))
+                            }
+                        }
+                        if (session.writeFault != null || session.uncertain != null)
+                            TextButton(onClick = session::dismissWriteFault) { Text(tr("Закрыть сообщение", "Dismiss message")) }
+                        }
+                        Row(Modifier.weight(1f)) {
+                            if (wide) {
+                                Column(Modifier.width(240.dp).fillMaxHeight().verticalScroll(rememberScrollState())) {
+                                    mainDestinations.forEach { item ->
+                                        TextButton(onClick = { if (destination != item) leaveDocument { destination = item } }, modifier = Modifier.fillMaxWidth()) {
+                                            AppIcon(item.symbol())
+                                            Text(item.label(), Modifier.padding(start = 8.dp))
+                                        }
+                                    }
+                                    key(session.secretsEpoch) {
+                                    SpacesPanel(session.files.spaces, session.places, core.connected, session.writing || documentExit.busy, guardedPickFolder, openSpace, detachSpace,
+                                        onConnectServer = connectServer)
+                                    }
+                                }
+                            }
+                            Box(Modifier.weight(1f).fillMaxHeight()) {
+                                when (destination) {
+                                    Destination.Files -> FileWorkspaceScreen(session, settings.fileView, { openedFile = it }, pngImage,
+                                        onOpenPlaces = if (wide) null else ({ scope.launch { placesDrawer.open() }; Unit }))
+                                    Destination.Operations -> OperationsScreen(session) { location ->
+                                        if (session.openAttentionFolder(location)) {
+                                            openedFile = null
+                                            destination = Destination.Files
+                                        }
+                                    }
+                                    Destination.Settings -> AppearanceScreen(settings, saving, saved, changeSettings,
+                                        securitySettings = { securitySettings(); VaultDefaultsSettings(session.vaultCatalog) }, backHandler = backHandler,
+                                        diagnosticsSettings = { TextButton(onClick = { destination = Destination.Diagnostics }) { Text(tr("Открыть журнал и отчёт", "Open journal and report")) } },
+                                        onRestartWelcome = { destination = Destination.Encryption; changeSettings(settings.copy(welcomeCompleted = false)) })
+                                    Destination.Diagnostics -> DiagnosticsScreen(session, diagnosticEnvironment) { destination = Destination.Files }
+                                    Destination.Encryption -> vaultContent()
+                                    Destination.Notes -> key(session.secretsEpoch) {
+                                        NotesScreen(session, notesBiometric, notesAttachmentPicker, notesImage,
+                                            onDiagnosticsCleared = { clearDiagnosticRecords(core, diagnosticEnvironment) }, exitGuard = documentExit,
+                                            incoming = incomingDocuments, vaultMediaPlayer = mediaPlayer)
+                                    }
+                                    Destination.Sync -> key(session.secretsEpoch) {
+                                        SyncScreen(core, onFiles = { destination = Destination.Files },
+                                            onJobs = { destination = Destination.Operations })
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            }
+            if (documentExit.pending != null) AlertDialog(onDismissRequest = documentExit::cancel,
+                title = { Text(tr("Закрыть без сохранения?", "Discard unsaved edits?")) },
+                text = { Text(if (documentExit.uncertain)
+                    tr("Результат записи неизвестен. Проверьте папку и журнал. Закрытие не отменяет уже отправленную запись; несохранённые правки будут потеряны.",
+                        "The write outcome is unknown. Inspect the folder and journal. Closing does not cancel a submitted write; unsaved edits will be lost.")
+                    else tr("Несохранённые правки будут потеряны.", "Unsaved edits will be lost.")) },
+                confirmButton = { TextButton(onClick = documentExit::discard) { Text(tr("Продолжить", "Continue")) } },
+                dismissButton = { TextButton(onClick = documentExit::cancel) { Text(tr("Остаться", "Stay")) } })
+            if (pickerFailed) AlertDialog(onDismissRequest = { pickerFailed = false },
+                title = { Text(tr("Выбор папки недоступен", "Folder selection unavailable")) },
+                text = { Text(tr("Не удалось получить доступ к выбранной папке.", "Access to the selected folder could not be obtained.")) },
+                confirmButton = { TextButton(onClick = { pickerFailed = false }) { Text(tr("Понятно", "OK")) } })
+        }
+    }
+}
+private fun Destination.symbol() = when (this) {
+    Destination.Files -> AppSymbol.Folder
+    Destination.Encryption -> AppSymbol.Security
+    Destination.Notes -> AppSymbol.Document
+    Destination.Sync -> AppSymbol.Recovery
+    Destination.Operations -> AppSymbol.Recovery
+    Destination.Settings -> AppSymbol.Settings
+    Destination.Diagnostics -> AppSymbol.Settings
+}

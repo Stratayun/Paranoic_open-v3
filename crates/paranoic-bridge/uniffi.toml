@@ -1,0 +1,5 @@
+[bindings.kotlin]
+package_name = "io.github.stratayun.paranoic.nativecore"
+cdylib_name = "paranoic_bridge"
+disable_java_cleaner = true
+

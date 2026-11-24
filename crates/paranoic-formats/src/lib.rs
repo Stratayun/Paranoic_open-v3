@@ -1,0 +1,35 @@
+//! External-format adapters. Only explicitly implemented modes are exported.
+//! No extension-based guessing or fallback to a proprietary encryption format.
+mod age_format;
+mod cryptomator_gcm;
+mod cryptomator_ctrmac;
+pub use cryptomator_ctrmac::CryptomatorCtrMacKey;
+mod cryptomator_names;
+mod cryptomator_vault;
+mod cryptomator_session;
+mod cryptomator_budget;
+mod cryptomator_reader;
+mod cryptomator_import;
+mod cryptomator_directory;
+mod cryptomator_rename;
+mod cryptomator_manager;
+mod cryptomator_plan;
+mod cryptomator_random;
+pub use cryptomator_random::CryptomatorFileReader;
+pub use cryptomator_plan::{CryptomatorPlan, CryptomatorPlanKind, CryptomatorPlanStatus, CryptomatorTreeLimits};
+mod kdf_gate;
+pub use kdf_gate::set_kdf_budget;
+pub mod paranoic_manifest;
+pub mod paranoic_v1;
+pub mod paranoic_vault;
+pub use cryptomator_manager::CryptomatorManager;
+pub use cryptomator_import::CryptomatorPreparedImport;
+pub use cryptomator_directory::CryptomatorPreparedDirectory;
+pub use cryptomator_rename::CryptomatorPreparedRename;
+pub use cryptomator_reader::{CryptomatorReader, CryptomatorListing, CryptomatorListedEntry, CryptomatorListedKind};
+pub use cryptomator_session::CryptomatorSession;
+pub use cryptomator_vault::{CryptomatorVault, CryptomatorEntryName, CryptomatorBootstrap, CryptomatorCipherCombo};
+pub use cryptomator_names::{CryptomatorNameKey, CryptomatorDirectoryId};
+pub use cryptomator_gcm::{CryptomatorGcmKey, CryptomatorContentLimits, CryptomatorContentOutcome, CryptomatorLengthPolicy};
+pub use age_format::{AgeIdentity, AgeLimits, AgeFormat};
+pub use age::secrecy::SecretString as AgeSecret;
