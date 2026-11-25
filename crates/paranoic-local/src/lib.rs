@@ -35,6 +35,10 @@ pub struct LocalStorage {
     /// Android shared storage (FUSE): see `shared.rs`.
     #[cfg_attr(not(any(target_os = "linux", target_os = "android")), allow(dead_code))]
     shared_root: bool,
+    /// Shared storage only: whether this volume really refuses to replace on
+    /// RENAME_NOREPLACE, measured once by [`probe_noreplace`] (audit 1, 2).
+    #[cfg_attr(not(any(target_os = "linux", target_os = "android")), allow(dead_code))]
+    shared_noreplace: std::sync::OnceLock<bool>,
     /// Absolute root path, needed only by Windows calls that take paths
     /// (ACL of staging folders, no-replace rename).
     #[cfg_attr(not(windows), allow(dead_code))]
@@ -47,12 +51,13 @@ impl LocalStorage {
     pub fn open(id: StorageId, root: impl AsRef<Path>, access: Access) -> Result<Self> {
         let root_path = std::fs::canonicalize(root.as_ref()).map_err(CoreError::io)?;
         let root = Dir::open_ambient_dir(&root_path, ambient_authority()).map_err(CoreError::io)?;
-        Ok(Self { id, root, access, private_root: false, shared_root: false, root_path })
+        Ok(Self { id, root, access, private_root: false, shared_root: false, shared_noreplace: std::sync::OnceLock::new(), root_path })
     }
 
     /// Android shared storage reached through "All files access"
-    /// (`/storage/emulated/N`, SD cards). Writes use the FUSE-compatible
-    /// publication in `shared.rs`; never use it for app-private roots.
+    /// (`/storage/emulated/N`, SD cards). Publication there is offered only
+    /// when the volume honours RENAME_NOREPLACE (checked once, see
+    /// `shared.rs`); otherwise writes are refused before any change.
     pub fn open_shared(id: StorageId, root: impl AsRef<Path>, access: Access) -> Result<Self> {
         let mut storage = Self::open(id, root, access)?;
         storage.shared_root = true;
@@ -73,6 +78,23 @@ impl LocalStorage {
         let mut out = self.root_path.clone();
         if !path.is_root() { for part in path.as_str().split('/') { out.push(part); } }
         out
+    }
+
+    /// Shared storage: true when the volume honours RENAME_NOREPLACE. Any other
+    /// verdict (rejected, ignored, probe failed) means no publication there.
+    fn shared_noreplace(&self) -> bool {
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        if self.shared_root {
+            return *self.shared_noreplace.get_or_init(|| self.access == Access::ReadWrite
+                && crate::shared::probe_noreplace(&self.root_path) == crate::shared::NoReplaceProbe::Supported);
+        }
+        true
+    }
+    /// Operations that publish by rename need a real no-replace rename.
+    fn require_noreplace(&self) -> Result<()> {
+        if self.shared_noreplace() { Ok(()) } else {
+            Err(CoreError::new(ErrorCode::Unsupported, "this shared storage cannot rename without replacing (RENAME_NOREPLACE unavailable)"))
+        }
     }
 
     fn writable(&self) -> Result<()> {
@@ -151,7 +173,7 @@ impl Storage for LocalStorage {
         let writable = self.access == Access::ReadWrite && (cfg!(unix) || cfg!(windows));
         Capabilities {
             read: true, write: writable, delete: writable,
-            atomic_move_no_replace: writable && cfg!(any(target_os = "linux", target_os = "android", windows)),
+            atomic_move_no_replace: writable && cfg!(any(target_os = "linux", target_os = "android", windows)) && self.shared_noreplace(),
             durable_directory_sync: cfg!(unix),
             // Check-then-act leases (see MoveLease/PinnedFile): the object is
             // identified by dev/ino and ctime, verified immediately before unlink.
@@ -235,6 +257,7 @@ impl Storage for LocalStorage {
 
     fn stage(&self, target: &ResourcePath, job: JobId) -> Result<Box<dyn StagedWrite>> {
         self.writable()?;
+        self.require_noreplace()?;
         #[cfg(windows)]
         return windows::stage(self, target, job);
         #[cfg(not(windows))]
@@ -284,6 +307,7 @@ impl Storage for LocalStorage {
     fn stage_bundle(&self, target: &ResourcePath, job: JobId, content: &str,
         sidecar: &str, data: &[u8]) -> Result<Box<dyn StagedWrite>> {
         self.writable()?;
+        self.require_noreplace()?;
         if !cfg!(any(target_os = "linux", target_os = "android")) {
             return Err(CoreError::new(ErrorCode::Unsupported, "atomic bundles unavailable"));
         }
@@ -341,6 +365,7 @@ impl Storage for LocalStorage {
 
     fn move_no_replace(&self, source: &ResourcePath, target: &ResourcePath) -> Result<()> {
         self.writable()?;
+        self.require_noreplace()?;
         #[cfg(any(target_os = "linux", target_os = "android"))]
         {
             let (source_parent, source_name) = self.parent(source)?;

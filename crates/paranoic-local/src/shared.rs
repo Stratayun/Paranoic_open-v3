@@ -1,10 +1,13 @@
 //! Android shared storage (`/storage/emulated/N`, SD cards) reached with the
-//! "All files access" permission is a FUSE mount served by MediaProvider. It
-//! differs from an ordinary Linux filesystem in three ways that matter here:
+//! "All files access" permission is a FUSE mount served by MediaProvider.
 //!
-//! * `renameat2` flags are rejected (`EINVAL`), so `RENAME_NOREPLACE` fails;
-//! * hard links are refused, so the `link()` fallback fails too;
-//! * owner and mode bits are synthesised by the daemon (no private `0700`).
+//! * Whether `renameat2(RENAME_NOREPLACE)` works there depends on the device
+//!   and Android version (owner's phone, Android 17: it does). It is measured
+//!   once per volume with [`probe_noreplace`]; where it is not honoured the
+//!   storage refuses publication before any change (audit 1, 2). There is no
+//!   check-then-rename fallback: it could replace a concurrent writer's file
+//!   and left an empty reservation behind after a crash.
+//! * Owner and mode bits are synthesised by the daemon (no private `0700`).
 //!
 //! Grants opened with [`crate::LocalStorage::open_shared`] use the helpers
 //! below. Every other grant keeps the strict kernel primitives unchanged.
@@ -14,54 +17,14 @@
 //! Staging there only provides atomic publication, never confidentiality.
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
-use rustix::{fd::AsFd, fs::{AtFlags, FileType, Mode, OFlags, RenameFlags}, io::Errno};
+use rustix::{fd::AsFd, fs::{AtFlags, Mode, OFlags, RenameFlags}, io::Errno};
 
-/// Create-if-absent rename. On shared storage, where the kernel flag is
-/// unavailable, the target name is first reserved atomically (`O_EXCL` file
-/// or `mkdir`, both fail on any existing entry, dangling symlinks included);
-/// only that empty reservation is then replaced. A concurrent writer who
-/// replaces the reservation in between is detected by identity and keeps
-/// its entry: the call fails with `EEXIST` instead.
+/// Create-if-absent rename. Only the kernel primitive: shared volumes reach
+/// this after [`probe_noreplace`] confirmed it (see module docs).
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub(crate) fn rename_noreplace<A: AsFd, B: AsFd>(from: A, from_name: &str, to: B, to_name: &str,
-    shared: bool) -> rustix::io::Result<()> {
-    match rustix::fs::renameat_with(&from, from_name, &to, to_name, RenameFlags::NOREPLACE) {
-        Err(e) if shared && (e == Errno::INVAL || e == Errno::NOSYS) => reserve_then_rename(&from, from_name, &to, to_name),
-        other => other,
-    }
-}
-
-#[cfg(any(target_os = "linux", target_os = "android"))]
-fn reserve_then_rename<A: AsFd, B: AsFd>(from: &A, from_name: &str, to: &B, to_name: &str) -> rustix::io::Result<()> {
-    let source = rustix::fs::statat(from, from_name, AtFlags::SYMLINK_NOFOLLOW)?;
-    let directory = FileType::from_raw_mode(source.st_mode) == FileType::Directory;
-    if directory {
-        rustix::fs::mkdirat(to, to_name, Mode::RWXU)?;
-    } else {
-        drop(rustix::fs::openat(to, to_name,
-            OFlags::CREATE | OFlags::EXCL | OFlags::WRONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-            Mode::RUSR | Mode::WUSR)?);
-    }
-    let reserved = rustix::fs::statat(to, to_name, AtFlags::SYMLINK_NOFOLLOW)?;
-    let release = |to: &B| {
-        // Remove only the reservation this call made, identified by inode.
-        if let Ok(now) = rustix::fs::statat(to, to_name, AtFlags::SYMLINK_NOFOLLOW) {
-            if now.st_dev == reserved.st_dev && now.st_ino == reserved.st_ino && (directory || now.st_size == 0) {
-                let flags = if directory { AtFlags::REMOVEDIR } else { AtFlags::empty() };
-                let _ = rustix::fs::unlinkat(to, to_name, flags);
-            }
-        }
-    };
-    // Re-check right before the replacing rename: still ours and still empty.
-    match rustix::fs::statat(to, to_name, AtFlags::SYMLINK_NOFOLLOW) {
-        Ok(now) if now.st_dev == reserved.st_dev && now.st_ino == reserved.st_ino
-            && (directory || now.st_size == 0) => {}
-        Ok(_) => return Err(Errno::EXIST),
-        Err(e) => { release(to); return Err(e); }
-    }
-    // Replacing an empty directory with a directory, or a file with a file, is
-    // plain POSIX rename. A non-empty reservation makes it fail (ENOTEMPTY).
-    rustix::fs::renameat(from, from_name, to, to_name).inspect_err(|_| release(to))
+    _shared: bool) -> rustix::io::Result<()> {
+    rustix::fs::renameat_with(&from, from_name, &to, to_name, RenameFlags::NOREPLACE)
 }
 
 /// Result of [`probe_noreplace`].
@@ -165,49 +128,6 @@ pub(crate) fn staging_private(metadata: &cap_std::fs::Metadata, shared: bool) ->
 }
 
 #[cfg(all(test, any(target_os = "linux", target_os = "android")))]
-mod tests {
-    use super::*;
-    use cap_std::{ambient_authority, fs::Dir};
-
-    struct Temp(std::path::PathBuf);
-    impl Drop for Temp { fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); } }
-    fn dir() -> (Temp, Dir) {
-        let path = std::env::temp_dir().join(format!("paranoic-shared-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir(&path).unwrap();
-        let dir = Dir::open_ambient_dir(&path, ambient_authority()).unwrap();
-        (Temp(path), dir)
-    }
-
-    #[test]
-    fn fallback_moves_file_and_directory_into_absent_names() {
-        let (_t, d) = dir();
-        d.write("a", b"payload").unwrap();
-        reserve_then_rename(&d, "a", &d, "b").unwrap();
-        assert_eq!(d.read("b").unwrap(), b"payload");
-        assert!(!d.exists("a"));
-        d.create_dir("src").unwrap();
-        d.write("src/x", b"1").unwrap();
-        reserve_then_rename(&d, "src", &d, "dst").unwrap();
-        assert_eq!(d.read("dst/x").unwrap(), b"1");
-    }
-
-    #[test]
-    fn fallback_never_replaces_existing_entries() {
-        let (_t, d) = dir();
-        d.write("a", b"new").unwrap();
-        d.write("b", b"keep").unwrap();
-        assert_eq!(reserve_then_rename(&d, "a", &d, "b"), Err(Errno::EXIST));
-        assert_eq!(d.read("b").unwrap(), b"keep");
-        assert_eq!(d.read("a").unwrap(), b"new");
-        d.symlink("missing", "dangling").unwrap();
-        assert_eq!(reserve_then_rename(&d, "a", &d, "dangling"), Err(Errno::EXIST));
-        d.create_dir("full").unwrap();
-        d.create_dir("empty").unwrap();
-        assert_eq!(reserve_then_rename(&d, "full", &d, "empty"), Err(Errno::EXIST));
-    }
-}
-
-#[cfg(all(test, any(target_os = "linux", target_os = "android")))]
 mod probe_tests {
     #[test] fn probe_reports_supported_on_a_normal_linux_filesystem_and_cleans_up() {
         let root = std::env::temp_dir().join(format!("paranoic-probe-test-{}", std::process::id()));
@@ -215,5 +135,23 @@ mod probe_tests {
         assert_eq!(super::probe_noreplace(&root), super::NoReplaceProbe::Supported);
         assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0, "probe folder left behind");
         std::fs::remove_dir(&root).unwrap();
+    }
+
+    /// Audit 1/2: a shared root offers atomic publication only after the probe
+    /// confirmed it, and writes through it publish with the kernel primitive.
+    #[test] fn shared_root_publishes_only_after_a_supported_probe() {
+        use paranoic_core::{ResourcePath, Storage, StorageId};
+        let root = std::env::temp_dir().join(format!("paranoic-shared-root-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let storage = crate::LocalStorage::open_shared(StorageId(uuid::Uuid::new_v4()), &root, crate::Access::ReadWrite).unwrap();
+        assert!(storage.capabilities().atomic_move_no_replace, "ext4/tmpfs honour RENAME_NOREPLACE");
+        std::fs::write(root.join("a"), b"1").unwrap();
+        std::fs::write(root.join("b"), b"2").unwrap();
+        let (a, b) = (ResourcePath::parse("a").unwrap(), ResourcePath::parse("b").unwrap());
+        assert!(storage.move_no_replace(&a, &b).is_err(), "existing target replaced");
+        assert_eq!(std::fs::read(root.join("b")).unwrap(), b"2");
+        let leftovers: Vec<_> = std::fs::read_dir(&root).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(leftovers.len(), 2, "probe or reservation left behind: {leftovers:?}");
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }
