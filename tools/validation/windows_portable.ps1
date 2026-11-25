@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][string]$Archive, [switch]$UnicodePaths, [switch]$UnicodeTemp, [switch]$ConsoleDiagnostics, [string]$LauncherName = 'Paranoic.exe')
+param([Parameter(Mandatory)][string]$Archive, [switch]$UnicodePaths, [switch]$UnicodeTemp, [string]$LauncherName = 'Paranoic.exe')
 $ErrorActionPreference = 'Stop'
 $report = Join-Path $PWD 'startup-results'
 New-Item -ItemType Directory -Force $report | Out-Null
@@ -7,17 +7,6 @@ $unpacked = Join-Path $env:RUNNER_TEMP $folder
 Expand-Archive -LiteralPath $Archive -DestinationPath $unpacked -Force
 $exe = Get-ChildItem $unpacked -Recurse -Filter $LauncherName | Select-Object -First 1
 if (!$exe) { throw 'Paranoic.exe missing from portable archive' }
-# Change only the subsystem field in this disposable copy. This gives the
-# existing jpackage launcher a console without rebuilding the application.
-if ($ConsoleDiagnostics) {
-$image = [IO.File]::ReadAllBytes($exe.FullName)
-$pe = [BitConverter]::ToInt32($image, 0x3c)
-if ([BitConverter]::ToUInt32($image, $pe) -ne 0x4550) { throw 'Invalid PE signature' }
-$subsystem = $pe + 24 + 68
-$image[$subsystem] = 3
-$image[$subsystem + 1] = 0
-[IO.File]::WriteAllBytes($exe.FullName, $image)
-}
 Add-Type @'
 using System;
 using System.Text;

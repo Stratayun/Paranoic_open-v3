@@ -47,6 +47,18 @@ jobs:
       - name: Zip portable folder
         shell: pwsh
         run: Compress-Archive -Path ui/composeApp/build/compose/binaries/main/app/Paranoic -DestinationPath Paranoic-windows-portable.zip
+      - name: Verify portable startup and Unicode paths
+        shell: pwsh
+        run: |
+          ./tools/validation/windows_portable.ps1 -Archive Paranoic-windows-portable.zip
+          ./tools/validation/windows_portable.ps1 -Archive Paranoic-windows-portable.zip -UnicodePaths -UnicodeTemp
+          ./tools/validation/windows_portable.ps1 -Archive Paranoic-windows-portable.zip -UnicodePaths -UnicodeTemp -LauncherName Paranoic-debug.exe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Windows-startup-results
+          path: startup-results
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: Paranoic-windows-portable
