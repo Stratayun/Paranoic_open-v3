@@ -113,7 +113,7 @@ fn import(h: &Harness, base: &std::path::Path, reader: &CryptomatorReader, paren
 fn cryptomator_vaults_from_cryptofs_read_and_write() {
     let _kdf = KDF_INTEROP.lock().unwrap();
     let Ok(base) = std::env::var("PARANOIC_CRYPTOMATOR_FIXTURES") else {
-        eprintln!("PARANOIC_CRYPTOMATOR_FIXTURES unset: Cryptomator interop skipped"); return;
+        interop_skip("PARANOIC_CRYPTOMATOR_FIXTURES"); return;
     };
     let h = Harness::new(&[PathBuf::from(&base)]);
     for (vault, combo) in [("v8-gcm", CryptomatorCipherCombo::SivGcm), ("v8-ctrmac", CryptomatorCipherCombo::SivCtrMac)] {
@@ -163,7 +163,7 @@ fn cryptomator_vaults_from_cryptofs_read_and_write() {
 fn cryptomator_format7_vault_from_cryptofs_1_9() {
     let _kdf = KDF_INTEROP.lock().unwrap();
     let Ok(base) = std::env::var("PARANOIC_CRYPTOMATOR_V7_FIXTURES") else {
-        eprintln!("PARANOIC_CRYPTOMATOR_V7_FIXTURES unset: format 7 interop skipped"); return;
+        interop_skip("PARANOIC_CRYPTOMATOR_V7_FIXTURES"); return;
     };
     let h = Harness::new(&[PathBuf::from(&base)]);
     let reader = CryptomatorReader::open(h.storages[0].clone(), ResourcePath::parse("v7").unwrap(),
@@ -276,3 +276,10 @@ fn cryptomator_plans_password_change_and_file_reshape() {
     assert!(!backup.exists());
 }
 
+/// Audit 18: with PARANOIC_REQUIRE_INTEROP set, a missing fixture or tool fails
+/// the run instead of passing as a silent skip.
+#[allow(dead_code)]
+fn interop_skip(what: &str) {
+    assert!(std::env::var_os("PARANOIC_REQUIRE_INTEROP").is_none(), "{what} required by PARANOIC_REQUIRE_INTEROP");
+    eprintln!("{what}: skipped");
+}

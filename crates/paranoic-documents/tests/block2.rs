@@ -52,7 +52,7 @@ fn pw(s: &str) -> Option<Zeroizing<String>> { Some(Zeroizing::new(s.into())) }
 fn code<T>(r: paranoic_core::Result<T>) -> ErrorCode { match r { Err(e) => e.code, Ok(_) => panic!("expected error") } }
 
 fn interop() -> bool {
-    if std::env::var_os("PARANOIC_SKIP_INTEROP").is_some() { eprintln!("interop skipped by PARANOIC_SKIP_INTEROP"); return false; }
+    if std::env::var_os("PARANOIC_SKIP_INTEROP").is_some() { interop_skip("interop (PARANOIC_SKIP_INTEROP)"); return false; }
     for tool in ["7z", "zip", "unzip"] {
         assert!(Command::new(tool).arg("-h").output().is_ok(), "{tool} missing; set PARANOIC_SKIP_INTEROP=1 to skip");
     }
@@ -546,4 +546,12 @@ fn save(doc: &TextDocument) -> Vec<u8> {
         sz_open(bytes, Some("k3y"))?.prepare_extraction(h.spool.as_ref(), &rp(&format!("{name}-ok")), ok)?;
     }
     Ok(())
+}
+
+/// Audit 18: with PARANOIC_REQUIRE_INTEROP set, a missing fixture or tool fails
+/// the run instead of passing as a silent skip.
+#[allow(dead_code)]
+fn interop_skip(what: &str) {
+    assert!(std::env::var_os("PARANOIC_REQUIRE_INTEROP").is_none(), "{what} required by PARANOIC_REQUIRE_INTEROP");
+    eprintln!("{what}: skipped");
 }

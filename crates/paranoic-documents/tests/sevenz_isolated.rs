@@ -48,7 +48,7 @@ fn extract(spool: &LocalStorage, bytes: Vec<u8>, target: &str, password: Option<
 }
 fn empty(dir: &Path) -> bool { std::fs::read_dir(dir).map(|mut d| d.next().is_none()).unwrap_or(true) }
 fn interop() -> bool {
-    if std::env::var_os("PARANOIC_SKIP_INTEROP").is_some() { return false; }
+    if std::env::var_os("PARANOIC_SKIP_INTEROP").is_some() { interop_skip("7z interop (PARANOIC_SKIP_INTEROP)"); return false; }
     assert!(Command::new("7z").arg("-h").output().is_ok(), "7z missing; set PARANOIC_SKIP_INTEROP=1 to skip");
     true
 }
@@ -238,4 +238,12 @@ fn fix_crc(b: &mut [u8]) {
     assert!(is_wrong_password(&open(names, Some("bad")).err().unwrap()));
     assert!(!any_encrypted(open(ours(), None).unwrap().entries()));
     for leftover in ["nopw", "bad"] { assert!(empty(&t.0.join("spool").join(leftover)), "{leftover}"); }
+}
+
+/// Audit 18: with PARANOIC_REQUIRE_INTEROP set, a missing fixture or tool fails
+/// the run instead of passing as a silent skip.
+#[allow(dead_code)]
+fn interop_skip(what: &str) {
+    assert!(std::env::var_os("PARANOIC_REQUIRE_INTEROP").is_none(), "{what} required by PARANOIC_REQUIRE_INTEROP");
+    eprintln!("{what}: skipped");
 }

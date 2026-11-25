@@ -230,7 +230,7 @@ fn walk(dir: &std::path::Path) -> Vec<PathBuf> {
 #[test] fn vault_on_own_webdav_server() {
     let server = std::env::var("PARANOIC_SERVER").map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/paranoic-server"));
-    if !server.exists() { eprintln!("paranoic-server not built: WebDAV vault test skipped"); return; }
+    if !server.exists() { interop_skip("paranoic-server binary"); return; }
     let temp = Temp::new();
     let root = temp.dir("served");
     let token = "test-token-0123456789abcdefghijklmnop";
@@ -576,4 +576,10 @@ fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
         std::fs::write(&raw, &original[..original.len() - 1]).unwrap();
         assert!(vault.open_reader(core, &root, "big.bin").is_err(), "a cut file was opened");
     }
+}
+
+/// Audit 18: with PARANOIC_REQUIRE_INTEROP set, a missing tool fails the run.
+fn interop_skip(what: &str) {
+    assert!(std::env::var_os("PARANOIC_REQUIRE_INTEROP").is_none(), "{what} required by PARANOIC_REQUIRE_INTEROP");
+    eprintln!("{what}: skipped");
 }

@@ -15,7 +15,7 @@ use paranoic_local::{Access, LocalStorage};
 fn fixtures() -> Option<PathBuf> {
     match std::env::var("PARANOIC_BLOCK2_FIXTURES") {
         Ok(dir) => Some(PathBuf::from(dir)),
-        Err(_) => { eprintln!("PARANOIC_BLOCK2_FIXTURES unset: skipped"); None }
+        Err(_) => { interop_skip("PARANOIC_BLOCK2_FIXTURES"); None }
     }
 }
 fn read(dir: &std::path::Path, name: &str) -> Vec<u8> { std::fs::read(dir.join(name)).unwrap_or_else(|e| panic!("{name}: {e}")) }
@@ -108,7 +108,7 @@ mod tempdir {
 }
 fn pdf_env() -> Option<Pdf> {
     let dir = fixtures()?;
-    let Ok(pdfium) = std::env::var("PARANOIC_PDFIUM") else { eprintln!("PARANOIC_PDFIUM unset: PDF skipped"); return None };
+    let Ok(pdfium) = std::env::var("PARANOIC_PDFIUM") else { interop_skip("PARANOIC_PDFIUM"); return None };
     let worker = std::env::var("PARANOIC_PDF_WORKER").map(PathBuf::from).unwrap_or_else(|_|
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/paranoic-pdf-worker"));
     let worker = worker.canonicalize().expect("PDF worker not built");
@@ -195,4 +195,12 @@ fn workers() -> Vec<u32> {
     assert!(missing.is_err());
     std::thread::sleep(Duration::from_millis(200));
     assert!(workers().is_empty());
+}
+
+/// Audit 18: with PARANOIC_REQUIRE_INTEROP set, a missing fixture or tool fails
+/// the run instead of passing as a silent skip.
+#[allow(dead_code)]
+fn interop_skip(what: &str) {
+    assert!(std::env::var_os("PARANOIC_REQUIRE_INTEROP").is_none(), "{what} required by PARANOIC_REQUIRE_INTEROP");
+    eprintln!("{what}: skipped");
 }
