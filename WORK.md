@@ -13,8 +13,9 @@
 
 ## Окно Opus
 
-- **Делаю:** по поручению владельца 25.11: прямой доступ к памяти Android («Доступ ко всем файлам», без SAF) + визуал M3 Expressive (ориентир — Strata/Vault Explorer). Ветка `claude/paranoid-v3-connection-2y64n0`.
-- **Занятые файлы:** `crates/paranoic-local/src/**`, `crates/paranoic-bridge/src/lib.rs`; по поручению владельца и Kotlin: `ui/composeApp/src/androidMain/**`, `ui/.../ui/theme/**`, `ui/.../ui/components/SpacesPanel.kt`, `ui/.../platform/NativeCoreGateway.kt`
+- **Делаю:** пауза до перехода владельца на ПК. Сделано по поручению 25.11 (ветка `claude/paranoid-v3-connection-2y64n0`, в `main` не слито): доступ ко всей памяти Android + визуал M3 Expressive.
+- **Занятые файлы:** те же, до решения о слиянии: `crates/paranoic-local/src/**`, `crates/paranoic-bridge/src/lib.rs`, `ui/composeApp/src/androidMain/**`, `ui/.../ui/{theme,components}/**`, `ui/.../ui/ParanoicApp.kt`, `ui/.../screens/files/FilesScreen.kt`, `ui/.../platform/NativeCoreGateway.kt`
+- **Отчёт 25.11:** Rust `d1cebd1` (общая память Android через FUSE: резерв имени вместо RENAME_NOREPLACE; cargo check/clippy + 2 теста). Kotlin `454ab90`, `3ba8eb4` + этот коммит: компиляция desktop и Android (`compileDebugKotlinAndroid`) прошла. APK, Rust под Android (нужен NDK) и телефон — не проверены.
 - **Отчёт:** У-68 `4b08bfc` · переместить в Сейф / поделиться `106d4d1` · E4.7 поток, текст, ZIP `c30761d`, 7z `3165a69`. Контракт — CONTRACTS.md, «Стыки, часть 3».
 - **Для Sol:** подключить «Стыки, часть 3» (у `vault_archive_list/extract` есть `kind` и пароль); новый callback `IncomingStream` (Kotlin реализует для ACTION_SEND).
 
