@@ -32,9 +32,10 @@ jobs:
           Expand-Archive portable-input/Paranoic-windows-portable.zip original
           $app = (Resolve-Path original/Paranoic).Path
           $main = (Get-ChildItem "$app/app/composeApp-desktop-*.jar").Name
+          Move-Item "$app/app/Paranoic.cfg" "$app/launcher.cfg"
           & "$env:JAVA_HOME/bin/jpackage.exe" --type app-image --input "$app/app" --dest repaired --name Paranoic --main-jar $main --main-class io.github.stratayun.paranoic.platform.MainKt --runtime-image "$app/runtime"
           if ($LASTEXITCODE) { throw "jpackage failed: $LASTEXITCODE" }
-          Copy-Item "$app/app/Paranoic.cfg" repaired/Paranoic/app/Paranoic.cfg -Force
+          Copy-Item "$app/launcher.cfg" repaired/Paranoic/app/Paranoic.cfg -Force
           Compress-Archive repaired/Paranoic repaired-portable.zip
       - name: Launch from an ASCII path
         shell: pwsh
