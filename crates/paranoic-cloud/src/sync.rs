@@ -9,9 +9,8 @@
 //! * replacing a file (Core ConflictPolicy::Replace) happens only when both
 //!   sides still match the planned observation right before submission;
 //! * equal content found without a baseline (first run, crash recovery) is
-//!   adopted after a SHA-256 comparison (provider SHA-256, or the remote file
-//!   read back when the provider has only QuickXorHash, which is just a
-//!   pre-filter); unknown equality is treated as a conflict;
+//!   adopted after a SHA-256 comparison when the server reports one; unknown
+//!   equality is treated as a conflict;
 //! * the baseline records the versions a job actually synchronized, never a
 //!   later observation, so an edit made after the job stays a change.
 use std::{collections::{BTreeMap, BTreeSet}, io::Read, sync::atomic::AtomicBool};
@@ -20,7 +19,7 @@ use paranoic_crypto::SecretKey;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
-use crate::{CloudStorage, CoreError, ErrorCode, QuickXorHash, Result};
+use crate::{CloudStorage, CoreError, ErrorCode, Result};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -442,30 +441,16 @@ fn local_matches(core: &Core, at: &Location, record: Option<&paranoic_core::JobR
 }
 
 /// Compare a local file with the remote one. None = equality unknown.
-/// SHA-256 from the provider is accepted as proof. OneDrive's QuickXorHash is
-/// linear and can be matched by a crafted edit, so it is only a pre-filter: a
-/// mismatch proves difference, a match is confirmed by reading the remote
-/// file and comparing SHA-256 of both (У-37).
+/// SHA-256 from the server is accepted as proof.
 fn same_content(core: &Core, cloud: &CloudStorage, local: &Location, remote: &Location, path: &str) -> Result<Option<bool>> {
     let rel = ResourcePath::parse(path)?;
     let remote_at = Location { storage: remote.storage, path: under(remote, &rel)? };
     let entry = cloud.remote_entry(&remote_at.path)?;
-    if entry.sha256.is_none() && entry.quick_xor.is_none() { return Ok(None); }
+    let Some(expected) = entry.sha256 else { return Ok(None) };
     let mut sha = Sha256::new();
-    let mut xor = QuickXorHash::new();
-    read_all(core, &Location { storage: local.storage, path: under(local, &rel)? }, |data| { sha.update(data); xor.update(data); })?;
+    read_all(core, &Location { storage: local.storage, path: under(local, &rel)? }, |data| sha.update(data))?;
     let digest: [u8; 32] = sha.finalize().into();
-    Ok(Some(match (&entry.sha256, &entry.quick_xor) {
-        (Some(s), _) => *s == digest,
-        (None, Some(q)) => {
-            if *q != xor.finalize_base64() { return Ok(Some(false)); }
-            let mut remote_sha = Sha256::new();
-            read_all(core, &remote_at, |data| remote_sha.update(data))?;
-            let remote_digest: [u8; 32] = remote_sha.finalize().into();
-            remote_digest == digest
-        }
-        _ => return Ok(None),
-    }))
+    Ok(Some(expected == digest))
 }
 
 fn read_all(core: &Core, at: &Location, mut each: impl FnMut(&[u8])) -> Result<()> {

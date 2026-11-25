@@ -1,7 +1,7 @@
-# Cloud providers (block 3)
+# Remote storage over WebDAV (block 3)
 
-Code for roadmap 3.1–3.9 (Rust side). Verification status (tests against the
-own WebDAV server, live accounts not yet) and UI status — only in the root ROADMAP.
+Rust side of block 3: WebDAV client, cloud folders in the Core queue, backup/sync
+and vaults on the own server. Status — only in the root ROADMAP.
 
 ## API (3.1)
 
@@ -14,35 +14,19 @@ conditional mutation, server SHA-256, resumable upload, duplicate names).
 Shared rules: names are portable single components (same rules as local
 paths); no entry is ever replaced; a write whose outcome is unknown returns
 NeedsAttention and is never replayed automatically; folders are trashed only
-when empty; nothing is deleted permanently. Bearer tokens go only to the API
-host; pre-authenticated upload/download URLs are host-allowlisted and get no
-token. Redirects are never followed automatically. Responses are capped at 16 MiB.
+when empty; nothing is deleted permanently. Redirects are never followed automatically. Responses are capped at 16 MiB.
 
 `upload_from_core` streams a Core file to a provider and proves the stored
-bytes (server SHA-256, else full download readback); the source is kept.
+bytes (server SHA-256, else full readback); the source is kept.
 `download_to_storage` stages into a new path and publishes only after the exact
-length (and provider SHA-256 when available) matched.
+length (and server SHA-256 when available) matched.
 
 ## Providers
 
-| | create-new | conditional mutation | hash | notes |
-|---|---|---|---|---|
-| Google Drive (3.2) | pre-check + post-check (duplicate names allowed) | re-check `version` before PATCH | SHA-256 | resumable 8 MiB chunks; Google Docs = Native, not downloadable |
-| OneDrive (3.3) | server `conflictBehavior=fail` | `If-Match` eTag | readback | upload session 10 MiB chunks, cancelled on error |
-| pCloud (3.4) | pre-check + `renameifexists=1`, renamed upload deleted → AlreadyExists | re-check hash/modified | SHA-256 via `checksumfile` (EU) else readback | regional host from login; whole-folder listings sliced into pages |
-
-## OAuth and tokens (3.6)
-
-`OAuthClient::{google, onedrive, pcloud}` → `begin()` (system browser URL,
-PKCE S256 for Google/Microsoft, random state) → `finish()` with the redirect URL
-(constant-time state check, exact redirect match). Windows: `LoopbackRedirect`
-(127.0.0.1, random port, timeout/cancel). Android: the host receives the
-custom-scheme/app-link redirect and passes it to `finish`. `CloudSession`
-refreshes two minutes before expiry and once after a 401 (rotated tokens go to
-the host `persist` callback); `lock()` forgets tokens in memory (Quick Lock).
-`seal_tokens`/`open_tokens` bind provider + account in the AEAD context; the key
-comes from the keyring session or platform keystore; `TokenStore` is the host's
-app-private, backup-excluded persistence.
+Only WebDAV: the owner's `paranoic-server` and other WebDAV servers
+(Nextcloud, pCloud WebDAV, …). Google Drive, OneDrive and pCloud API adapters
+with OAuth were removed by the owner's decision (25.11.2026): encrypted folders
+are moved to such clouds by hand. The code remains in git history.
 
 ## Cloud folders in the Core queue (3.7)
 
@@ -59,9 +43,9 @@ copies, move across storages, delete (→ provider trash).
   create-new on publish; `purge_spool` removes crash leftovers at startup.
 - `publish_tree`/`stage_bundle` build a hidden ".paranoic-<job>" folder and
   expose it with one relocate; failures trash the staging folder.
-- `move_no_replace` only on Drive/OneDrive (atomic relocate); pCloud: Unsupported.
-- Binding key = provider + account id + root id, so a grant id cannot be
-  re-pointed at another account/folder.
+- `move_no_replace` via WebDAV `MOVE` + `Overwrite: F`.
+- Binding key = server + account + root, so a grant id cannot be
+  re-pointed at another server/folder.
 
 ## Backup and sync (3.8)
 
@@ -72,8 +56,8 @@ Modes: `Backup` (local is the source; cloud-only/cloud-modified files are only
 reported) and `TwoWay`. Conflicts are never auto-resolved: the cloud version is
 saved locally as a KeepBoth copy. Local files are never deleted by sync; cloud
 deletions are opt-in (`trash_remote_deletions`) and go to the trash. Equal
-content without a baseline (first run, crash) is adopted after SHA-256 or
-QuickXorHash comparison; unknown equality = conflict. The baseline contains
+content without a baseline (first run, crash) is adopted after a server SHA-256
+comparison; unknown equality = conflict. The baseline contains
 names: persist it only via `seal`/`open` (AEAD bound to the pair).
 Residual race: a change between `submit`'s check and job execution.
 
@@ -91,20 +75,7 @@ credentials never follow redirects. Paths are ids and change on rename.
 
 The vault engine runs on any Core `Storage`, so a `CloudStorage` grant hosts a
 vault with local encryption and only ciphertext in the cloud.
-`check_vault_support` fails early where writes are unsafe. Writable on Drive,
-OneDrive and WebDAV, including RenameMapped/ReshapeDirectory with inspection
+`check_vault_support` fails early where writes are unsafe. Writable on WebDAV, including RenameMapped/ReshapeDirectory with inspection
 and recovery (`mapped.rs`: wrapper moved into hidden staging, mapping changed
 without overwriting — new uploaded first, old kept as evidence — then one
-atomic publish). pCloud: read-only vaults until live verification.
-
-## Before first live use (blockers)
-
-- Client registrations are required (Google Cloud console, Microsoft Entra,
-  pCloud app) with the redirect URIs; ids/secrets are host configuration.
-- pCloud: confirm against the live API that `uploadfile` (PUT) honours
-  `renameifexists`/`nopartial`, and that `renamefile` cannot overwrite in the
-  pre-checked case; until then pCloud writes are unverified.
-- Google Drive create-new and all pCloud renames have a residual race with
-  concurrent writers (documented, detected after the fact where possible).
-- QuickXorHash must be checked against a known OneDrive vector.
-- pCloud: `renamefolder` overwrite behaviour; file moves use copy(noover)+trash.
+atomic publish).

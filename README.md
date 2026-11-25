@@ -9,7 +9,7 @@
 - Full file manager: storage, SD/USB, folders, categories (Downloads, Documents, Music, Videos, Pictures), search, trash, photo/video/audio and document viewer.
 - Encrypted folders: **Cryptomator**-compatible vaults and its own **Paranoic** format; single files with **age**.
 - **Safe**: notes and a personal folder behind one password, isolated from the file manager and the cloud, with biometrics, duress password and wipe.
-- Archives (ZIP/AES, 7z), WebDAV and a self-hosted server; Google Drive / OneDrive / pCloud in progress.
+- Archives (ZIP/AES, 7z) and a self-hosted server over WebDAV. Encrypted folders can be moved to any cloud by hand; no third-party cloud accounts are stored.
 - Decrypted data never leaves the app. About 70% complete; `main` is the working, not-yet-stable code.
 
 **Collaboration is welcome.** Anyone interested in privacy, Rust, Kotlin Multiplatform, cryptography or UI design — open an issue or a pull request, or just say hello. Always glad to meet people with the same interests.
@@ -40,7 +40,7 @@
 
 - **Rust-first:** ядро, файловые операции, шифрование, архивы, документы и облачные адаптеры — Rust.
 - **Интерфейс:** Kotlin Multiplatform + Compose (Material 3, тёмная тема и иконки владельца); связь с Rust через UniFFI (`crates/paranoic-bridge`).
-- **Облака:** Google Drive, OneDrive, pCloud, WebDAV и собственный сервер `paranoic-server`; без Go в новой версии.
+- **Облако:** собственный сервер `paranoic-server` по WebDAV (подходит и Nextcloud). Google Drive / OneDrive / pCloud API не используются — решение владельца 25.11: зашифрованные папки переносятся в облако вручную.
 - Все завершённые изменения сразу коммитятся в **main**. Скачать весь текущий код: GitHub → **Code → Download ZIP**.
 - **main = актуальный код, а не гарантированная стабильная версия.** Проверки только по отдельной команде владельца после окончания крупного блока. Непроверенный код отмечается как непроверенный.
 - Не копировать старые реализации и ограничения без необходимости; новую структуру развивать модульно.

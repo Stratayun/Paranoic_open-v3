@@ -12,7 +12,7 @@
 | `crates/paranoic-formats/` | Собственный формат 1.8, Cryptomator и age | Rust-исходники; частичная проверка блока 1 |
 | `crates/paranoic-documents/` | ZIP/7z, текст, Office и подготовка медиа | Rust-исходники; частично проверено 2.1–2.4, остальные части не подтверждены |
 | `crates/paranoic-bridge/` | Единый новый UniFFI Runtime, records/callbacks, Core/SAF/read stream/preview wiring | UniFFI API, генерация bindings и платформенные callbacks |
-| `crates/paranoic-cloud/` | API облачных провайдеров, OAuth, сессии и transfer adapters | Rust-исходники; UI/live accounts не подтверждены, см. ROADMAP |
+| `crates/paranoic-cloud/` | WebDAV-клиент, облачные папки в очереди Core, синхронизация | Rust-исходники; UI/live accounts не подтверждены, см. ROADMAP |
 | `crates/paranoic-notes/` | Заметки, вложения, жизненный цикл ключей и стирание | Реализация защищённого сейфа |
 | `crates/paranoic-server/` | Собственный WebDAV-сервер | Исполняемый сервер |
 | `crates/paranoic-windows/` | Win32 ACL, FileId и изоляция процессов | Платформенные вызовы Windows |

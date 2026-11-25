@@ -136,7 +136,7 @@ impl WebDav {
         let id = if kind == CloudKind::Folder && !id.as_str().ends_with('/') { CloudId::parse(format!("{}/", id.as_str()))? } else { id };
         Ok(CloudEntry { id, name, kind, bytes: (kind == CloudKind::File).then(|| props.length.unwrap_or(0)),
             modified_unix_ms: props.modified.as_deref().and_then(crate::http_date_ms), revision: props.etag,
-            sha256: None, quick_xor: None,
+            sha256: None,
             parents: parent.filter(|p| !p.is_empty()).map(CloudId::parse).transpose()?.into_iter().collect() })
     }
     fn stat(&self, id: &CloudId) -> Result<(CloudEntry, Option<String>)> {
@@ -386,7 +386,7 @@ mod identity_tests {
         assert!(!provider.capabilities().trash);
         let entry = CloudEntry { id: CloudId::parse("/file").unwrap(), name: "file".into(),
             kind: CloudKind::File, bytes: Some(1), modified_unix_ms: None,
-            revision: Some("etag".into()), sha256: None, quick_xor: None, parents: vec![] };
+            revision: Some("etag".into()), sha256: None, parents: vec![] };
         assert_eq!(provider.trash(&entry).unwrap_err().code, ErrorCode::Unsupported);
         // Only a caller which actually knows its server's behavior may opt in.
         assert!(dav("http://127.0.0.1:1/", "me", true).capabilities().trash);

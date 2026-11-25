@@ -1,7 +1,6 @@
 //! Shared blocking HTTPS client: rustls, no automatic redirects, bounded bodies.
-use std::{io::Read, time::Duration};
-use reqwest::{blocking::{Client, RequestBuilder, Response}, StatusCode, Url};
-use serde::de::DeserializeOwned;
+use std::time::Duration;
+use reqwest::{blocking::{Client, RequestBuilder, Response}, StatusCode};
 use crate::{CoreError, ErrorCode, Result};
 
 #[derive(Clone)]
@@ -45,29 +44,14 @@ impl Http {
         let response = self.send(request, idempotent)?;
         if response.status().is_success() { Ok(response) } else { Err(status_error(&response, idempotent)) }
     }
-    /// After a 2xx a changing request may already be applied: if its
-    /// confirmation cannot be read, the outcome is uncertain (audit 9), not a
-    /// plain I/O or protocol error that invites a blind retry.
-    pub(crate) fn json<T: DeserializeOwned>(&self, request: RequestBuilder, idempotent: bool) -> Result<T> {
-        let response = self.ok(request, idempotent)?;
-        read_json(response).map_err(|error| if idempotent { error } else { crate::uncertain() })
-    }
 }
 
-const MAX_JSON: u64 = 16 << 20;
 
-pub(crate) fn read_json<T: DeserializeOwned>(response: Response) -> Result<T> {
-    let mut body = Vec::new();
-    // limit+1: an over-long reply is reported as such, not parsed truncated.
-    response.take(MAX_JSON + 1).read_to_end(&mut body).map_err(|_| CoreError::new(ErrorCode::Io, "cloud response truncated"))?;
-    if body.len() as u64 > MAX_JSON { return Err(CoreError::new(ErrorCode::LimitExceeded, "cloud response too large")); }
-    serde_json::from_slice(&body).map_err(|_| crate::protocol())
-}
 
 pub(crate) fn status_error(response: &Response, idempotent: bool) -> CoreError {
     let status = response.status();
     match status {
-        StatusCode::UNAUTHORIZED => CoreError::new(ErrorCode::PermissionDenied, crate::auth::SESSION_EXPIRED),
+        StatusCode::UNAUTHORIZED => CoreError::new(ErrorCode::PermissionDenied, SESSION_EXPIRED),
         StatusCode::FORBIDDEN => CoreError::new(ErrorCode::PermissionDenied, "cloud provider denied the request"),
         StatusCode::NOT_FOUND | StatusCode::GONE => CoreError::new(ErrorCode::NotFound, "cloud object not found"),
         StatusCode::CONFLICT => crate::exists(),
@@ -80,11 +64,6 @@ pub(crate) fn status_error(response: &Response, idempotent: bool) -> CoreError {
     }
 }
 
-/// Validate an absolute URL returned by a provider before following it.
-pub(crate) fn trusted_url(value: &str, hosts: &[&str]) -> Result<Url> {
-    let url = Url::parse(value).map_err(|_| crate::protocol())?;
-    let host = url.host_str().unwrap_or("").to_ascii_lowercase();
-    let allowed = url.scheme() == "https" && url.username().is_empty() && url.password().is_none() && url.port().is_none()
-        && hosts.iter().any(|h| match h.strip_prefix('.') { Some(suffix) => host.ends_with(&format!(".{suffix}")), None => host == *h });
-    if allowed { Ok(url) } else { Err(CoreError::new(ErrorCode::PermissionDenied, "cloud provider returned an untrusted URL")) }
-}
+
+/// The server refused the credentials (expired or revoked).
+pub(crate) const SESSION_EXPIRED: &str = "cloud session expired; sign in again";

@@ -1,6 +1,6 @@
 //! Block 3 verification against the own WebDAV server (paranoic-server):
 //! server guarantees, CloudStorage through Core, transfers, synchronisation,
-//! Cryptomator in the cloud, and the offline parts of OAuth.
+//! and Cryptomator in the cloud.
 //! Needs `cargo build -p paranoic-server` (or PARANOIC_SERVER=<path>).
 #![cfg(target_os = "linux")]
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
@@ -634,57 +634,6 @@ fn sink() -> (Box<dyn paranoic_crypto::StreamSink>, Rc<RefCell<Out>>) { let o = 
     // No staging folders left behind.
     let leftovers: Vec<String> = walk_all(&env.cpath("Vault")).into_iter().filter(|p| p.contains(".paranoic-")).collect();
     assert!(leftovers.is_empty(), "staging left in the vault: {leftovers:#?}");
-}
-
-// ---------------- 3.6: OAuth (offline parts) ----------------
-#[test] fn oauth_pkce_state_and_token_sealing() {
-    let redirect = LoopbackRedirect::bind().unwrap();
-    let uri = redirect.redirect_uri();
-    let client = OAuthClient::onedrive("client-id", uri.clone());
-    let request = client.begin().unwrap();
-    let url = reqwest::Url::parse(&request.url).unwrap();
-    let q: std::collections::HashMap<String, String> = url.query_pairs().into_owned().collect();
-    assert_eq!(q["code_challenge_method"], "S256");
-    assert_eq!(q["code_challenge"].len(), 43, "SHA-256 base64url challenge");
-    assert_eq!(q["redirect_uri"], uri);
-    let state = q["state"].clone(); assert!(state.len() >= 20);
-    let second = client.begin().unwrap();
-    assert_ne!(reqwest::Url::parse(&second.url).unwrap().query_pairs().find(|(k, _)| k == "state").unwrap().1, state, "state reused");
-    // Loopback: a request with a wrong state is answered 400 and ignored; the right one ends the wait.
-    let port: u16 = uri.trim_start_matches("http://127.0.0.1:").trim_end_matches("/callback").parse().unwrap();
-    let good = state.clone();
-    let browser = std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(200));
-        let get = |path: String| -> String {
-            use std::io::{Read, Write};
-            let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
-            write!(s, "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n").unwrap();
-            let mut r = String::new(); let _ = s.read_to_string(&mut r); r
-        };
-        let bad = get("/callback?code=evil&state=forged".into());
-        let ok = get(format!("/callback?code=good&state={good}"));
-        (bad, ok)
-    });
-    let returned = redirect.wait(&request, Duration::from_secs(10), || Ok(())).unwrap();
-    let (bad, ok) = browser.join().unwrap();
-    assert!(bad.starts_with("HTTP/1.1 400"), "{bad}");
-    assert!(ok.starts_with("HTTP/1.1 200"), "{ok}");
-    assert!(returned.contains("code=good") && !returned.contains("evil"));
-    // finish() rejects a forged state and a foreign redirect before any network call.
-    let http = Http::new().unwrap();
-    let forged = format!("{uri}?code=good&state=forged");
-    assert!(matches!(client.finish(&http, client.begin().unwrap(), &forged), Err(e) if e.code == paranoic_core::ErrorCode::PermissionDenied || e.code == paranoic_core::ErrorCode::InvalidInput));
-    assert!(client.finish(&http, client.begin().unwrap(), "http://127.0.0.1:1/other?code=x&state=y").is_err());
-    assert!(OAuthClient::onedrive("id", "http://127.0.0.1:1/callback").begin().is_ok());
-    // Token sealing is bound to provider and account.
-    let key = paranoic_crypto::SecretKey::generate().unwrap();
-    let tokens = TokenSet { access: zeroize::Zeroizing::new("access-token-value".into()), refresh: Some(zeroize::Zeroizing::new("refresh-token-value".into())),
-        expires_at_unix: Some(1), api_host: None };
-    let sealed = seal_tokens(&key, ProviderKind::OneDrive, "me@example", &tokens).unwrap();
-    assert!(!String::from_utf8_lossy(&sealed).contains("token-value"));
-    assert_eq!(open_tokens(&key, ProviderKind::OneDrive, "me@example", &sealed).unwrap().access.as_str(), "access-token-value");
-    assert!(open_tokens(&key, ProviderKind::OneDrive, "other@example", &sealed).is_err());
-    assert!(open_tokens(&key, ProviderKind::GoogleDrive, "me@example", &sealed).is_err());
 }
 
 fn walk_all(dir: &Path) -> Vec<String> {

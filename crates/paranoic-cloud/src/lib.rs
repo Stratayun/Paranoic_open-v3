@@ -1,5 +1,7 @@
-//! Cloud providers (roadmap block 3): common API, OAuth sessions, token
-//! protection and adapters for Google Drive, OneDrive and pCloud.
+//! Remote storage over WebDAV (roadmap block 3): the owner's own
+//! `paranoic-server` and other WebDAV servers. Google Drive, OneDrive and
+//! pCloud adapters with OAuth were removed by the owner's decision (25.11.2026);
+//! they remain in git history.
 //!
 //! Blocking HTTP (rustls); call off the UI thread. Rules shared by adapters:
 //! * create-new only: uploads and folder creation never replace an entry;
@@ -12,35 +14,23 @@ use serde::{Deserialize, Serialize};
 pub use paranoic_core::{CoreError, ErrorCode, Result};
 
 mod http;
-mod auth;
-mod tokens;
-mod gdrive;
-mod onedrive;
-mod pcloud;
 mod webdav;
 mod transfer;
-mod hash;
 mod storage;
 mod sync;
 mod vault;
 mod mapped;
 
 pub use http::Http;
-pub use auth::{AuthRequest, CloudSession, LoopbackRedirect, OAuthClient, TokenSet};
-pub use tokens::{open_tokens, seal_tokens, TokenStore};
-pub use gdrive::GoogleDrive;
-pub use onedrive::OneDrive;
-pub use pcloud::PCloud;
 pub use webdav::{WebDav, WebDavCredentials};
 pub use transfer::{download_to_storage, upload_from_core, verify_remote};
-pub use hash::QuickXorHash;
 pub use storage::{CloudStorage, purge_spool_dir, set_spool_limit};
 pub use sync::{ConflictChoice, SyncAction, SyncActionKind, SyncBaseline, SyncMode, SyncOptions, SyncPlan, SyncReport};
 pub use vault::check_vault_support;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ProviderKind { GoogleDrive, OneDrive, PCloud, WebDav }
+pub enum ProviderKind { WebDav }
 
 /// Provider-native object identifier. Opaque; never a path.
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -74,8 +64,6 @@ pub struct CloudEntry {
     pub revision: Option<String>,
     /// Server-provided SHA-256 when the provider reports one.
     pub sha256: Option<[u8; 32]>,
-    /// OneDrive QuickXorHash (base64) when reported.
-    pub quick_xor: Option<String>,
     pub parents: Vec<CloudId>,
 }
 
@@ -172,24 +160,6 @@ pub(crate) fn uncertain() -> CoreError { CoreError::new(ErrorCode::NeedsAttentio
 pub(crate) fn protocol() -> CoreError { CoreError::new(ErrorCode::Io, "unexpected cloud provider response") }
 pub(crate) fn not_empty() -> CoreError { CoreError::new(ErrorCode::Unsupported, "only empty cloud folders can be trashed") }
 
-/// RFC 3339 / ISO 8601 UTC timestamp to Unix milliseconds (fractional seconds and offsets supported).
-pub(crate) fn rfc3339_ms(value: &str) -> Option<u64> {
-    // Validate ASCII before indexing: metadata is supplied by remote servers.
-    if !value.is_ascii() || !(20..=64).contains(&value.len()) { return None; }
-    let b = value.as_bytes();
-    if b[4] != b'-' || b[7] != b'-' || (b[10] != b'T' && b[10] != b't') || b[13] != b':' || b[16] != b':' { return None; }
-    let n = |r: std::ops::Range<usize>| decimal(value.get(r)?);
-    let (y, mo, d, h, mi, s) = (n(0..4)?, n(5..7)?, n(8..10)?, n(11..13)?, n(14..16)?, n(17..19)?);
-    let mut rest = &value[19..]; let mut millis = 0i64;
-    if let Some(fraction) = rest.strip_prefix('.') {
-        let digits = fraction.bytes().take_while(u8::is_ascii_digit).count();
-        if digits == 0 { return None; }
-        let ms: String = fraction[..digits].chars().chain("000".chars()).take(3).collect();
-        millis = ms.parse().ok()?; rest = &fraction[digits..];
-    }
-    let offset = match rest { "Z" | "z" => 0, r => zone_offset(r, true)? };
-    calendar_ms(y, mo, d, h, mi, s, millis, offset)
-}
 
 fn decimal(value: &str) -> Option<i64> {
     if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) { return None; }
@@ -224,12 +194,6 @@ pub(crate) fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     era * 146_097 + doe - 719_468
 }
-pub(crate) fn hex32(value: &str) -> Option<[u8; 32]> {
-    if value.len() != 64 { return None; }
-    let mut out = [0u8; 32];
-    for (i, byte) in out.iter_mut().enumerate() { *byte = u8::from_str_radix(value.get(2 * i..2 * i + 2)?, 16).ok()?; }
-    Some(out)
-}
 
 /// RFC 2822 / HTTP date ("Sat, 24 Jul 2021 12:56:15 +0000" or "... GMT") → Unix ms.
 pub(crate) fn http_date_ms(value: &str) -> Option<u64> {
@@ -250,24 +214,11 @@ mod date_tests {
     use super::*;
     #[test]
     fn valid_dates_offsets_and_calendar_boundaries() {
-        assert_eq!(rfc3339_ms("1970-01-01T00:00:00Z"), Some(0));
-        assert_eq!(rfc3339_ms("1970-01-01T01:30:00.123456+01:30"), Some(123));
-        assert_eq!(rfc3339_ms("1969-12-31T23:00:00-01:00"), Some(0));
         assert_eq!(http_date_ms("Thu, 01 Jan 1970 01:30:00 +0130"), Some(0));
         assert_eq!(http_date_ms("Thu, 01 Jan 1970 00:00:00 GMT"), Some(0));
-        assert!(rfc3339_ms("2000-02-29T00:00:00Z").is_some());
-        assert!(rfc3339_ms("9999-12-31T23:59:59.999Z").is_some());
     }
     #[test]
     fn untrusted_dates_are_rejected_without_slicing_or_arithmetic_panics() {
-        for value in ["2026-01-01T00:00:00+é000", "2026-01-01T00:00:00.Ж000Z",
-            "2026-01-01T00:00:00+00x00", "2026-01-01T00:00:00x00:00",
-            "2026-01-01T00:00:00+24:00", "2026-01-01T00:00:00+00:60",
-            "2026-01-01T00:00:00.Z", "2026-00-01T00:00:00Z",
-            "2026-02-29T00:00:00Z", "1900-02-29T00:00:00Z", "2026-04-31T00:00:00Z",
-            "2026-01-01T24:00:00Z", "2026-01-01T00:60:00Z", "2026-01-01T00:00:60Z"] {
-            assert_eq!(rfc3339_ms(value), None, "{value}");
-        }
         for value in ["Thu, 01 Jan 9223372036854775807 00:00:00 GMT",
             "Thu, 9223372036854775807 Jan 2026 00:00:00 GMT",
             "Thu, 01 Jan 2026 9223372036854775807:00:00 GMT",
