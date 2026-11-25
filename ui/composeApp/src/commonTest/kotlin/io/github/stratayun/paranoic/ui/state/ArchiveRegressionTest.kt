@@ -85,7 +85,7 @@ class ArchiveRegressionTest {
                 cancelled = requestId; return CoreResult.Value(Unit)
             }
         }
-        val session = AppSession(core, backgroundScope) { "archive-request" }
+        val session = AppSession(core, backgroundScope, newRequestId = { "archive-request" })
         session.loadSpaces(); session.openSpace(space); runCurrent()
         session.createArchive(listOf(source), ArchiveFormat.Zip, null, root, "new.zip"); runCurrent()
         session.cancelDirectArchive(); runCurrent()
@@ -108,7 +108,7 @@ class ArchiveRegressionTest {
                 creates++; return CoreResult.Value(Unit)
             }
         }
-        val session = AppSession(core, backgroundScope) { "cancel-before-dispatch" }
+        val session = AppSession(core, backgroundScope, newRequestId = { "cancel-before-dispatch" })
         session.loadSpaces(); session.openSpace(space); runCurrent()
         session.createArchive(listOf(source), ArchiveFormat.Zip, null, root, "new.zip")
         session.cancelDirectArchive(); runCurrent()

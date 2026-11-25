@@ -50,7 +50,7 @@ class FileOperationsRegressionTest {
 
     @Test fun replacementNeedsExplicitFileTargetAndMovesNeverAcceptOverwritePolicies() = runTest {
         val core = Core().apply { registered = listOf(sourceSpace, targetSpace); entries = listOf(file) }
-        val session = AppSession(core, backgroundScope) { "replace-1" }
+        val session = AppSession(core, backgroundScope, newRequestId = { "replace-1" })
         session.loadSpaces(); session.openSpace(sourceSpace); runCurrent()
         session.transfer(file, targetRoot, file.name, TransferMode.Copy, NameConflict.Replace)
         session.transfer(file, targetRoot, file.name, TransferMode.Copy, NameConflict.Replace,
@@ -116,7 +116,7 @@ class FileOperationsRegressionTest {
             registered = listOf(sourceSpace, targetSpace); entries = listOf(file)
             reply = { id -> if (transfers.size == 1) error("lost reply") else CoreResult.Value(JobItem(id, JobPhase.Succeeded)) }
         }
-        val session = AppSession(core, backgroundScope) { "transfer-1" }
+        val session = AppSession(core, backgroundScope, newRequestId = { "transfer-1" })
         session.loadSpaces(); session.openSpace(sourceSpace); runCurrent()
         session.transfer(file, targetRoot, file.name, TransferMode.Copy, NameConflict.Skip); runCurrent()
         assertEquals(CoreFault.OutcomeUnknown, session.writeFault)
@@ -136,7 +136,7 @@ class FileOperationsRegressionTest {
             registered = listOf(sourceSpace); entries = listOf(folder)
             reply = { withContext(NonCancellable) { late.await() } }
         }
-        val session = AppSession(core, backgroundScope) { "delete-1" }
+        val session = AppSession(core, backgroundScope, newRequestId = { "delete-1" })
         session.loadSpaces(); session.openSpace(sourceSpace); runCurrent()
         session.delete(folder, recursive = true); runCurrent(); session.pause()
         assertEquals("delete-1", session.uncertain?.requestId)

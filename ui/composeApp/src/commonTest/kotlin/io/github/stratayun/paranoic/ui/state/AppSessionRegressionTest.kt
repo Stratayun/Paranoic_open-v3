@@ -126,7 +126,7 @@ class AppSessionRegressionTest {
             override suspend fun list(folder: Location) = CoreResult.Value(FolderListing(emptyList()))
             override suspend fun spaces() = CoreResult.Value(emptyList<Space>())
         }
-        val session = AppSession(core, backgroundScope) { "request-1" }
+        val session = AppSession(core, backgroundScope, newRequestId = { "request-1" })
         session.createDirectory(root, "new"); runCurrent()
         assertEquals("request-1", session.uncertain?.requestId)
         session.resendUncertain(); runCurrent()

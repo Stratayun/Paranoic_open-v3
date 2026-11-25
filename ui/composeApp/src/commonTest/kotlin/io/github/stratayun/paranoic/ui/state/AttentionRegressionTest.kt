@@ -47,7 +47,7 @@ class AttentionRegressionTest {
     @Test fun queuedFailedCancelledAndAttentionJobsNeverReviewTheirOrigin() = runTest {
         for (phase in listOf(JobPhase.Failed, JobPhase.Cancelled, JobPhase.NeedsAttention)) {
             val core = Core(item)
-            val session = AppSession(core, backgroundScope) { "recovery" }
+            val session = AppSession(core, backgroundScope, newRequestId = { "recovery" })
             session.refreshAttention(); runCurrent()
             session.resolveAttention(item, AttentionAction.Discard); runCurrent()
             assertTrue(core.reviewed.isEmpty(), "accepting the submission is not completion")
@@ -61,7 +61,7 @@ class AttentionRegressionTest {
 
     @Test fun successAfterPauseIsFoundByDurableIdOutsideRecentJobsAndReviewsOnlyOnce() = runTest {
         val core = Core(item)
-        val session = AppSession(core, backgroundScope) { "recovery" }
+        val session = AppSession(core, backgroundScope, newRequestId = { "recovery" })
         session.refreshAttention(); runCurrent()
         session.resolveAttention(item, AttentionAction.Discard); runCurrent(); session.pause()
         core.records = listOf(JobItem("recovery", JobPhase.Succeeded))
@@ -80,7 +80,7 @@ class AttentionRegressionTest {
         val core = Core(item).apply {
             submit = { id -> records = listOf(JobItem(id, JobPhase.Succeeded)); error("lost reply") }
         }
-        val session = AppSession(core, backgroundScope) { "recovery" }
+        val session = AppSession(core, backgroundScope, newRequestId = { "recovery" })
         session.refreshAttention(); runCurrent()
         session.resolveAttention(item, AttentionAction.Discard); runCurrent()
         assertEquals("recovery", session.uncertain?.requestId)
