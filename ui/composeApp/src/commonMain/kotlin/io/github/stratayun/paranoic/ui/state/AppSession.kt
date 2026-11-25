@@ -28,6 +28,8 @@ class AppSession(val core: CoreGateway, private val scope: CoroutineScope, priva
     val vaultCatalog = VaultCatalog(catalogStore, scope)
     val places = PlaceCatalog(placesStore, scope)
     val archives = ArchiveSession(core, scope)
+    /** Drawer quick places that list files by type across a whole place. */
+    val categories = CategoryBrowser(core, scope)
     var fileBatch by mutableStateOf<FileBatchReport?>(null)
         private set
     private var stopBatchSubmission = false
@@ -93,6 +95,7 @@ class AppSession(val core: CoreGateway, private val scope: CoroutineScope, priva
         core.releasePdf()
         core.lockSecrets()
         archives.close()
+        categories.close()
         if (directWrite?.phase == DirectWritePhase.Running) directWrite = directWrite?.copy(phase = DirectWritePhase.Unknown)
         ++secretsEpoch
         ++epoch
@@ -217,9 +220,10 @@ class AppSession(val core: CoreGateway, private val scope: CoroutineScope, priva
             } finally { if (requestEpoch == epoch) writing = false }
         }
     }
-    fun openSpace(space: Space) = browse(listOf(FolderNode(space.root, space.name)))
+    fun openSpace(space: Space) { categories.close(); browse(listOf(FolderNode(space.root, space.name))) }
     /** Opens a subfolder of a place by its relative path ("DCIM/Camera"); a missing folder shows its Core fault. */
     fun openPath(space: Space, relative: String) {
+        categories.close()
         val parts = relative.split('/').filter { it.isNotEmpty() }
         var path = space.root.path
         val trail = mutableListOf(FolderNode(space.root, space.name))

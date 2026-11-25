@@ -5,6 +5,10 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -140,4 +144,36 @@ internal fun pngAspect(png: ByteArray): Float? {
         (png[at + 2].toInt() and 0xFF shl 8) or (png[at + 3].toInt() and 0xFF)
     val w = int(16); val h = int(20)
     return if (w > 0 && h > 0) w.toFloat() / h else null
+}
+
+/** Photo/video frame (gallery style): black canvas edge to edge, translucent overlay bars, tap toggles them. */
+@Composable
+internal fun MediaFrame(name: String, subtitle: String?, onClose: () -> Unit,
+    actions: @Composable RowScope.() -> Unit = {}, content: @Composable BoxScope.() -> Unit) {
+    val chrome = remember { ViewerChrome() }
+    CompositionLocalProvider(LocalViewerChrome provides chrome) {
+        Surface(Modifier.fillMaxSize(), color = Color.Black, contentColor = Color.White) {
+            Box(Modifier.fillMaxSize()) {
+                Box(Modifier.fillMaxSize(), content = content)
+                androidx.compose.animation.AnimatedVisibility(chrome.visible, Modifier.align(Alignment.TopCenter),
+                    enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) {
+                    Row(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.75f), Color.Transparent)))
+                        .safeDrawingPadding().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onClose, modifier = Modifier.actionDescription(tr("Назад", "Back"))) { AppIcon(AppSymbol.Back) }
+                        Column(Modifier.weight(1f)) {
+                            Text(displayName(name), Modifier.sectionHeading(), style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
+                        }
+                        actions()
+                    }
+                }
+                if (!chrome.visible) Box(Modifier.align(Alignment.TopEnd).safeDrawingPadding().padding(8.dp)) {
+                    IconButton(onClick = chrome::toggle, modifier = Modifier.actionDescription(tr("Показать панель", "Show controls"))) {
+                        AppIcon(AppSymbol.Menu, Modifier.alpha(0.5f))
+                    }
+                }
+            }
+        }
+    }
 }

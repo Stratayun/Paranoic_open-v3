@@ -11,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
@@ -56,9 +57,7 @@ private fun PreviewFile(core: CoreGateway, file: FileItem, onClose: () -> Unit,
         PreviewKind.Image -> ImageViewer(core, file, onClose, pngImage)
         PreviewKind.Audio, PreviewKind.Video -> {
             val zoom = remember { DocumentZoom() }
-            DocumentFrame(file.name, onClose, controls = {
-                if (info.kind == PreviewKind.Video) ZoomControls(zoom)
-            }) {
+            MediaFrame(file.name, if (info.kind == PreviewKind.Video) tr("Видео", "Video") else tr("Аудио", "Audio"), onClose) {
                 ZoomableDocument(zoom) { mediaPlayer(core, file.location, info, Modifier.fillMaxSize()) }
             }
         }
@@ -90,7 +89,9 @@ private fun ImageViewer(core: CoreGateway, file: FileItem, onClose: () -> Unit,
         }
     }
     DisposableEffect(Unit) { onDispose { png?.fill(0); png = null } }
-    DocumentFrame(file.name, onClose, controls = { ZoomControls(zoom) }) {
+    MediaFrame(file.name, listOfNotNull(if (file.sizeKnown) io.github.stratayun.paranoic.ui.screens.files.humanSize(file.bytes) else null,
+        if (zoom.scale > 1f) "${(zoom.scale * 100).toInt()}%" else null).joinToString(" · ").ifEmpty { null }, onClose,
+        actions = { if (zoom.scale > 1f) TextButton(onClick = zoom::reset) { Text(tr("Сбросить", "Reset"), color = Color.White) } }) {
         ZoomableDocument(zoom) {
             val bytes = png
             when {

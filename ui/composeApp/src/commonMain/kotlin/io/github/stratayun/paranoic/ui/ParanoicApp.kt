@@ -143,12 +143,13 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
     val connectServer: (String, String, String) -> Unit = { url, user, token ->
         leaveDocument { session.attachWebDav(url, user, token) }
     }
-    backHandler(placesDrawer.isOpen || openedFile != null || destination != Destination.Encryption ||
+    backHandler(placesDrawer.isOpen || openedFile != null || session.categories.state != null || destination != Destination.Encryption ||
         (destination == Destination.Files && (session.archives.state.source != null || session.files.selected.isNotEmpty() || session.files.trail.size > 1))) {
         when {
             placesDrawer.isOpen -> scope.launch { placesDrawer.close() }
             destination == Destination.Files && session.archives.state.source != null -> if (!session.writing) session.archives.close()
             openedFile != null -> leaveDocument {}
+            destination == Destination.Files && session.categories.state != null -> session.categories.close()
             destination == Destination.Files && session.files.selected.isNotEmpty() -> session.clearSelection()
             destination == Destination.Files && session.files.trail.size > 1 -> session.breadcrumb(session.files.trail.lastIndex - 1)
             destination != Destination.Encryption -> leaveDocument { destination = Destination.Encryption }
@@ -221,7 +222,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                     onConnect = { scope.launch { placesDrawer.close() }; guardedPickFolder() },
                                     onOpen = { space -> openSpace(space); scope.launch { placesDrawer.close() } },
                                     onDetach = detachSpace, onConnectServer = connectServer,
-                                    onOpenPath = { space, path -> leaveDocument { session.openPath(space, path); destination = Destination.Files }; scope.launch { placesDrawer.close() } })
+                                    onOpenPath = { space, path -> leaveDocument { session.openPath(space, path); destination = Destination.Files }; scope.launch { placesDrawer.close() } },
+                                    onOpenCategory = { space, category -> leaveDocument { session.categories.open(space, category); destination = Destination.Files }; scope.launch { placesDrawer.close() } })
                                 }
                                 drawerFooter(true)
                             }
@@ -339,7 +341,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                     key(session.secretsEpoch) {
                                     SpacesPanel(session.files.spaces, session.places, core.connected, session.writing || documentExit.busy, guardedPickFolder, openSpace, detachSpace,
                                         onConnectServer = connectServer,
-                                        onOpenPath = { space, path -> leaveDocument { session.openPath(space, path); destination = Destination.Files } })
+                                        onOpenPath = { space, path -> leaveDocument { session.openPath(space, path); destination = Destination.Files } },
+                                        onOpenCategory = { space, category -> leaveDocument { session.categories.open(space, category); destination = Destination.Files } })
                                     }
                                     drawerFooter(false)
                                 }

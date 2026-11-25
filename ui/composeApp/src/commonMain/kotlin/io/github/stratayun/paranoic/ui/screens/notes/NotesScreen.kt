@@ -495,14 +495,14 @@ private fun ColumnScope.Notebook(tabs: List<NoteTab>, dirty: Boolean, busy: Bool
     val newTabTitle = tr("Вкладка", "Tab")
     val scheme = MaterialTheme.colorScheme
     var tabMenu by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    if (editing == null) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(if (dirty) tr("Есть несохранённые изменения", "Unsaved changes") else tr("Всё сохранено", "All saved"),
             Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = if (dirty) scheme.tertiary else scheme.onSurfaceVariant)
         FilledTonalButton(enabled = !editingBlocked && dirty, onClick = onSave) { Text(tr("Сохранить", "Save")) }
         IconButton(enabled = !busy, onClick = onLock, modifier = Modifier.actionDescription(
             tr("Заблокировать (несохранённое пропадёт)", "Lock (unsaved changes are lost)"))) { AppIcon(AppSymbol.Vault) }
     }
-    LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    if (editing == null) LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         itemsIndexed(tabs, key = { _, tab -> tab.id }) { i, tab ->
             FilterChip(selected = i == index, onClick = { selected = i; editing = null },
                 label = { Text(displayName(tab.title), maxLines = 1, overflow = TextOverflow.Ellipsis) })
@@ -529,8 +529,16 @@ private fun ColumnScope.Notebook(tabs: List<NoteTab>, dirty: Boolean, busy: Bool
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         fun update(n: Note) = onChange(tabs.mapIndexed { i, t -> if (i == index) t.copy(notes = t.notes.map { if (it.id == n.id) n else it }) else t })
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { editing = null }, modifier = Modifier.actionDescription(tr("К списку", "Back to list"))) { AppIcon(AppSymbol.Back) }
-            Text(tr("Заметка", "Note"), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            // Back saves first: leaving the editor never silently keeps edits only in memory.
+            IconButton(onClick = { if (dirty && !editingBlocked) onSave(); editing = null },
+                modifier = Modifier.actionDescription(tr("Сохранить и вернуться", "Save and go back"))) { AppIcon(AppSymbol.Back) }
+            Column(Modifier.weight(1f)) {
+                Text(displayName(tab.title), style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+                Text(if (dirty) tr("Не сохранено", "Not saved") else tr("Сохранено", "Saved"), style = MaterialTheme.typography.titleSmall,
+                    color = if (dirty) scheme.tertiary else scheme.onSurface)
+            }
+            FilledTonalIconButton(enabled = !editingBlocked && dirty, onClick = onSave,
+                modifier = Modifier.actionDescription(tr("Сохранить", "Save"))) { AppIcon(AppSymbol.Save) }
             IconButton(enabled = !editingBlocked, onClick = {
                 onChange(tabs.mapIndexed { i, t -> if (i == index) t.copy(notes = t.notes.filterNot { it.id == note.id }) else t }); editing = null
             }, modifier = Modifier.actionDescription(tr("Удалить заметку", "Delete note"))) { AppIcon(AppSymbol.Trash) }

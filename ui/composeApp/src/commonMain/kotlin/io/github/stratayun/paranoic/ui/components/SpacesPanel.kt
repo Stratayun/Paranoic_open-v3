@@ -22,7 +22,8 @@ import io.github.stratayun.paranoic.ui.state.*
 @Composable
 fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, busy: Boolean, onConnect: () -> Unit,
     onOpen: (Space) -> Unit, onDetach: (Space) -> Unit, modifier: Modifier = Modifier,
-    onConnectServer: ((String, String, String) -> Unit)? = null, onOpenPath: ((Space, String) -> Unit)? = null) {
+    onConnectServer: ((String, String, String) -> Unit)? = null, onOpenPath: ((Space, String) -> Unit)? = null,
+    onOpenCategory: ((Space, FileCategory) -> Unit)? = null) {
     var serverDialog by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf<Space?>(null) }
     var renaming by remember { mutableStateOf<Space?>(null) }
@@ -81,7 +82,7 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
             enabled = connected && !busy, onClick = { onOpen(device.copy(name = title(device))) })
         if (device != null && onOpenPath != null) {
             SectionLabel(tr("Места", "Places"))
-            QuickPlaces(enabled = connected && !busy) { path -> onOpenPath(device.copy(name = title(device)), path) }
+            QuickPlaces(enabled = connected && !busy, onCategory = { c -> onOpenCategory?.invoke(device.copy(name = title(device)), c) }) { path -> onOpenPath(device.copy(name = title(device)), path) }
             SectionLabel(tr("Хранилища устройства и папки", "Storage and folders"))
         }
         GroupedList(visible) { space, position ->
@@ -202,21 +203,21 @@ private fun gb(bytes: Long): String {
 
 /** Standard shared-storage folders as coloured shaped tiles (reference: Strata "Места"). */
 @Composable
-private fun QuickPlaces(enabled: Boolean, onOpen: (String) -> Unit) {
-    data class Quick(val label: String, val path: String, val symbol: AppSymbol, val shape: androidx.compose.ui.graphics.Shape, val bg: Color, val fg: Color)
+private fun QuickPlaces(enabled: Boolean, onCategory: (FileCategory) -> Unit, onOpen: (String) -> Unit) {
+    data class Quick(val label: String, val path: String, val category: FileCategory?, val symbol: AppSymbol, val shape: androidx.compose.ui.graphics.Shape, val bg: Color, val fg: Color)
     val items = listOf(
-        Quick(tr("Загрузки", "Downloads"), "Download", AppSymbol.Download, ExpressiveShapes.Triangle, Color(0xFF2E5B34), Color(0xFFB6F2AF)),
-        Quick(tr("Изображения", "Pictures"), "Pictures", AppSymbol.Photo, ExpressiveShapes.Flower, Color(0xFF1F4D47), Color(0xFFA6F0E3)),
-        Quick(tr("Камера", "Camera"), "DCIM", AppSymbol.Camera, ExpressiveShapes.Sunny, Color(0xFF2B3F7A), Color(0xFFDCE1FF)),
-        Quick(tr("Фильмы", "Movies"), "Movies", AppSymbol.Video, ExpressiveShapes.Cookie6, Color(0xFF51336E), Color(0xFFF0DBFF)),
-        Quick(tr("Музыка", "Music"), "Music", AppSymbol.Audio, ExpressiveShapes.Cookie9, Color(0xFF6A2F52), Color(0xFFFFD8EC)),
-        Quick(tr("Документы", "Documents"), "Documents", AppSymbol.Document, ExpressiveShapes.Clover, Color(0xFF6E2E2E), Color(0xFFFFDAD6)),
+        Quick(tr("Загрузки", "Downloads"), "Download", null, AppSymbol.Download, ExpressiveShapes.Triangle, Color(0xFF2E5B34), Color(0xFFB6F2AF)),
+        Quick(tr("Изображения", "Pictures"), "Pictures", FileCategory.Images, AppSymbol.Photo, ExpressiveShapes.Flower, Color(0xFF1F4D47), Color(0xFFA6F0E3)),
+        Quick(tr("Камера", "Camera"), "DCIM", null, AppSymbol.Camera, ExpressiveShapes.Sunny, Color(0xFF2B3F7A), Color(0xFFDCE1FF)),
+        Quick(tr("Фильмы", "Movies"), "Movies", FileCategory.Videos, AppSymbol.Video, ExpressiveShapes.Cookie6, Color(0xFF51336E), Color(0xFFF0DBFF)),
+        Quick(tr("Музыка", "Music"), "Music", FileCategory.Music, AppSymbol.Audio, ExpressiveShapes.Cookie9, Color(0xFF6A2F52), Color(0xFFFFD8EC)),
+        Quick(tr("Документы", "Documents"), "Documents", FileCategory.Documents, AppSymbol.Document, ExpressiveShapes.Clover, Color(0xFF6E2E2E), Color(0xFFFFDAD6)),
     )
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items.chunked(3).forEach { row ->
             Row(Modifier.fillMaxWidth()) {
                 row.forEach { q ->
-                    Column(Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).clickable(enabled = enabled, role = Role.Button) { onOpen(q.path) }
+                    Column(Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).clickable(enabled = enabled, role = Role.Button) { q.category?.let(onCategory) ?: onOpen(q.path) }
                         .padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         ShapedIcon(q.symbol, q.shape, q.bg, q.fg, size = 64.dp)
                         Text(q.label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
