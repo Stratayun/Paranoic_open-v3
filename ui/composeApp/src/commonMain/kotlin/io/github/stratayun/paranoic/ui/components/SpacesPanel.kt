@@ -25,7 +25,7 @@ import io.github.stratayun.paranoic.ui.state.*
 fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, busy: Boolean, onConnect: () -> Unit,
     onOpen: (Space) -> Unit, onDetach: (Space) -> Unit, modifier: Modifier = Modifier,
     onConnectServer: ((String, String, String) -> Unit)? = null, onOpenPath: ((Space, String) -> Unit)? = null,
-    onOpenCategory: ((Space, FileCategory) -> Unit)? = null, onOpenTrash: ((Space) -> Unit)? = null) {
+    onOpenCategory: ((Space, FileCategory) -> Unit)? = null, onOpenTrash: ((Space) -> Unit)? = null, trashFilled: Set<String> = emptySet()) {
     var serverDialog by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf<Space?>(null) }
     var renaming by remember { mutableStateOf<Space?>(null) }
@@ -90,7 +90,7 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
                 onClick = { onOpenCategory?.invoke(device.copy(name = title(device)), FileCategory.All) })
             Spacer(Modifier.height(8.dp))
             QuickPlaces(enabled = connected && !busy, onCategory = { c -> onOpenCategory?.invoke(device.copy(name = title(device)), c) },
-                onTrash = onOpenTrash?.let { open -> { open(device.copy(name = title(device))) } }) { path -> onOpenPath(device.copy(name = title(device)), path) }
+                onTrash = onOpenTrash?.let { open -> { open(device.copy(name = title(device))) } }, trashFull = device.root.storageId in trashFilled) { path -> onOpenPath(device.copy(name = title(device)), path) }
             SectionLabel(tr("Хранилища устройства и папки", "Storage and folders"))
         }
         GroupedList(visible) { space, position ->
@@ -98,10 +98,11 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
             var menu by remember(space.id) { mutableStateOf(false) }
             GroupedRow(displayName(title(space)), position, subtitle = kind(space), enabled = connected && !busy,
                 leading = { BrandIcon(when {
+                    appPrivate(space) -> Res.drawable.ic_shield
                     space.cloud -> Res.drawable.ic_cloud
                     space.androidTree -> Res.drawable.ic_folder
-                    space.name.contains("SD", ignoreCase = true) -> Res.drawable.ic_sdcard
-                    else -> Res.drawable.ic_devices
+                    space.name.contains("SD", ignoreCase = true) || space.name.contains("USB", ignoreCase = true) -> Res.drawable.ic_external_disk
+                    else -> Res.drawable.ic_tiles
                 }, size = 48.dp) },
                 trailing = {
                     Box {
@@ -123,12 +124,12 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
         }
         SectionLabel(tr("Подключить", "Connect"))
         val connectRows = buildList {
-            add(Triple(tr("Добавить папку", "Add folder"), AppSymbol.Add, onConnect))
-            if (onConnectServer != null) add(Triple(tr("Сервер WebDAV", "WebDAV server"), AppSymbol.Server, { serverDialog = true }))
+            add(Triple(tr("Добавить папку", "Add folder"), Res.drawable.ic_folder_add, onConnect))
+            if (onConnectServer != null) add(Triple(tr("Сервер WebDAV", "WebDAV server"), Res.drawable.ic_cloud, { serverDialog = true }))
         }
         GroupedList(connectRows) { (label, icon, action), position ->
             GroupedRow(label, position, enabled = connected && !busy,
-                leading = { ShapedIcon(icon, ExpressiveShapes.Circle, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 40.dp) },
+                leading = { BrandIcon(icon, size = 48.dp) },
                 onClick = action)
         }
         if (hidden.isNotEmpty()) {
@@ -193,7 +194,7 @@ private fun StorageCard(title: String, usage: VolumeUsage, enabled: Boolean, onC
     Surface(Modifier.fillMaxWidth().padding(top = 8.dp), shape = RoundedCornerShape(32.dp), color = scheme.surfaceContainerHigh) {
         Column(Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                BrandIcon(Res.drawable.ic_storage, size = 44.dp)
+                BrandIcon(Res.drawable.ic_tiles, size = 48.dp)
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.titleLarge)
                     Text(tr("Свободно ", "Free ") + gb(usage.freeBytes) + tr(" из ", " of ") + gb(usage.totalBytes),
@@ -216,15 +217,16 @@ private fun gb(bytes: Long): String {
 
 /** Standard shared-storage folders as coloured shaped tiles (reference: Strata "Места"). */
 @Composable
-private fun QuickPlaces(enabled: Boolean, onCategory: (FileCategory) -> Unit, onTrash: (() -> Unit)? = null, onOpen: (String) -> Unit) {
+private fun QuickPlaces(enabled: Boolean, onCategory: (FileCategory) -> Unit, onTrash: (() -> Unit)? = null, trashFull: Boolean = false, onOpen: (String) -> Unit) {
     data class Quick(val label: String, val path: String, val category: FileCategory?, val icon: DrawableResource)
     val items = listOf(
-        Quick(tr("Загрузки", "Downloads"), "Download", null, Res.drawable.place_download),
-        Quick(tr("Документы", "Documents"), "", FileCategory.Documents, Res.drawable.place_documents),
-        Quick(tr("Музыка", "Music"), "", FileCategory.Music, Res.drawable.place_music),
-        Quick(tr("Видео", "Videos"), "", FileCategory.Videos, Res.drawable.place_video),
-        Quick(tr("Картинки", "Pictures"), "", FileCategory.Images, Res.drawable.place_images),
-        Quick(tr("Корзина", "Trash"), TRASH, null, Res.drawable.trash_empty),
+        Quick(tr("Загрузки", "Downloads"), "Download", null, Res.drawable.ic_downloads),
+        Quick(tr("Документы", "Documents"), "", FileCategory.Documents, Res.drawable.ic_documents),
+        Quick(tr("Музыка", "Music"), "", FileCategory.Music, Res.drawable.ic_music),
+        Quick(tr("Видео", "Videos"), "", FileCategory.Videos, Res.drawable.ic_video),
+        Quick(tr("Картинки", "Pictures"), "", FileCategory.Images, Res.drawable.ic_images),
+        // The trash shows whether it holds anything.
+        Quick(tr("Корзина", "Trash"), TRASH, null, if (trashFull) Res.drawable.ic_trash_full else Res.drawable.ic_trash_empty),
     )
     var trashInfo by remember { mutableStateOf(false) }
     if (trashInfo) AlertDialog(onDismissRequest = { trashInfo = false }, title = { Text(tr("Корзина", "Trash")) },

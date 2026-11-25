@@ -42,7 +42,7 @@ fun TrashScreen(session: AppSession, space: Space, onClose: () -> Unit) {
             val result = block()
             fault = (result as? CoreResult.Failure)?.fault
             busy = false; revision++
-            session.refresh()
+            session.refresh(); session.refreshTrash()
         }
     }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -65,7 +65,7 @@ fun TrashScreen(session: AppSession, space: Space, onClose: () -> Unit) {
                     items == null && fault == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
                     items.isNullOrEmpty() -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            BrandIcon(Res.drawable.trash_empty, size = 96.dp)
+                            BrandIcon(Res.drawable.ic_trash_empty, size = 112.dp)
                             Text(tr("Корзина пуста", "Trash is empty"), style = MaterialTheme.typography.titleMedium)
                         }
                     }

@@ -1,5 +1,6 @@
 package io.github.stratayun.paranoic.ui.screens.files
 
+import io.github.stratayun.paranoic.resources.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -105,7 +106,7 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
             "Hidden entries with unsupported or duplicate names: ${state.hidden}"))
         if (state.folder == null && session.core.connected) Column(Modifier.fillMaxWidth().padding(top = 48.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            ShapedIcon(AppSymbol.Folder, ExpressiveShapes.Cookie9, MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer, size = 104.dp)
+            BrandIcon(Res.drawable.ic_folder, size = 116.dp)
             Text(tr("Выберите место", "Choose a place"), style = MaterialTheme.typography.titleLarge)
             Text(tr("Память устройства, SD-карта или подключённая папка — в меню ☰.", "Device storage, SD card or a connected folder — in the ☰ menu."),
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -113,7 +114,7 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
         }
         if (state.loaded && visible.isEmpty() && !state.loading) Column(Modifier.fillMaxWidth().padding(top = 48.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            ShapedIcon(AppSymbol.Folder, ExpressiveShapes.Sunny, MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurfaceVariant, size = 104.dp)
+            BrandIcon(Res.drawable.ic_folder, size = 116.dp)
             Text(if (state.entries.isEmpty()) tr("Папка пуста", "Folder is empty") else tr("Фильтр скрыл все объекты", "The filter hides everything"),
                 style = MaterialTheme.typography.titleMedium)
             if (state.entries.isNotEmpty()) TextButton(onClick = { session.fileOptions(tabId, FileListOptions(showHidden = true)) }) {

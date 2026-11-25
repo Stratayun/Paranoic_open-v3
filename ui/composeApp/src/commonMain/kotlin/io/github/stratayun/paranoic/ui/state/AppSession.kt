@@ -142,12 +142,17 @@ class AppSession(val core: CoreGateway, private val scope: CoroutineScope, priva
     var trashSpaces by mutableStateOf<Set<String>>(emptySet()); private set
     /** The trash screen is open for this place. */
     var trashView by mutableStateOf<Space?>(null)
+    /** Places whose trash holds something: the drawer tile shows a full bin. */
+    var trashFilled by mutableStateOf<Set<String>>(emptySet()); private set
     private fun refreshTrashSpaces(spaces: List<Space>) {
         workScope.launch {
-            trashSpaces = spaces.filter { it.writable && !it.cloud && !it.androidTree }
-                .filter { core.trashSupported(it) }.map { it.root.storageId }.toSet()
+            val supported = spaces.filter { it.writable && !it.cloud && !it.androidTree }.filter { core.trashSupported(it) }
+            trashSpaces = supported.map { it.root.storageId }.toSet()
+            trashFilled = supported.filter { (core.trashList(it) as? CoreResult.Value)?.value?.isNotEmpty() == true }
+                .map { it.root.storageId }.toSet()
         }
     }
+    fun refreshTrash() = refreshTrashSpaces(files.spaces)
     fun trashAvailable(items: List<FileItem>) = items.isNotEmpty() && items.all { it.location.storageId in trashSpaces }
     /** Move entries into their place's trash; reversible from the trash screen. */
     fun moveToTrash(items: List<FileItem>, onDone: () -> Unit = {}) {
@@ -165,6 +170,7 @@ class AppSession(val core: CoreGateway, private val scope: CoroutineScope, priva
                 writeFault = failure
                 clearSelection()
                 refresh()
+                refreshTrash()
                 onDone()
             }
         }

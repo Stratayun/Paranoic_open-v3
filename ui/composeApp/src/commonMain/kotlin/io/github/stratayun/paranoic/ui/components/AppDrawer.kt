@@ -23,8 +23,9 @@ fun DrawerHeader(onClose: () -> Unit) {
 }
 
 /**
- * Lower part of the drawer, after the places (reference layout): system rows,
- * the accent "Safe" card, and a pair of pill buttons for tasks and settings.
+ * Lower part of the drawer (owner's layout, 25.11): sections Files /
+ * Crypto folders / Safe, tools Sync and "Diagnostics and tasks" (tasks live
+ * inside Diagnostics), and Settings as one wide pill.
  */
 @Composable
 fun DrawerFooter(
@@ -34,7 +35,7 @@ fun DrawerFooter(
     onVaults: () -> Unit,
     onSync: () -> Unit,
     onDiagnostics: () -> Unit,
-    onTasks: () -> Unit,
+    @Suppress("UNUSED_PARAMETER") onTasks: () -> Unit,
     onSettings: () -> Unit,
     modifier: Modifier = Modifier,
     onFiles: () -> Unit = {},
@@ -44,39 +45,35 @@ fun DrawerFooter(
     Column(modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         SectionLabel(tr("Разделы", "Sections"))
         val sections = listOf(
-            Triple(Destination.Files, Res.drawable.ic_folder, onFiles),
-            Triple(Destination.Encryption, Res.drawable.ic_vault, onVaults),
-            Triple(Destination.Notes, Res.drawable.nav_safe, onSafe),
+            Triple(Destination.Files, Res.drawable.ic_tiles, onFiles),
+            Triple(Destination.Encryption, Res.drawable.ic_crypto_folder, onVaults),
+            Triple(Destination.Notes, Res.drawable.ic_safe, onSafe),
         )
         GroupedList(sections) { (target, icon, action), position ->
             GroupedRow(target.label(), position, enabled = enabled,
                 subtitle = when (target) {
+                    Destination.Files -> tr("Память, папки и облака", "Storage, folders and clouds")
                     Destination.Encryption -> tr("Cryptomator и Paranoic", "Cryptomator and Paranoic")
                     Destination.Notes -> tr("Заметки и личная папка", "Notes and personal folder")
                     else -> null
                 },
                 container = if (target == current) scheme.secondaryContainer else scheme.surfaceContainerHigh,
-                leading = { BrandIcon(icon, size = 48.dp) }, onClick = action)
+                leading = { BrandIcon(icon, size = 52.dp) }, onClick = action)
         }
         SectionLabel(tr("Инструменты", "Tools"))
         val rows = listOf(
-            Triple(tr("Синхронизация и бэкап", "Sync and backup"), Res.drawable.ic_sync, onSync),
-            Triple(tr("Диагностика", "Diagnostics"), Res.drawable.ic_stats, onDiagnostics),
+            Triple(tr("Синхронизация и бэкап", "Sync and backup"), Res.drawable.ic_sync, onSync to null),
+            Triple(tr("Диагностика и задачи", "Diagnostics and tasks"), Res.drawable.ic_diagnostics, onDiagnostics to
+                (if (runningTasks > 0) tr("Выполняется задач: $runningTasks", "Running tasks: $runningTasks") else tr("Журнал, отчёт, задания", "Journal, report, jobs"))),
         )
-        GroupedList(rows) { (label, symbol, action), position ->
-            GroupedRow(label, position, enabled = enabled, leading = { BrandIcon(symbol, size = 48.dp) }, onClick = action)
+        GroupedList(rows) { (label, icon, pair), position ->
+            GroupedRow(label, position, enabled = enabled, subtitle = pair.second,
+                leading = { BrandIcon(icon, size = 52.dp) }, onClick = pair.first)
         }
         Spacer(Modifier.height(12.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            val pill = Modifier.weight(1f).height(64.dp)
-            FilledTonalButton(onTasks, pill, enabled = enabled, shape = RoundedCornerShape(topStart = 32.dp, bottomStart = 32.dp, topEnd = 8.dp, bottomEnd = 8.dp)) {
-                AppIcon(AppSymbol.Tasks); Spacer(Modifier.width(8.dp))
-                Text(if (runningTasks > 0) tr("Задачи · $runningTasks", "Tasks · $runningTasks") else tr("Задачи", "Tasks"))
-            }
-            FilledTonalButton(onSettings, pill, enabled = enabled, shape = RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp, topEnd = 32.dp, bottomEnd = 32.dp),
-                contentPadding = PaddingValues(start = 8.dp, end = 16.dp)) {
-                BrandIcon(Res.drawable.nav_settings, size = 36.dp); Spacer(Modifier.width(6.dp)); Text(tr("Настройки", "Settings"))
-            }
+        FilledTonalButton(onSettings, Modifier.fillMaxWidth().height(64.dp), enabled = enabled, shape = RoundedCornerShape(32.dp),
+            contentPadding = PaddingValues(start = 8.dp, end = 20.dp)) {
+            BrandIcon(Res.drawable.ic_settings, size = 44.dp); Spacer(Modifier.width(8.dp)); Text(tr("Настройки", "Settings"))
         }
     }
 }

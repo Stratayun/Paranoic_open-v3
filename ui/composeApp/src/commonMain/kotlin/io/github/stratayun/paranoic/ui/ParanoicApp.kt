@@ -225,7 +225,7 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                     onDetach = detachSpace, onConnectServer = connectServer,
                                     onOpenPath = { space, path -> leaveDocument { session.openPath(space, path); destination = Destination.Files }; scope.launch { placesDrawer.close() } },
                                     onOpenCategory = { space, category -> leaveDocument { session.categories.open(space, category); destination = Destination.Files }; scope.launch { placesDrawer.close() } },
-                                    onOpenTrash = { space -> session.trashView = space; scope.launch { placesDrawer.close() } })
+                                    onOpenTrash = { space -> session.trashView = space; scope.launch { placesDrawer.close() } }, trashFilled = session.trashFilled)
                                 }
                                 drawerFooter(true)
                             }
@@ -329,13 +329,13 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                         }
                         Row(Modifier.weight(1f)) {
                             if (wide) {
-                                Column(Modifier.width(240.dp).fillMaxHeight().verticalScroll(rememberScrollState())) {
+                                Column(Modifier.width(320.dp).fillMaxHeight().verticalScroll(rememberScrollState())) {
                                     key(session.secretsEpoch) {
                                     SpacesPanel(session.files.spaces, session.places, core.connected, session.writing || documentExit.busy, guardedPickFolder, openSpace, detachSpace,
                                         onConnectServer = connectServer,
                                         onOpenPath = { space, path -> leaveDocument { session.openPath(space, path); destination = Destination.Files } },
                                         onOpenCategory = { space, category -> leaveDocument { session.categories.open(space, category); destination = Destination.Files } },
-                                        onOpenTrash = { space -> session.trashView = space })
+                                        onOpenTrash = { space -> session.trashView = space }, trashFilled = session.trashFilled)
                                     }
                                     drawerFooter(false)
                                 }
@@ -355,7 +355,11 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                         securitySettings = { securitySettings(); VaultDefaultsSettings(session.vaultCatalog) }, backHandler = backHandler,
                                         diagnosticsSettings = { TextButton(onClick = { destination = Destination.Diagnostics }) { Text(tr("Открыть журнал и отчёт", "Open journal and report")) } },
                                         onRestartWelcome = { destination = Destination.Files; changeSettings(settings.copy(welcomeCompleted = false)) })
-                                    Destination.Diagnostics -> DiagnosticsScreen(session, diagnosticEnvironment) { destination = Destination.Files }
+                                    Destination.Diagnostics -> io.github.stratayun.paranoic.ui.screens.settings.DiagnosticsAndTasks(session.jobs.count { it.phase == JobPhase.Queued || it.phase == JobPhase.Running },
+                                        diagnostics = { DiagnosticsScreen(session, diagnosticEnvironment) { destination = Destination.Files } },
+                                        tasks = { OperationsScreen(session) { location ->
+                                            if (session.openAttentionFolder(location)) { openedFile = null; destination = Destination.Files }
+                                        } })
                                     Destination.Encryption -> vaultContent()
                                     Destination.Notes -> key(session.secretsEpoch) {
                                         NotesScreen(session, notesBiometric, notesAttachmentPicker, notesImage,

@@ -1,5 +1,6 @@
 package io.github.stratayun.paranoic.ui.screens.encryption
 
+import io.github.stratayun.paranoic.resources.*
 import io.github.stratayun.paranoic.ui.components.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.selection.selectable
@@ -202,9 +203,7 @@ internal fun VaultLauncher(core: CoreGateway, spaces: List<Space>, catalog: Vaul
         if (creating == null && catalog.loaded && catalog.snapshot.entries.isEmpty()) item {
             Column(Modifier.fillMaxWidth().padding(top = 72.dp, start = 24.dp, end = 24.dp), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Surface(Modifier.size(104.dp), shape = CircleShape, color = Color.Transparent, border = BorderStroke(1.dp, scheme.outlineVariant)) {
-                    Box(contentAlignment = Alignment.Center) { AppIcon(AppSymbol.Vault, Modifier.size(40.dp)) }
-                }
+                BrandIcon(Res.drawable.ic_crypto_folder, size = 120.dp)
                 Text(tr("Хранилищ пока нет", "No vaults yet"), style = MaterialTheme.typography.titleLarge)
                 Text(tr("Подключите хранилище Cryptomator или Paranoic либо создайте новое. Карточка появится после первого успешного открытия.",
                     "Add a Cryptomator or Paranoic vault or create a new one. Its card appears after the first successful unlock."),
@@ -220,9 +219,7 @@ internal fun VaultLauncher(core: CoreGateway, spaces: List<Space>, catalog: Vaul
                 subtitle = kindLabel(saved.kind) + " · " + (if (connected) tr("заблокировано", "locked") else tr("место не подключено", "location disconnected")) +
                     "\n" + displayName(spaces.firstOrNull { it.id == saved.location.storageId }?.name.orEmpty()) + " / " + displayName(saved.location.path),
                 enabled = interactive && connected,
-                leading = { ShapedIcon(AppSymbol.Vault, ExpressiveShapes.gallery[index % ExpressiveShapes.gallery.size],
-                    if (saved.kind == VaultKind.Cryptomator) scheme.tertiaryContainer else scheme.primaryContainer,
-                    if (saved.kind == VaultKind.Cryptomator) scheme.onTertiaryContainer else scheme.onPrimaryContainer) },
+                leading = { BrandIcon(Res.drawable.ic_crypto_folder, size = 56.dp) },
                 trailing = { Box {
                     IconButton(onClick = { menu = true }, modifier = Modifier.actionDescription(tr("Действия: ", "Actions: ") + displayName(saved.title))) { AppIcon(AppSymbol.More) }
                     DropdownMenu(menu, { menu = false }) {
@@ -325,7 +322,7 @@ internal fun VaultLauncher(core: CoreGateway, spaces: List<Space>, catalog: Vaul
                         if (spaces.isEmpty()) Text(tr("Подключённых мест нет. Подключите папку.", "No connected places. Connect a folder."), color = scheme.onSurfaceVariant)
                         Spacer(Modifier.height(4.dp))
                         GroupedRow(tr("Подключить другую папку", "Connect another folder"), GroupPosition.Single, enabled = interactive,
-                            leading = { ShapedIcon(AppSymbol.Add, ExpressiveShapes.Circle, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 40.dp) },
+                            leading = { BrandIcon(Res.drawable.ic_folder_add, size = 52.dp) },
                             onClick = { connectFolder() })
                         if (creating == true) TextButton(enabled = interactive, onClick = { createStep = 0 }) { Text(tr("← Назад к формату", "← Back to format")) }
                     }
@@ -372,12 +369,12 @@ internal fun VaultLauncher(core: CoreGateway, spaces: List<Space>, catalog: Vaul
                                         if (original != null && found.kind != original.kind) tr(" · формат не совпадает с карточкой", " · format differs from the card") else "",
                                     enabled = interactive && (original == null || (found.kind == original.kind && catalog.loaded && !catalog.busy && !catalog.failed)),
                                     container = scheme.secondaryContainer,
-                                    leading = { ShapedIcon(AppSymbol.Vault, ExpressiveShapes.Cookie9, scheme.primaryContainer, scheme.onPrimaryContainer) },
+                                    leading = { BrandIcon(Res.drawable.ic_crypto_folder, size = 56.dp) },
                                     trailing = { Text(if (original == null) tr("Открыть", "Open") else tr("Выбрать", "Use"), color = scheme.primary, style = MaterialTheme.typography.labelLarge) },
                                     onClick = { if (original == null) onOpen(found.copy(name = name)) else replacement = found })
                                 if (original == null && found.kind == VaultKind.Paranoic) GroupedRow(tr("Ключ восстановления / забыли пароль", "Recovery key / forgot password"),
                                     GroupPosition.Last, enabled = interactive,
-                                    leading = { ShapedIcon(AppSymbol.Passwords, ExpressiveShapes.Circle, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 40.dp) },
+                                    leading = { BrandIcon(Res.drawable.ic_lock, size = 52.dp) },
                                     onClick = { onRecovery(found.copy(name = name)) })
                             }
                         }
@@ -385,7 +382,7 @@ internal fun VaultLauncher(core: CoreGateway, spaces: List<Space>, catalog: Vaul
                     if (folders.isNotEmpty()) item { SectionLabel(tr("Папки", "Folders")) }
                     itemsIndexed(folders, key = { _, it -> "dir:" + it.location.storageId + ":" + it.location.path }) { index, folder ->
                         GroupedRow(displayName(folder.name), groupPosition(index, folders.size), enabled = interactive,
-                            leading = { ShapedIcon(AppSymbol.Folder, MaterialTheme.shapes.medium, scheme.primaryContainer, scheme.onPrimaryContainer, size = 40.dp) },
+                            leading = { BrandIcon(Res.drawable.ic_folder, size = 52.dp) },
                             trailing = { AppIcon(AppSymbol.Forward) },
                             onClick = { trail = trail + FolderNode(folder.location, folder.name) })
                     }
@@ -410,11 +407,11 @@ private fun VaultAddSheet(onDismiss: () -> Unit, onOpen: () -> Unit, onCreate: (
             Text(tr("Добавить хранилище", "Add vault"), Modifier.padding(start = 8.dp, bottom = 16.dp), style = MaterialTheme.typography.titleLarge)
             GroupedRow(tr("Подключить существующее", "Add existing"), GroupPosition.First,
                 subtitle = tr("Найти и разблокировать хранилище Cryptomator или Paranoic", "Find and unlock a Cryptomator or Paranoic vault"),
-                enabled = canOpen, leading = { ShapedIcon(AppSymbol.Vault, MaterialTheme.shapes.medium, scheme.primaryContainer, scheme.onPrimaryContainer) },
+                enabled = canOpen, leading = { BrandIcon(Res.drawable.ic_crypto_folder, size = 56.dp) },
                 trailing = { AppIcon(AppSymbol.Forward) }, onClick = onOpen)
             GroupedRow(tr("Создать новое", "Create new"), GroupPosition.Last,
                 subtitle = tr("Новое зашифрованное хранилище в выбранной папке", "A new encrypted vault in a folder you choose"),
-                enabled = canCreate, leading = { ShapedIcon(AppSymbol.Add, MaterialTheme.shapes.medium, scheme.tertiaryContainer, scheme.onTertiaryContainer) },
+                enabled = canCreate, leading = { BrandIcon(Res.drawable.ic_folder_add, size = 56.dp) },
                 trailing = { AppIcon(AppSymbol.Forward) }, onClick = onCreate)
         }
     }

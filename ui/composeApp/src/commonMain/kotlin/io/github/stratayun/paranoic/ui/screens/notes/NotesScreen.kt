@@ -1,5 +1,6 @@
 package io.github.stratayun.paranoic.ui.screens.notes
 
+import io.github.stratayun.paranoic.resources.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
@@ -291,7 +292,7 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
                     SectionLabel(tr("Обмен", "Exchange"))
                     GroupedRow(tr("Импорт .txt / .md", "Import .txt / .md"), GroupPosition.First, enabled = ready,
                         subtitle = tr("Добавить текстовые файлы как заметки", "Add text files as notes"),
-                        leading = { ShapedIcon(AppSymbol.Download, MaterialTheme.shapes.medium, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 40.dp) },
+                        leading = { BrandIcon(Res.drawable.ic_downloads, size = 52.dp) },
                         onClick = { importing = true })
                     Spacer(Modifier.height(2.dp))
                     GroupedRow(tr("Экспорт открытых копий", "Export plaintext copies"), GroupPosition.Last, enabled = ready,
@@ -431,6 +432,7 @@ private fun CreateNotes(session: AppSession, status: NotesStatus, busy: Boolean,
     var repeat by remember { mutableStateOf("") }
     DisposableEffect(Unit) { onDispose { password = ""; repeat = "" } }
     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        BrandIcon(Res.drawable.ic_safe, size = 96.dp)
         Text(tr("Защищённые заметки", "Protected notes"), Modifier.sectionHeading(), style = MaterialTheme.typography.headlineSmall)
         Text(tr("Один отдельный пароль для заметок и личной папки. Содержимое Сейфа скрыто из файлового менеджера, не уходит в облако и не синхронизируется. Забытый пароль заметок восстановить нельзя.",
             "One separate password for notes and the personal folder. Safe data is hidden from the file manager, never goes to the cloud and is not synchronized. A forgotten notes password cannot be recovered."))
@@ -552,7 +554,7 @@ private fun ColumnScope.Notebook(tabs: List<NoteTab>, dirty: Boolean, busy: Bool
         note.attachments.forEachIndexed { i, attachment ->
             GroupedRow(displayName(attachment.name), groupPosition(i, note.attachments.size),
                 subtitle = tr("${attachment.size} байт", "${attachment.size} bytes"), enabled = !busy,
-                leading = { ShapedIcon(AppSymbol.Document, MaterialTheme.shapes.medium, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 40.dp) },
+                leading = { BrandIcon(Res.drawable.ic_documents, size = 52.dp) },
                 trailing = { IconButton(enabled = !editingBlocked, onClick = { onRemoveAttachment(note.id, attachment.id) },
                     modifier = Modifier.actionDescription(tr("Удалить вложение: ", "Remove attachment: ") + displayName(attachment.name))) { AppIcon(AppSymbol.Close) } },
                 onClick = { onPreview(attachment) })
@@ -568,7 +570,7 @@ private fun ColumnScope.Notebook(tabs: List<NoteTab>, dirty: Boolean, busy: Bool
             onChange(tabs.mapIndexed { i, t -> if (i == index) t.copy(notes = listOf(created) + t.notes) else t }); editing = created.id
         }) { AppIcon(AppSymbol.Edit); Spacer(Modifier.width(8.dp)); Text(tr("Новая заметка", "New note")) }
         if (tab.notes.isEmpty()) Column(Modifier.fillMaxWidth().padding(vertical = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            ShapedIcon(AppSymbol.Notes, ExpressiveShapes.Cookie9, scheme.primaryContainer, scheme.onPrimaryContainer, size = 88.dp)
+            BrandIcon(Res.drawable.ic_safe, size = 100.dp)
             Text(tr("Во вкладке пока нет заметок", "No notes in this tab yet"), Modifier.padding(top = 12.dp), color = scheme.onSurfaceVariant)
         }
         tab.notes.forEachIndexed { i, n ->
@@ -621,17 +623,17 @@ private fun NotesSettings(session: AppSession, status: NotesStatus, busy: Boolea
         onClick = { if (status.quickEnabled) onQuick(false) else enablingQuick = true })
     Spacer(Modifier.height(2.dp))
     GroupedRow(tr("Сменить пароль", "Change password"), GroupPosition.Middle, enabled = !busy,
-        leading = { ShapedIcon(AppSymbol.Passwords, MaterialTheme.shapes.medium, scheme.secondaryContainer, scheme.onSecondaryContainer, size = 40.dp) },
+        leading = { BrandIcon(Res.drawable.ic_lock, size = 52.dp) },
         trailing = { AppIcon(AppSymbol.Forward) }, onClick = { changing = true })
     Spacer(Modifier.height(2.dp))
     GroupedRow(tr("Clear — стереть Сейф", "Clear — erase the Safe"), GroupPosition.Middle, enabled = !busy,
         subtitle = tr("Заметки и личная папка уничтожаются вместе с ключами", "Notes and the personal folder are destroyed with their keys"),
-        leading = { ShapedIcon(AppSymbol.Trash, MaterialTheme.shapes.medium, scheme.errorContainer, scheme.onErrorContainer, size = 40.dp) },
+        leading = { BrandIcon(Res.drawable.ic_trash_full, size = 52.dp) },
         onClick = { clearing = true })
     Spacer(Modifier.height(2.dp))
     GroupedRow(tr("Дополнительно", "More"), GroupPosition.Last,
         subtitle = tr("Автостирание, пароль под принуждением", "Auto-wipe, duress password"),
-        leading = { ShapedIcon(AppSymbol.Settings, MaterialTheme.shapes.medium, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 40.dp) },
+        leading = { BrandIcon(Res.drawable.ic_settings, size = 52.dp) },
         trailing = { AppIcon(if (expanded) AppSymbol.Up else AppSymbol.Forward) }, onClick = { expanded = !expanded })
     if (enablingQuick) AlertDialog(onDismissRequest = { enablingQuick = false },
         title = { Text(tr("Включить быстрый вход?", "Enable quick unlock?")) },

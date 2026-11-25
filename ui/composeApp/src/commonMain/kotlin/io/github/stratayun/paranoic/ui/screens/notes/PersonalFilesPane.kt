@@ -1,5 +1,6 @@
 package io.github.stratayun.paranoic.ui.screens.notes
 
+import io.github.stratayun.paranoic.resources.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.ui.Alignment
@@ -143,7 +144,7 @@ internal fun PersonalFilesPane(session: AppSession, enabled: Boolean, onBusy: (B
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (opened == null) {
             Column(Modifier.fillMaxWidth().padding(top = 32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ShapedIcon(AppSymbol.Vault, ExpressiveShapes.Cookie9, scheme.tertiaryContainer, scheme.onTertiaryContainer, size = 104.dp)
+                BrandIcon(Res.drawable.ic_safe, size = 116.dp)
                 Text(tr("Личная папка", "Personal folder"), style = MaterialTheme.typography.titleLarge)
                 Text(tr("Зашифрована ключом Сейфа, скрыта из «Файлов» и не синхронизируется.",
                     "Encrypted with the Safe key, hidden from Files and never synchronized."),
@@ -187,7 +188,7 @@ internal fun PersonalFilesPane(session: AppSession, enabled: Boolean, onBusy: (B
                     "Objects that failed verification: ${value.damaged}. They are not displayed."), color = scheme.error)
                 if (value.entries.isEmpty()) Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ShapedIcon(AppSymbol.Folder, ExpressiveShapes.Sunny, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 88.dp)
+                    BrandIcon(Res.drawable.ic_folder, size = 100.dp)
                     Text(tr("Здесь пока пусто", "Nothing here yet"), style = MaterialTheme.typography.titleMedium)
                     FilledTonalButton(enabled = ready, onClick = { copyingMany = true }) {
                         AppIcon(AppSymbol.Upload); Spacer(Modifier.width(8.dp)); Text(tr("Добавить файлы", "Add files"))

@@ -1,5 +1,6 @@
 package io.github.stratayun.paranoic.ui.screens.encryption
 
+import io.github.stratayun.paranoic.resources.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -213,7 +214,7 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
             Surface(Modifier.fillMaxWidth().padding(top = 8.dp), shape = RoundedCornerShape(28.dp), color = scheme.primaryContainer, contentColor = scheme.onPrimaryContainer) {
                 Row(Modifier.padding(start = 16.dp, end = 4.dp, top = 14.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    ShapedIcon(AppSymbol.Vault, ExpressiveShapes.Cookie9, scheme.onPrimaryContainer.copy(alpha = 0.12f), scheme.onPrimaryContainer)
+                    BrandIcon(Res.drawable.ic_crypto_folder, size = 56.dp)
                     Column(Modifier.weight(1f)) {
                         Text(displayName(open.name), style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text((if (format == FolderFormat.Cryptomator) "Cryptomator" else "Paranoic 1.8") + " · " + tr("открыто", "unlocked") +
@@ -296,7 +297,7 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
                 if (format == FolderFormat.Cryptomator && l.damaged > 0) item { Text(tr("Не показано неподдерживаемых объектов: ${l.damaged}", "Unsupported objects omitted: ${l.damaged}")) }
                 if (l.entries.isEmpty()) item {
                     Column(Modifier.fillMaxWidth().padding(top = 40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        ShapedIcon(AppSymbol.Vault, ExpressiveShapes.Sunny, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 96.dp)
+                        BrandIcon(Res.drawable.ic_crypto_folder, size = 108.dp)
                         Text(tr("Здесь пока пусто", "Nothing here yet"), style = MaterialTheme.typography.titleMedium)
                     }
                 }

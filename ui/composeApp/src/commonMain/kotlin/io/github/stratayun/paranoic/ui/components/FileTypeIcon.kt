@@ -26,13 +26,14 @@ private val encrypted = setOf("age", "c9r", "pnc")
 fun fileTypeIcon(name: String, folder: Boolean): DrawableResource {
     if (folder) return Res.drawable.ic_folder
     return when (name.substringAfterLast('.', "").lowercase()) {
-        in images -> Res.drawable.place_images
-        in videos -> Res.drawable.place_video
-        in audio -> Res.drawable.place_music
-        in archives -> Res.drawable.ic_storage
-        in encrypted -> Res.drawable.nav_safe
-        "apk" -> Res.drawable.ic_apps
-        else -> Res.drawable.place_documents
+        in images -> Res.drawable.ic_images
+        in videos -> Res.drawable.ic_video
+        in audio -> Res.drawable.ic_music
+        // No archive/APK artwork in the set yet: the box of tiles stands in.
+        in archives -> Res.drawable.ic_tiles
+        in encrypted -> Res.drawable.ic_lock
+        "apk" -> Res.drawable.ic_tiles
+        else -> Res.drawable.ic_documents
     }
 }
 
