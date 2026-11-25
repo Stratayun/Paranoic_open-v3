@@ -1,6 +1,7 @@
 package io.github.stratayun.paranoic.ui.screens.files
 
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -31,7 +32,7 @@ import io.github.stratayun.paranoic.ui.theme.LocalThemeTokens
 @Composable
 fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit, onOpenFile: (FileItem) -> Unit,
     pngImage: @Composable (ByteArray, Modifier) -> Unit, tabId: String = session.fileWorkspace.active,
-    drag: FileDragHandler? = null, onOpenPlaces: (() -> Unit)? = null) {
+    drag: FileDragHandler? = null, onOpenPlaces: (() -> Unit)? = null, clipboard: FileClipboard? = null) {
     val tab = session.fileWorkspace.tab(tabId) ?: return
     val state = tab.files
     val options = tab.options
@@ -55,6 +56,18 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
     val actionable = canAct && state.selected.size == 1
     val padding = LocalThemeTokens.current.pagePadding
     if (showingArchive && session.archives.state.source != null) { ArchiveViewer(session) { showingArchive = false }; return }
+    var sheetFor by remember(state.folder, session.secretsEpoch) { mutableStateOf<FileItem?>(null) }
+    var properties by remember(state.folder, session.secretsEpoch) { mutableStateOf<FileItem?>(null) }
+    val canPaste = clipboard != null && !clipboard.isEmpty && state.folder?.let { clipboard.plan(it) } != null &&
+        state.loaded && !state.loading && state.writable && !session.writing && session.fileBatch == null
+    val canCreate = state.loaded && state.writable && !state.loading && !session.writing
+    val canCreateText = canCreate && session.fileBatch == null && session.directWrite?.phase != DirectWritePhase.Unknown
+    val canSelectAll = state.loaded && !state.loading && !session.writing && visible.isNotEmpty() &&
+        (state.selected + visible.map { it.location }).size <= MAX_FILE_SELECTION
+    var addMenu by remember(state.folder) { mutableStateOf(false) }
+    var moreMenu by remember(state.folder, state.selected) { mutableStateOf(false) }
+    @Composable fun Action(symbol: AppSymbol, label: String, enabled: Boolean, onClick: () -> Unit) =
+        IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.actionDescription(label)) { AppIcon(symbol) }
     PullToRefreshBox(isRefreshing = state.loading, onRefresh = {
         if (session.core.connected && !session.writing && !state.loading) inTab { session.refresh() }
     }, modifier = Modifier.fillMaxSize()) {
@@ -64,36 +77,124 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
         Column(Modifier.fillMaxWidth().heightIn(max = controlsHeight).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (session.fileWorkspace.active == tabId) FileBatchCard(session)
         FilesNavigation(state.trail) { index -> inTab { session.breadcrumb(index) } }
-        val canCreate = state.loaded && state.writable && !state.loading && !session.writing
-        val canCreateText = canCreate && session.fileBatch == null && session.directWrite?.phase != DirectWritePhase.Unknown
-        val canSelectAll = state.loaded && !state.loading && !session.writing && visible.isNotEmpty() &&
-            (state.selected + visible.map { it.location }).size <= MAX_FILE_SELECTION
-        var addMenu by remember(state.folder) { mutableStateOf(false) }
-        var moreMenu by remember(state.folder, state.selected) { mutableStateOf(false) }
-        @Composable fun Action(symbol: AppSymbol, label: String, enabled: Boolean, onClick: () -> Unit) =
-            IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.actionDescription(label)) { AppIcon(symbol) }
-        if (state.selected.isEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
-            Spacer(Modifier.weight(1f))
-            Action(AppSymbol.Refresh, tr("Обновить", "Refresh"), session.core.connected && !state.loading) { inTab { session.refresh() } }
-            Action(AppSymbol.SelectAll, tr("Выбрать все видимые (${visible.size})", "Select all visible (${visible.size})"), canSelectAll) {
-                inTab { session.selectVisible(visible.map { it.location }) }
+        if (state.selected.isNotEmpty()) {
+            val visibleLocations = visible.map { it.location }.toSet()
+            val outsideFilter = state.selected.count { it !in visibleLocations }
+            if (outsideFilter > 0) Text(tr("Выбрано вне текущего фильтра: $outsideFilter. Эти объекты тоже войдут в операцию.",
+                "Selected outside the current filter: $outsideFilter. These entries will also be included."))
+        }
+        if (visible.size > MAX_FILE_SELECTION) Text(tr("За один раз можно выбрать до $MAX_FILE_SELECTION объектов. Уточните фильтр или выберите вручную.",
+            "Select up to $MAX_FILE_SELECTION entries at a time. Narrow the filter or select entries individually."))
+        if (selected?.let { state.spaces.spaceOf(it.location)?.androidTree } == true) Text(tr(
+            "Это подключение Android не поддерживает переименование и перенос внутри него. Удаление и перенос папок отключены.",
+            "This Android connection does not support renaming or moves within it. Folder deletion and moving are disabled."))
+        if (state.folder != null) FileListControls(options, view, visible.size, state.entries.size,
+            onOptions = { session.fileOptions(tabId, it) }, onView = { next -> session.fileView(tabId, next); onView(next) })
+        if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        state.fault?.let { FaultNotice(it) }
+        if (state.hidden > 0) Text(tr("Скрыто объектов с недопустимыми или повторяющимися именами: ${state.hidden}",
+            "Hidden entries with unsupported or duplicate names: ${state.hidden}"))
+        if (state.folder == null && session.core.connected) {
+            Text(if (state.spaces.isEmpty()) tr("Откройте меню ☰ и выберите место: память устройства или подключённую папку.", "Open the ☰ menu and pick a place: device storage or a connected folder.")
+                else tr("Откройте подключённую папку через «Места».", "Open a connected folder through Places."))
+            if (onOpenPlaces != null) TextButton(onClick = { inTab { onOpenPlaces() } }) { Text(tr("Открыть «Места»", "Open Places")) }
+            else Text(tr("Список мест находится в боковой панели.", "Places are listed in the side panel."))
+        }
+        if (state.loaded && visible.isEmpty() && !state.loading) {
+            Text(if (state.entries.isEmpty()) tr("Папка пустая. Создайте папку, текстовый файл или скопируйте сюда нужные данные.",
+                "This folder is empty. Create a folder or text file, or copy files here.") else tr("Текущий фильтр скрыл все загруженные объекты.", "The current filter hides all loaded entries."))
+            if (state.entries.isNotEmpty()) TextButton(onClick = { session.fileOptions(tabId, FileListOptions(showHidden = true)) }) {
+                Text(tr("Сбросить фильтр и показать скрытые", "Reset filter and show hidden"))
             }
-            Box {
-                FilledTonalIconButton(onClick = { addMenu = true }, enabled = canCreate,
-                    modifier = Modifier.actionDescription(tr("Создать", "Create"))) { AppIcon(AppSymbol.Add) }
-                DropdownMenu(addMenu, { addMenu = false }) {
-                    DropdownMenuItem(text = { Text(tr("Новая папка", "New folder")) }, leadingIcon = { AppIcon(AppSymbol.NewFolder) },
-                        onClick = { addMenu = false; inTab { creating = true } })
-                    DropdownMenuItem(text = { Text(tr("Новый текстовый файл", "New text file")) }, leadingIcon = { AppIcon(AppSymbol.NewFile) },
-                        enabled = canCreateText, onClick = { addMenu = false; inTab { creatingText = true } })
+        }
+        }
+        if (view != FileView.Grid) {
+            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (state.trail.size > 1 && state.selected.isEmpty()) item(key = "..") {
+                    Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).clickable { inTab { session.breadcrumb(state.trail.lastIndex - 1) } }
+                        .heightIn(min = 56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        ShapedIcon(AppSymbol.Up, MaterialTheme.shapes.medium, MaterialTheme.colorScheme.surfaceContainerHigh,
+                            MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("..", style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+                items(visible, key = { it.location.storageId + ":" + it.location.path }) { item ->
+                    FileRow(session.core, pngImage, item, item.location in state.selected, state.selected.isNotEmpty(), { inTab { session.select(item.location) } }, {
+                        inTab { if (item.kind == EntryKind.Directory) session.openFolder(item) else onOpenFile(item) }
+                    }, drag = drag?.takeIf { item.canCopy(state.spaces) }, detailed = view == FileView.Detailed, onMenu = { sheetFor = item })
                 }
             }
-        } else Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.secondaryContainer) {
+        } else {
+            LazyVerticalGrid(columns = GridCells.Adaptive(if (drag == null) 180.dp else 260.dp), modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(visible, key = { it.location.storageId + ":" + it.location.path }) { item ->
+                    FileRow(session.core, pngImage, item, item.location in state.selected, state.selected.isNotEmpty(), { inTab { session.select(item.location) } }, {
+                        inTab { if (item.kind == EntryKind.Directory) session.openFolder(item) else onOpenFile(item) }
+                    }, drag = drag?.takeIf { item.canCopy(state.spaces) }, onMenu = { sheetFor = item })
+                }
+            }
+        }
+        clipboard?.takeIf { !it.isEmpty }?.let { buffer ->
+            Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.tertiaryContainer) {
+                Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text((if (buffer.kind == FileBatchKind.Move) tr("Вырезано: ", "Cut: ") else tr("Скопировано: ", "Copied: ")) +
+                        if (buffer.items.size == 1) displayName(buffer.items.first().name) else "${buffer.items.size}",
+                        Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
+                    TextButton(enabled = canPaste, onClick = {
+                        val parent = state.folder ?: return@TextButton
+                        val plan = buffer.plan(parent) ?: return@TextButton
+                        inTab { session.pasteFileBatch(plan) }
+                        if (buffer.kind == FileBatchKind.Move) buffer.clear()
+                    }) { Text(tr("Вставить сюда", "Paste here")) }
+                    Action(AppSymbol.Close, tr("Очистить буфер", "Clear clipboard"), true) { buffer.clear() }
+                }
+            }
+        }
+        if (state.selected.isEmpty()) Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainer) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                Action(AppSymbol.Up, tr("На уровень выше", "Up one level"), state.trail.size > 1) { inTab { session.breadcrumb(state.trail.lastIndex - 1) } }
+                Box {
+                    FilledTonalIconButton(onClick = { addMenu = true }, enabled = canCreate,
+                        modifier = Modifier.actionDescription(tr("Создать", "Create"))) { AppIcon(AppSymbol.Add) }
+                    DropdownMenu(addMenu, { addMenu = false }) {
+                        DropdownMenuItem(text = { Text(tr("Новая папка", "New folder")) }, leadingIcon = { AppIcon(AppSymbol.NewFolder) },
+                            onClick = { addMenu = false; inTab { creating = true } })
+                        DropdownMenuItem(text = { Text(tr("Новый текстовый файл", "New text file")) }, leadingIcon = { AppIcon(AppSymbol.NewFile) },
+                            enabled = canCreateText, onClick = { addMenu = false; inTab { creatingText = true } })
+                    }
+                }
+                Action(AppSymbol.Swap, if (session.fileWorkspace.right == null) tr("Две панели", "Two panes") else tr("Одна панель", "One pane"), true) {
+                    session.splitFilePanels(session.fileWorkspace.right == null)
+                }
+                Action(AppSymbol.Refresh, tr("Обновить", "Refresh"), session.core.connected && !state.loading) { inTab { session.refresh() } }
+                Box {
+                    Action(AppSymbol.More, tr("Ещё", "More"), true) { moreMenu = true }
+                    DropdownMenu(moreMenu, { moreMenu = false }) {
+                        DropdownMenuItem(text = { Text(tr("Выбрать все (${visible.size})", "Select all (${visible.size})")) },
+                            leadingIcon = { AppIcon(AppSymbol.SelectAll) }, enabled = canSelectAll,
+                            onClick = { moreMenu = false; inTab { session.selectVisible(visible.map { it.location }) } })
+                        DropdownMenuItem(text = { Text(tr("Новая вкладка", "New tab")) }, leadingIcon = { AppIcon(AppSymbol.Add) },
+                            enabled = session.fileWorkspace.tabs.size < MAX_FILE_TABS,
+                            onClick = { moreMenu = false; session.newFileTab(duplicate = true) })
+                        DropdownMenuItem(text = { Text(tr("Закрыть вкладку", "Close tab")) }, leadingIcon = { AppIcon(AppSymbol.Close) },
+                            enabled = session.fileWorkspace.tabs.size > 1, onClick = { moreMenu = false; session.closeFileTab(tabId) })
+                    }
+                }
+            }
+        }
+        if (state.selected.isNotEmpty()) Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.secondaryContainer) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Action(AppSymbol.Close, tr("Снять выбор", "Clear selection"), true) { inTab { session.clearSelection() } }
                 Text(tr("Выбрано: ${state.selected.size}", "Selected: ${state.selected.size}"), Modifier.weight(1f),
                     style = MaterialTheme.typography.titleMedium)
-                Action(AppSymbol.Copy, tr("Копировать в…", "Copy to…"), canAct && selectedItems.all { it.canCopy(state.spaces) }) {
+                if (clipboard != null) Action(AppSymbol.Copy, tr("Копировать (в буфер)", "Copy (to clipboard)"), canAct && selectedItems.all { it.canCopy(state.spaces) }) {
+                    clipboard.put(selectedItems, cut = false); inTab { session.clearSelection() }
+                }
+                if (clipboard != null) Action(AppSymbol.Cut, tr("Вырезать", "Cut"), canAct && selectedItems.all { it.canMove(state.spaces) }) {
+                    clipboard.put(selectedItems, cut = true); inTab { session.clearSelection() }
+                }
+                if (clipboard == null) Action(AppSymbol.Copy, tr("Копировать в…", "Copy to…"), canAct && selectedItems.all { it.canCopy(state.spaces) }) {
                     if (selectedItems.size > 1) batchAction = FileBatchKind.Copy to selectedItems.toList()
                     else selected?.let { transferring = it to TransferMode.Copy }
                 }
@@ -130,57 +231,60 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
                 }
             }
         }
-        if (state.selected.isNotEmpty()) {
-            val visibleLocations = visible.map { it.location }.toSet()
-            val outsideFilter = state.selected.count { it !in visibleLocations }
-            if (outsideFilter > 0) Text(tr("Выбрано вне текущего фильтра: $outsideFilter. Эти объекты тоже войдут в операцию.",
-                "Selected outside the current filter: $outsideFilter. These entries will also be included."))
-        }
-        if (visible.size > MAX_FILE_SELECTION) Text(tr("За один раз можно выбрать до $MAX_FILE_SELECTION объектов. Уточните фильтр или выберите вручную.",
-            "Select up to $MAX_FILE_SELECTION entries at a time. Narrow the filter or select entries individually."))
-        if (selected?.let { state.spaces.spaceOf(it.location)?.androidTree } == true) Text(tr(
-            "Это подключение Android не поддерживает переименование и перенос внутри него. Удаление и перенос папок отключены.",
-            "This Android connection does not support renaming or moves within it. Folder deletion and moving are disabled."))
-        if (state.folder != null) FileListControls(options, view, visible.size, state.entries.size,
-            onOptions = { session.fileOptions(tabId, it) }, onView = { next -> session.fileView(tabId, next); onView(next) })
-        if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        state.fault?.let { FaultNotice(it) }
-        if (state.hidden > 0) Text(tr("Скрыто объектов с недопустимыми или повторяющимися именами: ${state.hidden}",
-            "Hidden entries with unsupported or duplicate names: ${state.hidden}"))
-        if (state.folder == null && session.core.connected) {
-            Text(if (state.spaces.isEmpty()) tr("Откройте меню ☰ и выберите место: память устройства или подключённую папку.", "Open the ☰ menu and pick a place: device storage or a connected folder.")
-                else tr("Откройте подключённую папку через «Места».", "Open a connected folder through Places."))
-            if (onOpenPlaces != null) TextButton(onClick = { inTab { onOpenPlaces() } }) { Text(tr("Открыть «Места»", "Open Places")) }
-            else Text(tr("Список мест находится в боковой панели.", "Places are listed in the side panel."))
-        }
-        if (state.loaded && visible.isEmpty() && !state.loading) {
-            Text(if (state.entries.isEmpty()) tr("Папка пустая. Создайте папку, текстовый файл или скопируйте сюда нужные данные.",
-                "This folder is empty. Create a folder or text file, or copy files here.") else tr("Текущий фильтр скрыл все загруженные объекты.", "The current filter hides all loaded entries."))
-            if (state.entries.isNotEmpty()) TextButton(onClick = { session.fileOptions(tabId, FileListOptions(showHidden = true)) }) {
-                Text(tr("Сбросить фильтр и показать скрытые", "Reset filter and show hidden"))
-            }
-        }
-        }
-        if (view != FileView.Grid) {
-            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                items(visible, key = { it.location.storageId + ":" + it.location.path }) { item ->
-                    FileRow(session.core, pngImage, item, item.location in state.selected, state.selected.isNotEmpty(), { inTab { session.select(item.location) } }, {
-                        inTab { if (item.kind == EntryKind.Directory) session.openFolder(item) else onOpenFile(item) }
-                    }, drag = drag?.takeIf { item.canCopy(state.spaces) }, detailed = view == FileView.Detailed)
-                }
-            }
-        } else {
-            LazyVerticalGrid(columns = GridCells.Adaptive(if (drag == null) 180.dp else 260.dp), modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(visible, key = { it.location.storageId + ":" + it.location.path }) { item ->
-                    FileRow(session.core, pngImage, item, item.location in state.selected, state.selected.isNotEmpty(), { inTab { session.select(item.location) } }, {
-                        inTab { if (item.kind == EntryKind.Directory) session.openFolder(item) else onOpenFile(item) }
-                    }, drag = drag?.takeIf { item.canCopy(state.spaces) })
-                }
-            }
-        }
     }
     }
+    }
+    sheetFor?.let { item ->
+        val single = state.loaded && !state.loading && !session.writing && session.core.connected && session.fileBatch == null
+        val isFile = item.kind == EntryKind.File
+        val crypto = single && isFile && session.directWrite?.phase != DirectWritePhase.Unknown
+        fun act(run: () -> Unit): () -> Unit = { sheetFor = null; inTab(run) }
+        FileActionSheet(item.name, if (item.kind == EntryKind.Directory) tr("Папка", "Folder")
+            else listOfNotNull(fileModifiedLabel(item.modifiedMs), if (item.sizeKnown) humanSize(item.bytes) else null).joinToString(" · "),
+            fileSymbol(item), listOf(
+            SheetGroup(tr("Открыть", "Open"), listOfNotNull(
+                SheetAction(tr("Открыть", "Open"), AppSymbol.Forward, item.kind == EntryKind.Directory || isFile,
+                    run = act { if (item.kind == EntryKind.Directory) session.openFolder(item) else onOpenFile(item) }),
+                if (isFile) SheetAction(tr("Как архив", "As archive"), AppSymbol.Archive, single,
+                    run = act { archiveSources = listOf(item); archiveAction = ArchiveAction.Open }) else null,
+                SheetAction(tr("Выбрать", "Select"), AppSymbol.SelectAll, run = act { session.select(item.location) }),
+            )),
+            SheetGroup(tr("Упорядочить", "Organize"), listOfNotNull(
+                if (clipboard != null) SheetAction(tr("Копировать", "Copy"), AppSymbol.Copy, item.canCopy(state.spaces),
+                    run = { sheetFor = null; clipboard.put(listOf(item), cut = false) }) else null,
+                if (clipboard != null) SheetAction(tr("Вырезать", "Cut"), AppSymbol.Cut, item.canMove(state.spaces),
+                    run = { sheetFor = null; clipboard.put(listOf(item), cut = true) }) else null,
+                SheetAction(tr("Копировать в…", "Copy to…"), AppSymbol.Copy, single && item.canCopy(state.spaces),
+                    run = act { transferring = item to TransferMode.Copy }),
+                SheetAction(tr("Переместить в…", "Move to…"), AppSymbol.MoveTo, single && item.canMove(state.spaces),
+                    run = act { transferring = item to TransferMode.Move }),
+                SheetAction(tr("Переименовать", "Rename"), AppSymbol.Edit, single && item.canRename(state.spaces),
+                    run = act { renaming = item }),
+                if (!(item.kind == EntryKind.Directory && state.spaces.spaceOf(item.location)?.androidTree == true))
+                    SheetAction(tr("Удалить", "Delete"), AppSymbol.Trash, single && item.canDelete(state.spaces), danger = true,
+                        run = act { deleting = item }) else null,
+            )),
+            SheetGroup(tr("Инструменты", "Tools"), listOfNotNull(
+                SheetAction(tr("Сжать…", "Compress…"), AppSymbol.Archive, single && item.canCopy(state.spaces),
+                    run = act { archiveSources = listOf(item); archiveAction = ArchiveAction.Create }),
+                if (isFile) SheetAction(tr("Зашифровать…", "Encrypt…"), AppSymbol.Vault, crypto,
+                    run = act { decrypting = false; cryptoSource = item }) else null,
+                if (isFile) SheetAction(tr("Расшифровать…", "Decrypt…"), AppSymbol.Passwords, crypto,
+                    run = act { decrypting = true; cryptoSource = item }) else null,
+                SheetAction(tr("Свойства", "Properties"), AppSymbol.Info, run = { sheetFor = null; properties = item }),
+            )),
+        ), onDismiss = { sheetFor = null })
+    }
+    properties?.let { item ->
+        AlertDialog(onDismissRequest = { properties = null }, title = { Text(displayName(item.name)) },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(tr("Тип: ", "Type: ") + when (item.kind) {
+                    EntryKind.Directory -> tr("папка", "folder"); EntryKind.File -> tr("файл", "file")
+                    EntryKind.Symlink -> tr("ссылка", "link"); EntryKind.Other -> tr("другое", "other") })
+                if (item.kind == EntryKind.File) Text(tr("Размер: ", "Size: ") + if (item.sizeKnown) "${humanSize(item.bytes)} (${item.bytes} " + tr("байт", "bytes") + ")" else tr("неизвестен", "unknown"))
+                fileModifiedLabel(item.modifiedMs)?.let { Text(tr("Изменён: ", "Modified: ") + it) }
+                Text(tr("Путь: /", "Path: /") + displayName(item.location.path))
+            } }, confirmButton = { TextButton(onClick = { properties = null }) { Text(tr("Закрыть", "Close")) } })
     }
     if (creating) {
         val parent = state.folder
@@ -229,7 +333,7 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
 @OptIn(ExperimentalFoundationApi::class)
 private fun FileRow(core: CoreGateway, pngImage: @Composable (ByteArray, Modifier) -> Unit,
     item: FileItem, selected: Boolean, selectionActive: Boolean, onSelect: () -> Unit, onOpen: () -> Unit,
-    drag: FileDragHandler? = null, detailed: Boolean = false) {
+    drag: FileDragHandler? = null, detailed: Boolean = false, onMenu: () -> Unit = onSelect) {
     val selectionLabel = tr("Выбрать ", "Select ") + displayName(item.name)
     val openLabel = tr("Открыть ", "Open ") + displayName(item.name)
     // Same path and size but a new modification time = a different picture.
@@ -248,7 +352,7 @@ private fun FileRow(core: CoreGateway, pngImage: @Composable (ByteArray, Modifie
     val scheme = MaterialTheme.colorScheme
     val symbol = fileSymbol(item)
     Surface(modifier = Modifier.fillMaxWidth().combinedClickable(onClickLabel = if (selectionActive) selectionLabel else openLabel,
-        onLongClickLabel = selectionLabel, onLongClick = onSelect,
+        onLongClickLabel = if (selectionActive) selectionLabel else tr("Действия", "Actions"), onLongClick = if (selectionActive) onSelect else onMenu,
         onClick = { if (selectionActive || item.kind !in listOf(EntryKind.File, EntryKind.Directory)) onSelect() else onOpen() }),
         shape = MaterialTheme.shapes.large, color = if (selected) scheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent) {
         Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 8.dp, vertical = 6.dp),

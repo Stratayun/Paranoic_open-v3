@@ -319,6 +319,25 @@ class AppSession(val core: CoreGateway, private val scope: CoroutineScope, priva
             writeFault = CoreFault.Changed; return
         }
         if (!frozen.allowed(files.spaces)) { writeFault = CoreFault.Unsupported; return }
+        launchBatch(frozen)
+    }
+    /**
+     * Paste from the file clipboard: sources were taken in another folder (or
+     * tab); the destination is the active, loaded, writable folder. Core
+     * re-checks every source: a changed or missing one fails its own job.
+     */
+    fun pasteFileBatch(plan: FileBatchPlan) {
+        if (writing || !core.connected) return
+        if (fileBatch != null || uncertain != null || uncertainAttention != null || directWrite?.phase == DirectWritePhase.Unknown) {
+            writeFault = CoreFault.Busy; return
+        }
+        if (!files.loaded || files.loading || files.folder != plan.parent) { writeFault = CoreFault.Changed; return }
+        if (!files.writable) { writeFault = CoreFault.Permission; return }
+        val frozen = plan.copy(sources = plan.sources.toList())
+        if (!frozen.allowed(files.spaces)) { writeFault = CoreFault.Unsupported; return }
+        launchBatch(frozen)
+    }
+    private fun launchBatch(frozen: FileBatchPlan) {
         val ids = List(frozen.sources.size) { newRequestId() }
         val requestEpoch = epoch
         stopBatchSubmission = false

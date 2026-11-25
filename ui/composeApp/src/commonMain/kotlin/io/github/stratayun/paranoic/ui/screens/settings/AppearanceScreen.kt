@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import io.github.stratayun.paranoic.ui.components.*
 import io.github.stratayun.paranoic.ui.state.*
 import io.github.stratayun.paranoic.ui.components.fileViewLabel
 import io.github.stratayun.paranoic.ui.theme.*
@@ -88,20 +89,16 @@ fun AppearanceScreen(settings: AppearanceSettings, saving: Boolean, saved: Boole
                 Modifier.announceChanges(), color = MaterialTheme.colorScheme.error)
         }
         if (search.isEmpty() && section == null) {
-            items(SettingsSection.entries, key = { it.name }) { destination ->
-                val title = destination.label()
-                val action = tr("Открыть раздел: ", "Open section: ") + title
-                Surface(shape = MaterialTheme.shapes.medium, tonalElevation = 1.dp,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-                    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).keyboardFocusOutline()
-                        .clickable(role = Role.Button, onClickLabel = action, onClick = { section = destination })
-                        .padding(LocalThemeTokens.current.itemPadding), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(title, style = MaterialTheme.typography.titleMedium)
-                            Text(destination.summary(), style = MaterialTheme.typography.bodySmall)
-                        }
-                        Text(tr("Открыть", "Open"), Modifier.padding(start = 8.dp))
-                    }
+            item {
+                val sections = SettingsSection.entries
+                GroupedList(sections) { destination, position ->
+                    val title = destination.label()
+                    val scheme = MaterialTheme.colorScheme
+                    GroupedRow(title, position, Modifier.actionDescription(tr("Открыть раздел: ", "Open section: ") + title),
+                        subtitle = destination.summary(),
+                        leading = { ShapedIcon(destination.symbol(), MaterialTheme.shapes.medium, scheme.secondaryContainer, scheme.onSecondaryContainer) },
+                        trailing = { AppIcon(AppSymbol.Forward) },
+                        onClick = { section = destination })
                 }
             }
         } else {
@@ -201,4 +198,10 @@ private fun <T> ChoiceRow(title: String, selected: T, values: List<T>, enabled: 
             }
         }
     }
+}
+
+private fun SettingsSection.symbol(): AppSymbol = when (this) {
+    SettingsSection.Appearance -> AppSymbol.Edit; SettingsSection.Files -> AppSymbol.Folder; SettingsSection.Language -> AppSymbol.Info
+    SettingsSection.Security -> AppSymbol.Security; SettingsSection.Diagnostics -> AppSymbol.Analytics
+    SettingsSection.Setup -> AppSymbol.Settings; SettingsSection.Licenses -> AppSymbol.Document
 }

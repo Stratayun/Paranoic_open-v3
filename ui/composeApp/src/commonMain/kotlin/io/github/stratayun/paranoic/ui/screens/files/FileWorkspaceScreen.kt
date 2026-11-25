@@ -17,7 +17,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import io.github.stratayun.paranoic.bridge.*
-import io.github.stratayun.paranoic.ui.components.FileDragHandler
+import io.github.stratayun.paranoic.ui.components.*
 import io.github.stratayun.paranoic.ui.state.*
 
 private data class DraggedFile(val tabId: String, val item: FileItem, val position: Offset)
@@ -34,6 +34,16 @@ fun FileWorkspaceScreen(session: AppSession, defaultView: FileView, onOpenFile: 
     var dropped by remember(session.secretsEpoch) { mutableStateOf<DroppedFile?>(null) }
     var feedback by remember(session.secretsEpoch) { mutableStateOf<String?>(null) }
     val bounds = remember(session.secretsEpoch) { mutableStateMapOf<String, Rect>() }
+    val clipboard = remember(session.secretsEpoch) { FileClipboard() }
+    // Open device storage on first entry instead of an empty "pick a place" screen.
+    val spaces = session.files.spaces
+    var autoOpened by remember(session.secretsEpoch) { mutableStateOf(false) }
+    LaunchedEffect(spaces, autoOpened) {
+        if (autoOpened || session.files.trail.isNotEmpty()) return@LaunchedEffect
+        val device = spaces.firstOrNull { it.detachable && !it.cloud && !it.androidTree } ?: return@LaunchedEffect
+        autoOpened = true
+        session.openSpace(device)
+    }
     val chooseFolder = tr("Сначала откройте доступную для записи папку в другой панели.", "First open a writable folder in the other pane.")
     fun prepareCopy(sourceTab: String, item: FileItem) {
         val now = session.fileWorkspace
@@ -57,35 +67,13 @@ fun FileWorkspaceScreen(session: AppSession, defaultView: FileView, onOpenFile: 
     }, cancel = { dragged = null }, copyToOtherPane = { item -> prepareCopy(sourceTab, item) })
     val activeIndex = workspace.tabs.indexOfFirst { it.id == workspace.active }
     Column(Modifier.fillMaxSize()) {
-        LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(horizontal = 12.dp)) {
+        if (workspace.tabs.size > 1) LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(horizontal = 12.dp)) {
             items(workspace.tabs, key = { it.id }) { tab ->
                 val title = tab.files.trail.lastOrNull()?.name ?: tr("Места", "Places")
-                FilterChip(selected = workspace.active == tab.id, onClick = { session.activateFileTab(tab.id) }, label = {
-                    Text(displayName(title) + if (workspace.right != null) when (tab.id) {
-                        workspace.left -> tr(" · слева", " · left")
-                        workspace.right -> tr(" · справа", " · right")
-                        else -> ""
-                    } else "", maxLines = 1)
-                })
-            }
-        }
-        FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(enabled = workspace.tabs.size < MAX_FILE_TABS, onClick = { session.newFileTab() }) { Text(tr("Новая вкладка", "New tab")) }
-            TextButton(enabled = workspace.tabs.size < MAX_FILE_TABS, onClick = { session.newFileTab(duplicate = true) }) { Text(tr("Дублировать", "Duplicate")) }
-            FilterChip(selected = workspace.right != null, onClick = { session.splitFilePanels(workspace.right == null) }, label = { Text(tr("Две панели", "Two panes")) })
-            Box {
-                TextButton(onClick = { menu = true }) { Text(tr("Вкладка…", "Tab…")) }
-                DropdownMenu(menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text(tr("В другую панель", "Move to other pane")) }, onClick = { menu = false; session.moveFileTabToOtherPane(workspace.active) })
-                    DropdownMenuItem(enabled = workspace.tabs.size > 1, text = { Text(tr("Закрыть вкладку", "Close tab")) }, onClick = { menu = false; session.closeFileTab(workspace.active) })
-                    DropdownMenuItem(enabled = workspace.tabs.size > 1, text = { Text(tr("Закрыть остальные", "Close others")) }, onClick = { menu = false; session.keepFileTabs(setOf(workspace.active)) })
-                    DropdownMenuItem(enabled = activeIndex > 0, text = { Text(tr("Закрыть слева", "Close tabs to the left")) }, onClick = {
-                        menu = false; session.keepFileTabs(workspace.tabs.drop(activeIndex).map { it.id }.toSet())
-                    })
-                    DropdownMenuItem(enabled = activeIndex < workspace.tabs.lastIndex, text = { Text(tr("Закрыть справа", "Close tabs to the right")) }, onClick = {
-                        menu = false; session.keepFileTabs(workspace.tabs.take(activeIndex + 1).map { it.id }.toSet())
-                    })
-                }
+                FilterChip(selected = workspace.active == tab.id, onClick = { session.activateFileTab(tab.id) },
+                    label = { Text(displayName(title), maxLines = 1) },
+                    trailingIcon = { IconButton(onClick = { session.closeFileTab(tab.id) }, modifier = Modifier.size(24.dp)
+                        .actionDescription(tr("Закрыть вкладку", "Close tab"))) { AppIcon(AppSymbol.Close, Modifier.size(16.dp)) } })
             }
         }
         feedback?.let { Text(it, Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.error) }
@@ -93,16 +81,14 @@ fun FileWorkspaceScreen(session: AppSession, defaultView: FileView, onOpenFile: 
         BoxWithConstraints(Modifier.weight(1f)) {
             val two = workspace.right != null && maxWidth >= 720.dp
             if (workspace.right != null && !two) Column(Modifier.fillMaxSize()) {
-                Text(tr("В узком окне показана активная панель. Переключайтесь вкладками; две панели появятся при расширении окна.",
-                    "A narrow window shows the active pane. Switch tabs; both panes appear when the window is wider."), Modifier.padding(horizontal = 12.dp))
-                Pane(session, workspace.active, defaultView, onOpenFile, pngImage, Modifier.weight(1f), onOpenPlaces = onOpenPlaces)
+                Pane(session, workspace.active, defaultView, onOpenFile, pngImage, Modifier.weight(1f), onOpenPlaces = onOpenPlaces, clipboard = clipboard)
             } else if (two) Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Pane(session, workspace.left, defaultView, onOpenFile, pngImage,
-                    Modifier.weight(1f).onGloballyPositioned { bounds[workspace.left] = it.boundsInRoot() }, dragHandler(workspace.left), onOpenPlaces)
+                    Modifier.weight(1f).onGloballyPositioned { bounds[workspace.left] = it.boundsInRoot() }, dragHandler(workspace.left), onOpenPlaces, clipboard)
                 val right = requireNotNull(workspace.right)
                 Pane(session, right, defaultView, onOpenFile, pngImage,
-                    Modifier.weight(1f).onGloballyPositioned { bounds[right] = it.boundsInRoot() }, dragHandler(right), onOpenPlaces)
-            } else Pane(session, workspace.active, defaultView, onOpenFile, pngImage, Modifier.fillMaxSize(), onOpenPlaces = onOpenPlaces)
+                    Modifier.weight(1f).onGloballyPositioned { bounds[right] = it.boundsInRoot() }, dragHandler(right), onOpenPlaces, clipboard)
+            } else Pane(session, workspace.active, defaultView, onOpenFile, pngImage, Modifier.fillMaxSize(), onOpenPlaces = onOpenPlaces, clipboard = clipboard)
         }
     }
     dropped?.let { request ->
@@ -127,7 +113,8 @@ fun FileWorkspaceScreen(session: AppSession, defaultView: FileView, onOpenFile: 
 
 @Composable
 private fun Pane(session: AppSession, tabId: String, defaultView: FileView, onOpenFile: (FileItem) -> Unit,
-    pngImage: @Composable (ByteArray, Modifier) -> Unit, modifier: Modifier, drag: FileDragHandler? = null, onOpenPlaces: (() -> Unit)? = null) {
+    pngImage: @Composable (ByteArray, Modifier) -> Unit, modifier: Modifier, drag: FileDragHandler? = null, onOpenPlaces: (() -> Unit)? = null,
+    clipboard: FileClipboard? = null) {
     val tab = session.fileWorkspace.tab(tabId) ?: return
     Surface(modifier.fillMaxHeight().onFocusChanged { if (it.hasFocus) session.activateFileTab(tabId) }.focusGroup()
         .pointerInput(tabId) {
@@ -135,10 +122,10 @@ private fun Pane(session: AppSession, tabId: String, defaultView: FileView, onOp
                 val event = awaitPointerEvent(PointerEventPass.Initial)
                 if (event.changes.any { it.pressed && !it.previousPressed }) session.activateFileTab(tabId)
             } }
-        }, border = BorderStroke(1.dp, if (session.fileWorkspace.active == tabId)
+        }, shape = MaterialTheme.shapes.large, border = if (session.fileWorkspace.right == null) null else BorderStroke(1.dp, if (session.fileWorkspace.active == tabId)
         MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)) {
         key(tabId, session.secretsEpoch) {
-            FilesScreen(session, tab.view ?: defaultView, {}, onOpenFile, pngImage, tabId, drag, onOpenPlaces)
+            FilesScreen(session, tab.view ?: defaultView, {}, onOpenFile, pngImage, tabId, drag, onOpenPlaces, clipboard)
         }
     }
 }
