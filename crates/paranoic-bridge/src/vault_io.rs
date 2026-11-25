@@ -371,7 +371,7 @@ impl NativeRuntime {
         target_path: Vec<String>, target_name: String, mkdir: &MakeDir<'_>, add: &AddFile<'_>) -> Result<u64> {
         let password = password.filter(|p| !p.is_empty()).map(zeroize::Zeroizing::new);
         enum Opened { Zip(ZipService<VaultSeek>), SevenZ(IsolatedSevenZip<VaultSeek>) }
-        let opened = match kind {
+        let mut opened = match kind {
             ARCHIVE_ZIP => Opened::Zip(ZipService::open(source, ArchiveLimits::default(), || Ok(()))?),
             ARCHIVE_7Z => Opened::SevenZ(self.vault_sevenz(source, password.clone())?),
             _ => return Err(BridgeError::Invalid),
@@ -379,6 +379,8 @@ impl NativeRuntime {
         let entries: Vec<ArchiveEntry> = match &opened { Opened::Zip(z) => z.entries().to_vec(), Opened::SevenZ(z) => z.entries().to_vec() };
         // Password problems surface before the new folder is made.
         if paranoic_documents::any_encrypted(&entries) && password.is_none() { return Err(BridgeError::PasswordRequired); }
+        // ...including a wrong one: checked against the archive itself (audit 24).
+        if let Opened::Zip(zip) = &mut opened { zip.check_password(password.as_ref())?; }
         mkdir(&target_path, &target_name)?;
         let mut root = target_path; root.push(target_name);
         let made = std::cell::RefCell::new(std::collections::BTreeSet::new());

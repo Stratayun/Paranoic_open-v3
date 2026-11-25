@@ -651,6 +651,10 @@ impl NotesKeyHost for RegenKey {
     let listed = rt.vault_archive_list(handle.clone(), vec![], "pack.zip".into(), ARCHIVE_ZIP, None).unwrap();
     assert!(listed.iter().any(|e| e.path == "src/inner/b.txt" && e.encrypted));
     assert!(matches!(rt.vault_archive_extract(handle.clone(), vec![], "pack.zip".into(), ARCHIVE_ZIP, None, vec![], "out".into()), Err(BridgeError::PasswordRequired)));
+    // Audit 24: a wrong password changes nothing, and the same name is free for the retry.
+    assert!(matches!(rt.vault_archive_extract(handle.clone(), vec![], "pack.zip".into(), ARCHIVE_ZIP, Some("wrong password!!".into()), vec![], "out".into()),
+        Err(BridgeError::WrongPassword)));
+    assert!(!rt.vault_list(handle.clone(), vec![]).unwrap().entries.iter().any(|e| e.name == "out"), "wrong password left a folder in the vault");
     assert_eq!(rt.vault_archive_extract(handle.clone(), vec![], "pack.zip".into(), ARCHIVE_ZIP, Some("zip password long".into()), vec![], "out".into()).unwrap(), 2);
     let inner = rt.vault_text_open(handle.clone(), vec!["out".into(), "src".into(), "inner".into()], "b.txt".into()).unwrap();
     assert_eq!(inner.text, "deeper secret");

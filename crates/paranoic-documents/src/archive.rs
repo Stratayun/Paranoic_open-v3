@@ -70,21 +70,39 @@ impl<R: Read + Seek> ZipService<R> {
     }
     pub fn entries(&self) -> &[ArchiveEntry] { &self.entries }
 
+    /// Password problems, found before the caller changes anything (audit 24):
+    /// missing, or wrong. The smallest encrypted file is decrypted to its end,
+    /// so the CRC/HMAC confirms the password — the one-byte ZipCrypto check
+    /// value alone passes 1 wrong password in 256.
+    pub fn check_password(&mut self, password: Option<&Zeroizing<String>>) -> Result<()> {
+        if password.is_some_and(|p| p.len() > 4096) { return Err(invalid()); }
+        let Some(first) = self.entries.iter().enumerate().filter(|(_, e)| e.encrypted).min_by_key(|(_, e)| e.bytes).map(|(i, _)| i)
+            else { return Ok(()) };
+        let secret = password.ok_or_else(password_required)?;
+        let mut input = match self.archive.by_index_decrypt(first, secret.as_bytes()) {
+            Ok(input) => input,
+            Err(zip::result::ZipError::InvalidPassword) => return Err(wrong_password()),
+            Err(error) => return Err(zip_error(error)),
+        };
+        let mut buffer = Zeroizing::new(vec![0u8; 65536]);
+        let mut total = 0u64;
+        loop {
+            let n = input.read(&mut buffer).map_err(|_| wrong_password())?;
+            if n == 0 { break; }
+            total += n as u64;
+            if total > self.entries[first].bytes { return Err(invalid()); }
+        }
+        if total != self.entries[first].bytes { return Err(invalid()); }
+        Ok(())
+    }
+
     /// Plan 4.7: every file entry in order, as a stream of exactly its
     /// declared size (the CRC/authentication is checked at its end). Nothing
     /// is written here — the caller encrypts straight into a vault. Password
     /// problems are reported before the first entry, as for extraction.
     pub fn for_each_file(&mut self, password: Option<Zeroizing<String>>,
         mut f: impl FnMut(&ArchiveEntry, &mut dyn Read) -> Result<()>) -> Result<()> {
-        if password.as_ref().is_some_and(|p| p.len() > 4096) { return Err(invalid()); }
-        if let Some(first) = self.entries.iter().position(|e| e.encrypted) {
-            let secret = password.as_ref().ok_or_else(password_required)?;
-            match self.archive.by_index_decrypt(first, secret.as_bytes()) {
-                Ok(_) => {}
-                Err(zip::result::ZipError::InvalidPassword) => return Err(wrong_password()),
-                Err(error) => return Err(zip_error(error)),
-            }
-        }
+        self.check_password(password.as_ref())?;
         let entries = self.entries.clone();
         for (index, entry) in entries.iter().enumerate() {
             if entry.directory { continue; }
@@ -92,6 +110,12 @@ impl<R: Read + Seek> ZipService<R> {
                 (Some(secret), true) => self.archive.by_index_decrypt(index, secret.as_bytes()).map_err(zip_error)?,
                 _ => self.archive.by_index(index).map_err(zip_error)?,
             };
+            // An empty entry is checked (CRC/HMAC at end of stream) before the
+            // callback can publish it (audit 6).
+            if entry.bytes == 0 {
+                let mut rest = [0u8; 1];
+                if input.read(&mut rest).map_err(|_| invalid())? != 0 { return Err(invalid()); }
+            }
             let mut exact = ExactRead { inner: &mut input, left: entry.bytes };
             f(entry, &mut exact)?;
             // Read to the end: the codec checks the CRC there; nothing may follow.
@@ -111,17 +135,7 @@ impl<R: Read + Seek> ZipService<R> {
         password: Option<Zeroizing<String>>, mut check: impl FnMut(u64) -> Result<()>,
         record: &mut crate::extraction::Recorder) -> Result<u64> {
         if target.is_root() || storage.domain() != StorageDomain::Files || !storage.capabilities().write { return Err(invalid()); }
-        if password.as_ref().is_some_and(|p| p.len() > 4096) { return Err(invalid()); }
-        // Password problems are found before the first mutation: missing, or
-        // rejected by the first encrypted entry's check value.
-        if let Some(first) = self.entries.iter().position(|e| e.encrypted) {
-            let secret = password.as_ref().ok_or_else(password_required)?;
-            match self.archive.by_index_decrypt(first, secret.as_bytes()) {
-                Ok(_) => {}
-                Err(zip::result::ZipError::InvalidPassword) => return Err(wrong_password()),
-                Err(error) => return Err(zip_error(error)),
-            }
-        }
+        self.check_password(password.as_ref())?;
         // Resolve every final path before first mutation.
         let paths = self.entries.iter().map(|e| ResourcePath::parse(format!("{}/{}", target.as_str(), e.path.as_str())))
             .collect::<Result<Vec<_>>>()?;
