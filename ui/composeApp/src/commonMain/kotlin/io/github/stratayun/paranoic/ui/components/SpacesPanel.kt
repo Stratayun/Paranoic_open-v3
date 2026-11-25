@@ -12,7 +12,6 @@ import io.github.stratayun.paranoic.bridge.Space
 import io.github.stratayun.paranoic.ui.state.*
 
 /** Places are navigation entries. Hiding one does not revoke its grant or delete files. */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, busy: Boolean, onConnect: () -> Unit,
     onOpen: (Space) -> Unit, onDetach: (Space) -> Unit, modifier: Modifier = Modifier,
@@ -29,52 +28,73 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
     fun title(space: Space) = catalog.title(space.id, if (appPrivate(space)) privateTitle else space.name)
     val hidden = spaces.filter { catalog.snapshot.find(it.id)?.hidden == true }
     val visible = spaces.filter { catalog.snapshot.find(it.id)?.hidden != true }
-    Column(modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(tr("Места", "Places"), Modifier.sectionHeading(), style = MaterialTheme.typography.titleMedium)
+    val scheme = MaterialTheme.colorScheme
+    fun symbol(space: Space) = when {
+        appPrivate(space) -> AppSymbol.Vault
+        space.cloud -> AppSymbol.Cloud
+        space.androidTree -> AppSymbol.Folder
+        else -> AppSymbol.Phone
+    }
+    fun kind(space: Space) = when {
+        appPrivate(space) -> tr("На этом устройстве · данные Paranoic", "On this device · Paranoic data")
+        space.cloud -> tr("Облако или сервер", "Cloud or server")
+        space.androidTree -> tr("Папка через системный доступ", "Folder with system access")
+        else -> tr("Память устройства", "Device storage")
+    } + if (space.writable) "" else tr(" · только чтение", " · read-only")
+    Column(modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        SectionLabel(tr("Места", "Places"))
         if (catalog.busy) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
             Text(tr("Обновляем список мест…", "Updating places…"))
         }
         if (catalog.failed) {
             Text(tr("Не удалось прочитать или сохранить названия и видимость мест. Изменения приостановлены.",
-                "Could not read or save place names and visibility. Changes are paused."), color = MaterialTheme.colorScheme.error)
+                "Could not read or save place names and visibility. Changes are paused."), color = scheme.error)
             TextButton(enabled = !catalog.busy, onClick = catalog::load) { Text(tr("Перечитать", "Reload")) }
         }
         catalog.removedTitle?.let { removed ->
-            Text(tr("Убрано из меню: ", "Hidden from menu: ") + displayName(removed), Modifier.announceChanges())
-            TextButton(enabled = editable, onClick = catalog::undo) { Text(tr("Отменить", "Undo")) }
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text(tr("Убрано из меню: ", "Hidden from menu: ") + displayName(removed), Modifier.weight(1f).announceChanges())
+                TextButton(enabled = editable, onClick = catalog::undo) { Text(tr("Отменить", "Undo")) }
+            }
         }
         if (visible.isEmpty()) Text(if (hidden.isEmpty())
             tr("Добавьте папку, чтобы начать работу с файлами.", "Add a folder to start browsing files.")
-            else tr("Все подключённые места скрыты из меню.", "All connected places are hidden from the menu."))
-        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(visible, key = { it.id }) { space ->
-                OutlinedCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        TextButton(onClick = { onOpen(space.copy(name = title(space))) }, enabled = connected && !busy, modifier = Modifier.fillMaxWidth()) {
-                            Text(displayName(title(space)), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        }
-                        Text(when {
-                            appPrivate(space) -> tr("На этом устройстве · данные Paranoic", "On this device · Paranoic data")
-                            space.cloud -> tr("Облако или сервер", "Cloud or server")
-                            space.androidTree -> tr("Папка через системный доступ", "Folder with system access")
-                            else -> tr("Подключённая папка", "Connected folder")
-                        }, style = MaterialTheme.typography.bodySmall)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            TextButton(enabled = editable, onClick = { renaming = space; name = title(space) }) { Text(tr("Название", "Name")) }
-                            TextButton(enabled = editable, onClick = { catalog.hide(space.id, title(space)) }) { Text(tr("Убрать", "Hide")) }
-                            TextButton(onClick = { info = space }) { Text(tr("Сведения", "Details")) }
-                            if (space.detachable) TextButton(enabled = connected && !busy, onClick = { confirm = space }) {
-                                Text(tr("Отозвать доступ", "Revoke access"))
-                            }
+            else tr("Все подключённые места скрыты из меню.", "All connected places are hidden from the menu."),
+            Modifier.padding(horizontal = 12.dp), color = scheme.onSurfaceVariant)
+        GroupedList(visible) { space, position ->
+            val index = visible.indexOf(space)
+            var menu by remember(space.id) { mutableStateOf(false) }
+            GroupedRow(displayName(title(space)), position, subtitle = kind(space), enabled = connected && !busy,
+                leading = { ShapedIcon(symbol(space), ExpressiveShapes.gallery[index % ExpressiveShapes.gallery.size],
+                    scheme.secondaryContainer, scheme.onSecondaryContainer) },
+                trailing = {
+                    Box {
+                        IconButton(onClick = { menu = true },
+                            modifier = Modifier.actionDescription(tr("Действия: ", "Actions: ") + displayName(title(space)))) { AppIcon(AppSymbol.More) }
+                        DropdownMenu(menu, { menu = false }) {
+                            DropdownMenuItem(text = { Text(tr("Переименовать в меню", "Rename in menu")) }, enabled = editable,
+                                leadingIcon = { AppIcon(AppSymbol.Edit) }, onClick = { menu = false; renaming = space; name = title(space) })
+                            DropdownMenuItem(text = { Text(tr("Скрыть из меню", "Hide from menu")) }, enabled = editable,
+                                leadingIcon = { AppIcon(AppSymbol.Close) }, onClick = { menu = false; catalog.hide(space.id, title(space)) })
+                            DropdownMenuItem(text = { Text(tr("Сведения", "Details")) },
+                                leadingIcon = { AppIcon(AppSymbol.Info) }, onClick = { menu = false; info = space })
+                            if (space.detachable) DropdownMenuItem(text = { Text(tr("Отозвать доступ", "Revoke access"), color = scheme.error) },
+                                enabled = connected && !busy, leadingIcon = { AppIcon(AppSymbol.Trash) }, onClick = { menu = false; confirm = space })
                         }
                     }
-                }
-            }
+                },
+                onClick = { onOpen(space.copy(name = title(space))) })
         }
-        TextButton(onClick = onConnect, enabled = connected && !busy) { Text(tr("Добавить папку", "Add folder")) }
-        if (onConnectServer != null) TextButton(onClick = { serverDialog = true }, enabled = connected && !busy) {
-            Text(tr("Подключить сервер", "Connect server"))
+        SectionLabel(tr("Подключить", "Connect"))
+        val connectRows = buildList {
+            add(Triple(tr("Добавить папку", "Add folder"), AppSymbol.Add, onConnect))
+            if (onConnectServer != null) add(Triple(tr("Сервер WebDAV", "WebDAV server"), AppSymbol.Server, { serverDialog = true }))
+        }
+        GroupedList(connectRows) { (label, icon, action), position ->
+            GroupedRow(label, position, enabled = connected && !busy,
+                leading = { ShapedIcon(icon, ExpressiveShapes.Circle, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 40.dp) },
+                onClick = action)
         }
         if (hidden.isNotEmpty()) {
             TextButton(onClick = { showHidden = !showHidden }) {

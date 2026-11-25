@@ -15,7 +15,7 @@ class AppearanceCompatibilityTest {
     @Test fun futureOrCorruptValuesFallBackIndependently() {
         val saved = mapOf("theme" to "future-pack", "brightness" to "LIGHT", "language" to "en", "view" to "grid")
         val settings = AppearanceCodec.decode(saved::get)
-        assertEquals(ThemePack.Paranoic, settings.theme)
+        assertEquals(ThemePack.Expressive, settings.theme)
         assertEquals(Brightness.Dark, settings.brightness)
         assertEquals(UiLanguage.English, settings.language)
         assertEquals(FileView.Grid, settings.fileView)

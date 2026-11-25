@@ -31,6 +31,7 @@ class NativeCoreGateway private constructor(
     private val grants: NativeGrantStore,
     private val releaseGrant: (NativeGrant) -> Unit,
     private val quickNotesKey: NotesKeyHost? = null,
+    private val spaceLabel: (reference: String) -> String? = { null },
 ) : CoreGateway, ArchiveGateway {
     @Volatile private var live = true
     override val connected get() = live
@@ -48,7 +49,8 @@ class NativeCoreGateway private constructor(
         suspend fun open(stateRoot: String, workspaceRoot: String, pdfiumLibrary: String, pdfWorker: String,
             documents: AndroidDocuments, store: NativeGrantStore, sealer: RecordSealer,
             releaseGrant: (NativeGrant) -> Unit = {}, notesKey: NotesKeyHost? = null, notesQuickKey: NotesKeyHost? = null,
-            documentWorkers: DocumentWorkers? = null): NativeCoreGateway {
+            documentWorkers: DocumentWorkers? = null,
+            spaceLabel: (reference: String) -> String? = { null }): NativeCoreGateway {
             var acquired: NativeRuntime? = null
             try {
                 return withContext(Dispatchers.IO) {
@@ -67,7 +69,7 @@ class NativeCoreGateway private constructor(
                     catch (error: Exception) { throw StartupException(StartupFault.Core, error) }
                     try { runtime.notesConfigureQuick(notesQuickKey) }
                     catch (error: Exception) { throw StartupException(StartupFault.Core, error) }
-                    NativeCoreGateway(runtime, store, releaseGrant, notesQuickKey)
+                    NativeCoreGateway(runtime, store, releaseGrant, notesQuickKey, spaceLabel)
                 }
             } catch (cancelled: CancellationException) {
                 withContext(NonCancellable + Dispatchers.IO) {
@@ -91,6 +93,9 @@ class NativeCoreGateway private constructor(
     private fun NativeLocation.ui() = Location(storageId, path)
     private fun NativeSpace.ui(androidTree: Boolean = false, localContainer: Boolean = false, cloud: Boolean = false) =
         Space(id, name, root.ui(), writable, detachable, androidTree, localContainer, cloud)
+    /** Host label for a grant (e.g. "Внутренняя память" for /storage/emulated/0); the reference itself never reaches common UI. */
+    private fun Space.labelled(grant: NativeGrant?): Space =
+        grant?.takeUnless { it.androidTree }?.let { spaceLabel(it.reference) }?.let { copy(name = it) } ?: this
     /** Presentation hint mirrors local_only in the bridge; Rust still enforces it. Never expose grant references to common UI. */
     private fun NativeGrant.localContainer(): Boolean = if (androidTree)
         reference.startsWith("content://com.android.externalstorage.documents/") else !reference.startsWith("webdav:")
@@ -117,7 +122,7 @@ class NativeCoreGateway private constructor(
             val grant = saved[space.id]
             space.ui(androidTree = grant?.androidTree == true,
                 localContainer = !space.detachable || grant?.localContainer() == true,
-                cloud = grant?.reference?.startsWith("webdav:") == true)
+                cloud = grant?.reference?.startsWith("webdav:") == true).labelled(grant)
         }
     }
     override suspend fun attachFolder(folder: PickedFolder): CoreResult<Space> = attaching.withLock {
@@ -130,7 +135,7 @@ class NativeCoreGateway private constructor(
             // never assign a fresh UUID to the same grant on the next startup.
             val updated = saved.filterNot { it.id == grant.id } + grant
             grants.write(updated)
-            runtime.attach(grant).ui(androidTree = android, localContainer = grant.localContainer())
+            runtime.attach(grant).ui(androidTree = android, localContainer = grant.localContainer()).labelled(grant)
         }
     }
     /** Idempotent (У-17): 1. withdraw from Core (refused while jobs use it; nothing

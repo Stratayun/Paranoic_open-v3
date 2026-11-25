@@ -285,7 +285,8 @@ data class JobItem(
     val outcome: JobOutcome = JobOutcome.Unknown,
     val resultTarget: Location? = null,
 )
-enum class FolderProvider { AndroidTree, DesktopDirectory }
+/** AndroidVolume: shared storage root (internal memory, SD card) under "All files access"; not SAF. */
+enum class FolderProvider { AndroidTree, DesktopDirectory, AndroidVolume }
 /** An OS selection is only a grant reference, not a registered Core storage.
  * writable is an Android grant hint; null on desktop, where Rust must inspect ACLs.
  * Space.writable comes from the registered Core capabilities, never this hint.

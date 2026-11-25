@@ -175,6 +175,7 @@ private fun ThemeChoices(settings: AppearanceSettings, enabled: Boolean, onChang
                         onClick = { onChange(settings.copy(theme = pack)) })
                     .padding(LocalThemeTokens.current.itemPadding), verticalAlignment = Alignment.CenterVertically) {
                     Text(when (pack) {
+                        ThemePack.Expressive -> "Material Expressive"
                         ThemePack.Base -> tr("Базовая", "Base")
                         ThemePack.Mono -> tr("Монохромная", "Mono")
                         ThemePack.Paranoic -> "Paranoic"

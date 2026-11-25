@@ -32,6 +32,8 @@ kotlin {
             implementation(compose.foundation)
             implementation(compose.material3)
             implementation(compose.ui)
+            // Material Symbols (Apache-2.0) for AppIcon; R8 strips unused vectors on Android.
+            implementation(compose.materialIconsExtended)
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
         }
         commonTest.dependencies {

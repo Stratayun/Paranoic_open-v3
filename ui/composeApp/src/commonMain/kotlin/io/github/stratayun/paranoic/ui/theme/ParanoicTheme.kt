@@ -46,6 +46,7 @@ fun usesDarkPalette(brightness: Brightness, systemDark: Boolean): Boolean = when
 
 fun tokensFor(pack: ThemePack, density: ContentDensity): ThemeTokens {
     val base = when (pack) {
+        ThemePack.Expressive -> ThemeTokens(pagePadding = 16.dp, itemPadding = 16.dp, sectionGap = 20.dp, corner = 28.dp, iconStroke = 2.dp)
         ThemePack.Base -> ThemeTokens()
         ThemePack.Mono -> ThemeTokens(pagePadding = 28.dp, sectionGap = 32.dp, corner = 2.dp, iconStroke = 1.5.dp)
         ThemePack.Paranoic -> ThemeTokens(pagePadding = 18.dp, itemPadding = 16.dp, sectionGap = 18.dp, corner = 20.dp, iconStroke = 1.65.dp)
@@ -54,7 +55,10 @@ fun tokensFor(pack: ThemePack, density: ContentDensity): ThemeTokens {
 }
 
 fun paletteFor(pack: ThemePack, dark: Boolean): ColorScheme {
+    // Complete M3 tonal scheme (periwinkle primary, lilac tertiary); no derived overrides.
+    if (pack == ThemePack.Expressive) return expressiveScheme(dark)
     val palette = when (pack) {
+    ThemePack.Expressive -> error("handled above")
     ThemePack.Base -> if (dark) darkColorScheme(
         primary = Color(0xFFACD2BE), onPrimary = Color(0xFF14382A),
         primaryContainer = Color(0xFF294E3E), onPrimaryContainer = Color(0xFFC8EFDA),
@@ -122,6 +126,32 @@ fun paletteFor(pack: ThemePack, dark: Boolean): ColorScheme {
     )
 }
 
+private fun expressiveScheme(dark: Boolean): ColorScheme = if (dark) darkColorScheme(
+    primary = Color(0xFFB8C4FF), onPrimary = Color(0xFF1F2D61), primaryContainer = Color(0xFF374479), onPrimaryContainer = Color(0xFFDDE1FF),
+    secondary = Color(0xFFC3C5DD), onSecondary = Color(0xFF2C2F42), secondaryContainer = Color(0xFF3E4257), onSecondaryContainer = Color(0xFFDFE1F9),
+    tertiary = Color(0xFFE5BAD8), onTertiary = Color(0xFF44263E), tertiaryContainer = Color(0xFFE9DDFF), onTertiaryContainer = Color(0xFF3B2A56),
+    error = Color(0xFFFFB4AB), onError = Color(0xFF690005), errorContainer = Color(0xFF93000A), onErrorContainer = Color(0xFFFFDAD6),
+    background = Color(0xFF121318), onBackground = Color(0xFFE3E1E9), surface = Color(0xFF121318), onSurface = Color(0xFFE3E1E9),
+    surfaceVariant = Color(0xFF45464F), onSurfaceVariant = Color(0xFFC6C5D0), surfaceTint = Color(0xFFB8C4FF),
+    inverseSurface = Color(0xFFE3E1E9), inverseOnSurface = Color(0xFF2F3036), inversePrimary = Color(0xFF4F5C92),
+    outline = Color(0xFF90909A), outlineVariant = Color(0xFF45464F), scrim = Color.Black,
+    surfaceDim = Color(0xFF121318), surfaceBright = Color(0xFF38393F), surfaceContainerLowest = Color(0xFF0D0E13),
+    surfaceContainerLow = Color(0xFF1A1B21), surfaceContainer = Color(0xFF1E1F25), surfaceContainerHigh = Color(0xFF292A2F),
+    surfaceContainerHighest = Color(0xFF34343A),
+) else lightColorScheme(
+    primary = Color(0xFF4F5C92), onPrimary = Color.White, primaryContainer = Color(0xFFDDE1FF), onPrimaryContainer = Color(0xFF374479),
+    secondary = Color(0xFF5A5D72), onSecondary = Color.White, secondaryContainer = Color(0xFFDFE1F9), onSecondaryContainer = Color(0xFF424659),
+    tertiary = Color(0xFF75546F), onTertiary = Color.White, tertiaryContainer = Color(0xFFE9DDFF), onTertiaryContainer = Color(0xFF3B2A56),
+    error = Color(0xFFBA1A1A), onError = Color.White, errorContainer = Color(0xFFFFDAD6), onErrorContainer = Color(0xFF93000A),
+    background = Color(0xFFFBF8FF), onBackground = Color(0xFF1B1B21), surface = Color(0xFFFBF8FF), onSurface = Color(0xFF1B1B21),
+    surfaceVariant = Color(0xFFE2E1EC), onSurfaceVariant = Color(0xFF45464F), surfaceTint = Color(0xFF4F5C92),
+    inverseSurface = Color(0xFF303036), inverseOnSurface = Color(0xFFF2EFF7), inversePrimary = Color(0xFFB8C4FF),
+    outline = Color(0xFF767680), outlineVariant = Color(0xFFC6C5D0), scrim = Color.Black,
+    surfaceDim = Color(0xFFDBD9E0), surfaceBright = Color(0xFFFBF8FF), surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color(0xFFF5F2FA), surfaceContainer = Color(0xFFEFEDF4), surfaceContainerHigh = Color(0xFFE9E7EF),
+    surfaceContainerHighest = Color(0xFFE3E1E9),
+)
+
 @Composable
 fun ParanoicTheme(settings: AppearanceSettings, content: @Composable () -> Unit) {
     val dark = usesDarkPalette(settings.brightness, isSystemInDarkTheme())
@@ -129,13 +159,14 @@ fun ParanoicTheme(settings: AppearanceSettings, content: @Composable () -> Unit)
     if (settings.brightness == Brightness.Amoled) {
         colors = colors.copy(background = Color.Black, surface = Color.Black, surfaceContainer = Color.Black)
     }
+    val expressive = settings.theme == ThemePack.Expressive
     val tokens = tokensFor(settings.theme, settings.density)
     val font = if (settings.font == FontChoice.System) FontFamily.Default else when (settings.theme) {
-        ThemePack.Base -> FontFamily.SansSerif
+        ThemePack.Expressive, ThemePack.Base -> FontFamily.SansSerif
         ThemePack.Mono -> FontFamily.Monospace
         ThemePack.Paranoic -> FontFamily.SansSerif
     }
-    val weight = if (settings.theme == ThemePack.Mono) FontWeight.Normal else FontWeight.SemiBold
+    val weight = when (settings.theme) { ThemePack.Mono -> FontWeight.Normal; ThemePack.Expressive -> FontWeight.Medium; else -> FontWeight.SemiBold }
     val tracking = if (settings.theme == ThemePack.Mono) 0.5.sp else 0.sp
     val base = Typography()
     val typography = base.copy(
@@ -156,7 +187,10 @@ fun ParanoicTheme(settings: AppearanceSettings, content: @Composable () -> Unit)
         MaterialTheme(
             colorScheme = colors,
             typography = typography,
-            shapes = Shapes(
+            shapes = if (expressive) Shapes(
+                extraSmall = RoundedCornerShape(8.dp), small = RoundedCornerShape(12.dp), medium = RoundedCornerShape(20.dp),
+                large = RoundedCornerShape(28.dp), extraLarge = RoundedCornerShape(32.dp),
+            ) else Shapes(
                 small = RoundedCornerShape(tokens.corner / 2),
                 medium = RoundedCornerShape(tokens.corner),
                 large = RoundedCornerShape(tokens.corner),
