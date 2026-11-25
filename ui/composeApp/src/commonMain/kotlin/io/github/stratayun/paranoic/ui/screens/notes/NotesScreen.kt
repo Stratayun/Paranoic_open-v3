@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import io.github.stratayun.paranoic.ui.components.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -195,14 +196,13 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
             }
             else -> { Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 LaunchedEffect(current.unlocked) { if (!notesLoaded) act { loadNotes() } }
-                Text(tr("Сейф", "Safe"), Modifier.sectionHeading(), style = MaterialTheme.typography.headlineSmall)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = !personalFiles, enabled = !busy, onClick = { personalFiles = false }, label = { Text(tr("Заметки", "Notes")) })
-                    FilterChip(selected = personalFiles, enabled = !busy && notesLoaded && !saveUncertain && session.protectedWrite.phase == ProtectedWritePhase.Ready,
-                        onClick = { act { if (persistNotes()) { preview = null; personalFiles = true } } }, label = { Text(tr("Личная папка", "Personal folder")) })
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    SegmentedButton(selected = !personalFiles, enabled = !busy, onClick = { personalFiles = false },
+                        shape = SegmentedButtonDefaults.itemShape(0, 2), icon = { AppIcon(AppSymbol.Notes) }) { Text(tr("Заметки", "Notes")) }
+                    SegmentedButton(selected = personalFiles, enabled = !busy && notesLoaded && !saveUncertain && session.protectedWrite.phase == ProtectedWritePhase.Ready,
+                        onClick = { act { if (persistNotes()) { preview = null; personalFiles = true } } },
+                        shape = SegmentedButtonDefaults.itemShape(1, 2), icon = { AppIcon(AppSymbol.Folder) }) { Text(tr("Личная папка", "Personal folder")) }
                 }
-                Text(tr("Блокировка очищает открытые ключи всего приложения; файлы и заметки сохраняются.",
-                    "Locking clears open keys throughout the app; files and notes are kept."), style = MaterialTheme.typography.bodySmall)
                 if (personalFiles) PersonalFilesPane(session, enabled = notesLoaded && !saveUncertain, incoming = incoming,
                     secureImage = attachmentImage, mediaPlayer = vaultMediaPlayer, onBusy = { value ->
                     personalBusy = value; exitGuard?.busy = notesBusy || value
@@ -284,11 +284,19 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
                 }
                 }
                 }
-                HorizontalDivider()
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                run {
                     val ready = !busy && !saveUncertain && notesLoaded && session.protectedWrite.phase == ProtectedWritePhase.Ready
-                    OutlinedButton(enabled = ready, onClick = { importing = true }) { Text(tr("Импорт .txt / .md…", "Import .txt / .md…")) }
-                    OutlinedButton(enabled = ready, onClick = { exporting = true }) { Text(tr("Экспорт открытых копий…", "Export plaintext copies…")) }
+                    val scheme = MaterialTheme.colorScheme
+                    SectionLabel(tr("Обмен", "Exchange"))
+                    GroupedRow(tr("Импорт .txt / .md", "Import .txt / .md"), GroupPosition.First, enabled = ready,
+                        subtitle = tr("Добавить текстовые файлы как заметки", "Add text files as notes"),
+                        leading = { ShapedIcon(AppSymbol.Download, MaterialTheme.shapes.medium, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 40.dp) },
+                        onClick = { importing = true })
+                    Spacer(Modifier.height(2.dp))
+                    GroupedRow(tr("Экспорт открытых копий", "Export plaintext copies"), GroupPosition.Last, enabled = ready,
+                        subtitle = tr("Копии будут НЕ зашифрованы", "Copies are NOT encrypted"),
+                        leading = { ShapedIcon(AppSymbol.Up, MaterialTheme.shapes.medium, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 40.dp) },
+                        onClick = { exporting = true })
                 }
                 // The unlocked pane scrolls as one unit; nested lists have finite height.
                 Column(Modifier.fillMaxWidth(),
@@ -484,80 +492,82 @@ private fun ColumnScope.Notebook(tabs: List<NoteTab>, dirty: Boolean, busy: Bool
     var deleteTab by remember { mutableStateOf(false) }
     val index = selected.coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
     val newTabTitle = tr("Вкладка", "Tab")
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(enabled = !editingBlocked && dirty, onClick = onSave) { Text(tr("Сохранить", "Save")) }
-        OutlinedButton(enabled = !busy, onClick = onLock) { Text(tr("Заблокировать", "Lock")) }
-        if (dirty) Text(tr("Есть несохранённые изменения — при блокировке они пропадут.", "Unsaved changes are lost on lock."),
-            style = MaterialTheme.typography.bodySmall)
+    val scheme = MaterialTheme.colorScheme
+    var tabMenu by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(if (dirty) tr("Есть несохранённые изменения", "Unsaved changes") else tr("Всё сохранено", "All saved"),
+            Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = if (dirty) scheme.tertiary else scheme.onSurfaceVariant)
+        FilledTonalButton(enabled = !editingBlocked && dirty, onClick = onSave) { Text(tr("Сохранить", "Save")) }
+        IconButton(enabled = !busy, onClick = onLock, modifier = Modifier.actionDescription(
+            tr("Заблокировать (несохранённое пропадёт)", "Lock (unsaved changes are lost)"))) { AppIcon(AppSymbol.Vault) }
     }
-    if (tabs.isNotEmpty()) {
-        // No SubcomposeLayout/intrinsic tab measurements inside the scrolling notebook.
-        // Stable keys also keep a removed tab from lending its UI state to its neighbour.
-        LazyRow(Modifier.fillMaxWidth().heightIn(max = 96.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            itemsIndexed(tabs, key = { _, tab -> tab.id }) { i, tab ->
-                FilterChip(selected = i == index, onClick = { selected = i; editing = null },
-                    label = { Text(displayName(tab.title), maxLines = 2, overflow = TextOverflow.Ellipsis) })
+    LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        itemsIndexed(tabs, key = { _, tab -> tab.id }) { i, tab ->
+            FilterChip(selected = i == index, onClick = { selected = i; editing = null },
+                label = { Text(displayName(tab.title), maxLines = 1, overflow = TextOverflow.Ellipsis) })
+        }
+        item(key = "+") {
+            AssistChip(enabled = !editingBlocked, onClick = {
+                onChange(tabs + NoteTab(randomRequestId(), "$newTabTitle ${tabs.size + 1}", emptyList())); selected = tabs.size; editing = null
+            }, label = { Text(tr("Вкладка", "Tab")) }, leadingIcon = { AppIcon(AppSymbol.Add, Modifier.size(18.dp)) })
+        }
+        if (tabs.isNotEmpty()) item(key = "menu") { Box {
+            IconButton(onClick = { tabMenu = true }, modifier = Modifier.actionDescription(tr("Действия с вкладкой", "Tab actions"))) { AppIcon(AppSymbol.More) }
+            DropdownMenu(tabMenu, { tabMenu = false }) {
+                DropdownMenuItem(text = { Text(tr("Переименовать вкладку", "Rename tab")) }, leadingIcon = { AppIcon(AppSymbol.Edit) },
+                    enabled = !editingBlocked, onClick = { tabMenu = false; renaming = true })
+                DropdownMenuItem(text = { Text(tr("Удалить вкладку", "Delete tab"), color = scheme.error) }, leadingIcon = { AppIcon(AppSymbol.Trash) },
+                    enabled = !editingBlocked, onClick = { tabMenu = false; deleteTab = true })
             }
-        }
-    }
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        TextButton(enabled = !editingBlocked, onClick = {
-            onChange(tabs + NoteTab(randomRequestId(), "$newTabTitle ${tabs.size + 1}", emptyList())); selected = tabs.size; editing = null
-        }) { Text(tr("+ Вкладка", "+ Tab")) }
-        if (tabs.isNotEmpty()) {
-            TextButton(enabled = !editingBlocked, onClick = { renaming = true }) { Text(tr("Переименовать", "Rename")) }
-            TextButton(enabled = !editingBlocked, onClick = { deleteTab = true }) { Text(tr("Удалить вкладку", "Delete tab")) }
-            TextButton(enabled = !editingBlocked, onClick = {
-                val note = Note(randomRequestId(), "", "", nowMs())
-                onChange(tabs.mapIndexed { i, t -> if (i == index) t.copy(notes = listOf(note) + t.notes) else t }); editing = note.id
-            }) { Text(tr("+ Заметка", "+ Note")) }
-        }
+        } }
     }
     val tab = tabs.getOrNull(index)
-    if (tab == null) { Text(tr("Создайте первую вкладку.", "Create the first tab.")); return }
+    if (tab == null) { Text(tr("Создайте первую вкладку кнопкой «+ Вкладка».", "Create the first tab with \"+ Tab\"."), color = scheme.onSurfaceVariant); return }
     val note = tab.notes.firstOrNull { it.id == editing }
     if (note != null) {
-        Column(Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         fun update(n: Note) = onChange(tabs.mapIndexed { i, t -> if (i == index) t.copy(notes = t.notes.map { if (it.id == n.id) n else it }) else t })
-        TextButton(onClick = { editing = null }) { Text(tr("← К списку", "← Back to list")) }
-        OutlinedTextField(note.title, { update(note.copy(title = it.take(256), modifiedMs = nowMs())) }, Modifier.fillMaxWidth(),
-            enabled = !editingBlocked, singleLine = true, label = { Text(tr("Заголовок", "Title")) })
-        OutlinedTextField(note.body, { update(note.copy(body = it, modifiedMs = nowMs())) }, Modifier.fillMaxWidth().heightIn(min = 160.dp, max = 320.dp),
-            enabled = !editingBlocked, label = { Text(tr("Текст", "Text")) })
-        Text(tr("Вложения (${note.attachments.size}/32)", "Attachments (${note.attachments.size}/32)"))
-        Text(attachmentLimitText(), style = MaterialTheme.typography.bodySmall)
-        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 160.dp)) {
-            items(note.attachments, key = { it.id }) { attachment ->
-                Column(Modifier.fillMaxWidth()) {
-                    Column {
-                        Text(displayName(attachment.name), maxLines = 2)
-                        Text(tr("${attachment.size} байт", "${attachment.size} bytes"), style = MaterialTheme.typography.bodySmall)
-                    }
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(enabled = !busy, modifier = Modifier.actionDescription(tr("Просмотр вложения: ", "View attachment: ") + displayName(attachment.name)),
-                        onClick = { onPreview(attachment) }) { Text(tr("Просмотр", "View")) }
-                    TextButton(enabled = !editingBlocked, modifier = Modifier.actionDescription(tr("Удалить вложение: ", "Remove attachment: ") + displayName(attachment.name)),
-                        onClick = { onRemoveAttachment(note.id, attachment.id) }) { Text(tr("Удалить", "Remove")) }
-                    }
-                }
-            }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { editing = null }, modifier = Modifier.actionDescription(tr("К списку", "Back to list"))) { AppIcon(AppSymbol.Back) }
+            Text(tr("Заметка", "Note"), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            IconButton(enabled = !editingBlocked, onClick = {
+                onChange(tabs.mapIndexed { i, t -> if (i == index) t.copy(notes = t.notes.filterNot { it.id == note.id }) else t }); editing = null
+            }, modifier = Modifier.actionDescription(tr("Удалить заметку", "Delete note"))) { AppIcon(AppSymbol.Trash) }
         }
-        TextButton(enabled = !editingBlocked && pickerAvailable && note.attachments.size < 32,
-            onClick = { onPick(note.id) }) { Text(tr("Добавить файл…", "Add file…")) }
-        TextButton(enabled = !editingBlocked, onClick = {
-            onChange(tabs.mapIndexed { i, t -> if (i == index) t.copy(notes = t.notes.filterNot { it.id == note.id }) else t }); editing = null
-        }) { Text(tr("Удалить заметку", "Delete note")) }
+        OutlinedTextField(note.title, { update(note.copy(title = it.take(256), modifiedMs = nowMs())) }, Modifier.fillMaxWidth(),
+            enabled = !editingBlocked, singleLine = true, textStyle = MaterialTheme.typography.titleLarge,
+            placeholder = { Text(tr("Заголовок", "Title")) }, shape = MaterialTheme.shapes.large)
+        OutlinedTextField(note.body, { update(note.copy(body = it, modifiedMs = nowMs())) }, Modifier.fillMaxWidth().heightIn(min = 220.dp, max = 420.dp),
+            enabled = !editingBlocked, placeholder = { Text(tr("Текст заметки", "Note text")) }, shape = MaterialTheme.shapes.large)
+        SectionLabel(tr("Вложения (${note.attachments.size}/32)", "Attachments (${note.attachments.size}/32)"))
+        note.attachments.forEachIndexed { i, attachment ->
+            GroupedRow(displayName(attachment.name), groupPosition(i, note.attachments.size),
+                subtitle = tr("${attachment.size} байт", "${attachment.size} bytes"), enabled = !busy,
+                leading = { ShapedIcon(AppSymbol.Document, MaterialTheme.shapes.medium, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 40.dp) },
+                trailing = { IconButton(enabled = !editingBlocked, onClick = { onRemoveAttachment(note.id, attachment.id) },
+                    modifier = Modifier.actionDescription(tr("Удалить вложение: ", "Remove attachment: ") + displayName(attachment.name))) { AppIcon(AppSymbol.Close) } },
+                onClick = { onPreview(attachment) })
+        }
+        Text(attachmentLimitText(), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+        OutlinedButton(enabled = !editingBlocked && pickerAvailable && note.attachments.size < 32, onClick = { onPick(note.id) }) {
+            AppIcon(AppSymbol.Add); Spacer(Modifier.width(8.dp)); Text(tr("Прикрепить файл", "Attach file"))
+        }
         }
     } else {
-        if (tab.notes.isEmpty()) Text(tr("Во вкладке пока нет заметок.", "No notes in this tab yet."))
-        LazyColumn(Modifier.heightIn(max = 360.dp).fillMaxWidth()) {
-            items(tab.notes, key = { it.id }) { n ->
-                Column(Modifier.fillMaxWidth().heightIn(min = 48.dp).keyboardFocusOutline().clickable(
-                    role = Role.Button, onClickLabel = tr("Открыть заметку", "Open note"), onClick = { editing = n.id }).padding(vertical = 8.dp)) {
-                    Text(displayName(n.title.ifBlank { tr("Без заголовка", "Untitled") }), style = MaterialTheme.typography.titleMedium)
-                    Text(displayName(n.body.lineSequence().firstOrNull().orEmpty().take(120)), style = MaterialTheme.typography.bodySmall)
-                }
-            }
+        Button(enabled = !editingBlocked, modifier = Modifier.fillMaxWidth().height(52.dp), onClick = {
+            val created = Note(randomRequestId(), "", "", nowMs())
+            onChange(tabs.mapIndexed { i, t -> if (i == index) t.copy(notes = listOf(created) + t.notes) else t }); editing = created.id
+        }) { AppIcon(AppSymbol.Edit); Spacer(Modifier.width(8.dp)); Text(tr("Новая заметка", "New note")) }
+        if (tab.notes.isEmpty()) Column(Modifier.fillMaxWidth().padding(vertical = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            ShapedIcon(AppSymbol.Notes, ExpressiveShapes.Cookie9, scheme.primaryContainer, scheme.onPrimaryContainer, size = 88.dp)
+            Text(tr("Во вкладке пока нет заметок", "No notes in this tab yet"), Modifier.padding(top = 12.dp), color = scheme.onSurfaceVariant)
+        }
+        tab.notes.forEachIndexed { i, n ->
+            GroupedRow(displayName(n.title.ifBlank { tr("Без заголовка", "Untitled") }), groupPosition(i, tab.notes.size),
+                Modifier.actionDescription(tr("Открыть заметку", "Open note")),
+                subtitle = (displayName(n.body.lineSequence().firstOrNull().orEmpty().take(120)) +
+                    if (n.attachments.isNotEmpty()) tr(" · вложений: ${n.attachments.size}", " · attachments: ${n.attachments.size}") else "").ifBlank { null },
+                onClick = { editing = n.id })
         }
     }
     if (renaming) {
