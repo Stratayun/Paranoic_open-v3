@@ -28,6 +28,7 @@ fn created() -> HostCreated { HostCreated { error: 2, name: String::new(), docum
 /// Test record key: XOR with a marker (stands in for Keystore / DPAPI).
 struct XorSealer;
 impl RecordSealer for XorSealer {
+    fn established(&self) -> bool { false }
     fn available(&self) -> bool { true }
     fn seal(&self, data: Vec<u8>) -> HostBytes { HostBytes { error: 0, data: [b"S1".to_vec(), data.iter().map(|b| b ^ 0x6b).collect()].concat() } }
     fn open(&self, data: Vec<u8>) -> HostBytes {

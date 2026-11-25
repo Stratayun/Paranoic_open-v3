@@ -145,6 +145,9 @@ pub trait RecordSealer: Send + Sync {
     fn available(&self) -> bool;
     fn seal(&self, data: Vec<u8>) -> HostBytes;
     fn open(&self, data: Vec<u8>) -> HostBytes;
+    /// The sealing key existed before this call (Android Keystore alias present).
+    /// Hosts without such a key store answer false.
+    fn established(&self) -> bool;
 }
 struct JournalKey(Arc<dyn RecordSealer>);
 impl paranoic_core::JournalSealer for JournalKey {
@@ -156,6 +159,7 @@ impl paranoic_core::JournalSealer for JournalKey {
         let plain = self.0.open(sealed.to_vec());
         android::status(plain.error)?; Ok(plain.data)
     }
+    fn established(&self) -> bool { self.0.established() }
 }
 
 #[derive(uniffi::Object)]

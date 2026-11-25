@@ -7,6 +7,7 @@ import io.github.stratayun.paranoic.nativecore.RecordSealer
 /** Windows: DPAPI (current user) seals Core journal records. Other desktop
  * systems report unavailable and keep an unsealed journal. */
 object DesktopRecordSealer : RecordSealer {
+            override fun established() = false
     private val windows = System.getProperty("os.name").startsWith("Windows")
     override fun available() = windows
     override fun seal(data: ByteArray): HostBytes = try {

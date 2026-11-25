@@ -27,6 +27,8 @@ class AndroidRecordSealer : RecordSealer {
         }.generateKey()
     }
     override fun available() = true
+    /** The Keystore key exists already: the journal was sealed before (audit 17). A file writer cannot fake this. */
+    override fun established() = try { KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.containsAlias(alias) } catch (_: Exception) { false }
     override fun seal(data: ByteArray): HostBytes = try {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())

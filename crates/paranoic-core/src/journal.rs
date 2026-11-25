@@ -15,6 +15,10 @@ const SCHEMA_VERSION: i32 = 2;
 pub trait JournalSealer: Send + Sync {
     fn seal(&self, plaintext: &[u8]) -> Result<Vec<u8>>;
     fn open(&self, sealed: &[u8]) -> Result<Vec<u8>>;
+    /// True when the sealing key existed before this open, in storage a file
+    /// writer cannot change (Android Keystore). Then the journal has been
+    /// sealed before, and plaintext without a seal marker is forged (audit 17).
+    fn established(&self) -> bool { false }
 }
 
 #[derive(Clone)]
@@ -131,6 +135,12 @@ impl Journal {
         let plain_count: i64 = connection.query_row("SELECT COUNT(*) FROM jobs WHERE typeof(record)='text'", [], |r| r.get(0)).map_err(CoreError::journal)?;
         if migrated && plain_count != 0 {
             return Err(CoreError::new(ErrorCode::Integrity, "unexpected plaintext record in a sealed journal"));
+        }
+        // The marker row itself can be deleted by whoever can write the file; the
+        // key's prior existence cannot. Plaintext then is not a legacy journal.
+        // An empty journal (state wiped) holds nothing forged and is accepted.
+        if !migrated && plain_count != 0 && self.codec.sealer.as_ref().is_some_and(|s| s.established()) {
+            return Err(CoreError::new(ErrorCode::Integrity, "journal seal marker missing while its key exists"));
         }
         if migrated { return Ok(()); }
         let plain: Vec<(i64, String)> = {

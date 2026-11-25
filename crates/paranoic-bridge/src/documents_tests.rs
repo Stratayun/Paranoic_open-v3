@@ -25,6 +25,7 @@ fn info() -> HostInfo { HostInfo { error: 2, kind: 0, bytes: 0, modified_ms: Non
 fn created() -> HostCreated { HostCreated { error: 2, name: String::new(), document: String::new() } }
 struct NoSealer;
 impl RecordSealer for NoSealer {
+    fn established(&self) -> bool { false }
     fn available(&self) -> bool { false }
     fn seal(&self, _: Vec<u8>) -> HostBytes { HostBytes { error: 2, data: vec![] } }
     fn open(&self, _: Vec<u8>) -> HostBytes { HostBytes { error: 2, data: vec![] } }

@@ -220,6 +220,36 @@ impl JournalSealer for TestSealer {
         Ok(body.iter().map(|b| b ^ 0x5a).collect())
     }
 }
+/// The same sealer whose key already exists (Android Keystore alias present).
+struct EstablishedSealer;
+impl JournalSealer for EstablishedSealer {
+    fn seal(&self, plaintext: &[u8]) -> Result<Vec<u8>> { TestSealer.seal(plaintext) }
+    fn open(&self, sealed: &[u8]) -> Result<Vec<u8>> { TestSealer.open(sealed) }
+    fn established(&self) -> bool { true }
+}
+
+/// Audit 17: with an established key, deleting the seal marker and planting
+/// plaintext is refused; a wiped (empty) journal still opens.
+#[test] fn established_key_refuses_plaintext_without_marker() -> TestResult {
+    let temp = Temp::new();
+    let files = local(temp.dir("files"));
+    let registry = || { let mut r = StorageRegistry::new(); r.register(files.clone()).unwrap(); r };
+    let core = Core::open_sealed(temp.0.join("state"), CoreConfig::default(), registry(), Some(Arc::new(EstablishedSealer)))?;
+    let done = run(&core, Operation::CreateDirectory { target: at(files.id(), "x") });
+    core.close()?;
+    let db = rusqlite::Connection::open(temp.0.join("state/operations.sqlite3"))?;
+    db.execute("DELETE FROM journal_meta", [])?;
+    db.execute("UPDATE jobs SET record='{}' WHERE id=?1", [done.id.0.to_string()])?;
+    drop(db);
+    let refused = Core::open_sealed(temp.0.join("state"), CoreConfig::default(), registry(), Some(Arc::new(EstablishedSealer)));
+    assert!(matches!(refused, Err(CoreError { code: ErrorCode::Integrity, .. })), "forged plaintext accepted: {:?}", refused.err());
+    let db = rusqlite::Connection::open(temp.0.join("state/operations.sqlite3"))?;
+    db.execute("DELETE FROM jobs", [])?;
+    drop(db);
+    let core = Core::open_sealed(temp.0.join("state"), CoreConfig::default(), registry(), Some(Arc::new(EstablishedSealer)))?;
+    core.close()?;
+    Ok(())
+}
 fn state_files_contain(dir: &std::path::Path, needle: &[u8]) -> bool {
     std::fs::read_dir(dir).unwrap().any(|e| {
         let bytes = std::fs::read(e.unwrap().path()).unwrap_or_default();

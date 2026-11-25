@@ -21,6 +21,7 @@ struct Host(Mutex<HostState>);
 /// Unsealed journal for synthetic contracts.
 struct NoSealer;
 impl RecordSealer for NoSealer {
+    fn established(&self) -> bool { false }
     fn available(&self) -> bool { false }
     fn seal(&self, _: Vec<u8>) -> HostBytes { HostBytes { error: 2, data: Vec::new() } }
     fn open(&self, _: Vec<u8>) -> HostBytes { HostBytes { error: 2, data: Vec::new() } }

@@ -32,6 +32,7 @@ class NativeFeaturesTest {
         }
         // Journal confidentiality is covered separately; no production alias here.
         val sealer = object : RecordSealer {
+            override fun established() = false
             override fun available() = false
             override fun seal(data: ByteArray) = HostBytes(2u, byteArrayOf())
             override fun open(data: ByteArray) = HostBytes(2u, byteArrayOf())
