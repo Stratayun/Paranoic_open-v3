@@ -1,13 +1,15 @@
-param([Parameter(Mandatory)][string]$Archive)
+param([Parameter(Mandatory)][string]$Archive, [switch]$UnicodePaths, [switch]$ConsoleDiagnostics)
 $ErrorActionPreference = 'Stop'
 $report = Join-Path $PWD 'startup-results'
 New-Item -ItemType Directory -Force $report | Out-Null
-$unpacked = Join-Path $env:RUNNER_TEMP 'paranoic-startup-check'
+$folder = if ($UnicodePaths) { 'Проверка portable с пробелами' } else { 'paranoic-startup-check' }
+$unpacked = Join-Path $env:RUNNER_TEMP $folder
 Expand-Archive -LiteralPath $Archive -DestinationPath $unpacked -Force
 $exe = Get-ChildItem $unpacked -Recurse -Filter Paranoic.exe | Select-Object -First 1
 if (!$exe) { throw 'Paranoic.exe missing from portable archive' }
 # Change only the subsystem field in this disposable copy. This gives the
 # existing jpackage launcher a console without rebuilding the application.
+if ($ConsoleDiagnostics) {
 $image = [IO.File]::ReadAllBytes($exe.FullName)
 $pe = [BitConverter]::ToInt32($image, 0x3c)
 if ([BitConverter]::ToUInt32($image, $pe) -ne 0x4550) { throw 'Invalid PE signature' }
@@ -15,6 +17,7 @@ $subsystem = $pe + 24 + 68
 $image[$subsystem] = 3
 $image[$subsystem + 1] = 0
 [IO.File]::WriteAllBytes($exe.FullName, $image)
+}
 Add-Type @'
 using System;
 using System.Text;
@@ -42,6 +45,11 @@ public static class StartupWindow {
 '@
 $env:LOCALAPPDATA = Join-Path $unpacked 'user-data'
 $env:JPACKAGE_DEBUG = 'true'
+if ($UnicodePaths) {
+    $env:TEMP = Join-Path $unpacked 'Временные файлы'
+    $env:TMP = $env:TEMP
+    New-Item -ItemType Directory -Force $env:TEMP | Out-Null
+}
 $started = Get-Date
 $process = $null
 try {
