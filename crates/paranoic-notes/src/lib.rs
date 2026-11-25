@@ -244,10 +244,20 @@ impl NotesStore {
             let wrapped = self.open_key_record(&self.read(KEY)?)?;
             if SecretKey::unwrap(&wrapped, password.as_bytes(), CTX_PASSWORD).is_ok() { return Err(NotesError::SamePassword); }
         }
-        self.write_duress(duress)?;
+        // Two records (the duress wrap and the encrypted "enabled" flag) cannot be
+        // written atomically, and the wrap is deliberately indistinguishable from
+        // filler. Order the writes so a crash between them can only leave the flag
+        // ON while the wipe is NOT armed — never "shown as off but still armed".
         let mut extra = self.open_extra(&session.key)?.unwrap_or_default();
-        extra.duress = duress.is_some();
-        self.write_extra(SAFE, &session.key, &extra)
+        if duress.is_some() {
+            extra.duress = true;
+            self.write_extra(SAFE, &session.key, &extra)?;
+            self.write_duress(duress)
+        } else {
+            self.write_duress(None)?;
+            extra.duress = false;
+            self.write_extra(SAFE, &session.key, &extra)
+        }
     }
     pub fn duress_enabled(&self, session: &NotesSession) -> Result<bool> {
         self.check(session)?;
