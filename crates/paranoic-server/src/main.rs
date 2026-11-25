@@ -184,9 +184,23 @@ async fn handle(handler: DavHandler, auth: &(String, blake3::Hash), announce_tra
         response.headers_mut().insert(hyper::header::WWW_AUTHENTICATE, hyper::header::HeaderValue::from_static("Basic realm=\"Paranoic\", charset=\"UTF-8\""));
         return response;
     }
+    let mut request = request;
+    force_no_overwrite(&mut request);
     let mut response = handler.handle(request).await;
     if announce_trash { response.headers_mut().insert("x-paranoic-trash", hyper::header::HeaderValue::from_static("1")); }
     response
+}
+
+/// MOVE/COPY never replace (module docs). WebDAV defaults to `Overwrite: T`, in which
+/// case dav-server first DELETEs an existing destination (into the trash here) and
+/// only then calls the no-replace rename. Any client — not only Paranoic's own,
+/// which already sends `F` — therefore gets `Overwrite: F`: an existing destination
+/// is answered with 412 Precondition Failed and nothing is removed.
+fn force_no_overwrite<B>(request: &mut Request<B>) {
+    let method = request.method().as_str();
+    if method == "MOVE" || method == "COPY" {
+        request.headers_mut().insert("overwrite", hyper::header::HeaderValue::from_static("F"));
+    }
 }
 
 fn authorized((username, expected): &(String, blake3::Hash), header: Option<&str>) -> bool {
@@ -355,4 +369,24 @@ impl DavFileSystem for SafeFs {
         }.boxed()
     }
     fn get_quota(&self) -> FsFuture<'_, (u64, Option<u64>)> { DavFileSystem::get_quota(&self.inner) }
+}
+
+#[cfg(test)]
+mod overwrite_tests {
+    use super::force_no_overwrite;
+    use hyper::Request;
+
+    #[test] fn move_and_copy_never_overwrite() {
+        for method in ["MOVE", "COPY"] {
+            let mut request = Request::builder().method(method).header("overwrite", "T").body(()).unwrap();
+            force_no_overwrite(&mut request);
+            assert_eq!(request.headers()["overwrite"], "F", "{method}");
+            let mut missing = Request::builder().method(method).body(()).unwrap();
+            force_no_overwrite(&mut missing);
+            assert_eq!(missing.headers()["overwrite"], "F", "{method} without header defaults to T in WebDAV");
+        }
+        let mut put = Request::builder().method("PUT").body(()).unwrap();
+        force_no_overwrite(&mut put);
+        assert!(put.headers().get("overwrite").is_none());
+    }
 }
