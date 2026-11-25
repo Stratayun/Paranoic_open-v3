@@ -19,8 +19,15 @@ try {
     # Confine UTF-8 to this process. No machine/user locale changes are needed.
     $codepage.InnerText = 'UTF-8'
     $manifest.Save($manifestFile)
-    & $mt.FullName -manifest $manifestFile "-outputresource:$Executable;#1" -nologo
-    if ($LASTEXITCODE) { throw "Cannot update launcher manifest: $LASTEXITCODE" }
+    # A freshly written launcher can be briefly locked (antivirus scan) or read-only.
+    (Get-Item -LiteralPath $Executable).IsReadOnly = $false
+    $written = $false
+    foreach ($attempt in 1..6) {
+        & $mt.FullName -manifest $manifestFile "-outputresource:$Executable;#1" -nologo
+        if (!$LASTEXITCODE) { $written = $true; break }
+        Start-Sleep -Seconds (3 * $attempt)
+    }
+    if (!$written) { throw "Cannot update launcher manifest: $LASTEXITCODE" }
 } finally {
     Remove-Item -LiteralPath $manifestFile -ErrorAction SilentlyContinue
 }
