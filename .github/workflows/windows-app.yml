@@ -36,10 +36,14 @@ jobs:
         shell: pwsh
         run: |
           ./gradlew.bat --no-daemon -Pparanoic.winConsole :composeApp:createDistributable
+          ../tools/build/windows_launcher.ps1 -Executable composeApp/build/compose/binaries/main/app/Paranoic/Paranoic.exe
           $bat = "@echo off`r`ncd /d `"%~dp0`"`r`necho Paranoic: start, log goes to startup-log.txt`r`nParanoic.exe > startup-log.txt 2>&1`r`necho Exit code %ERRORLEVEL% >> startup-log.txt`r`nstart notepad startup-log.txt`r`n"
           Set-Content -Path composeApp/build/compose/binaries/main/app/Paranoic/Zapusk-s-logom.bat -Value $bat -NoNewline -Encoding ascii
           Compress-Archive -Path composeApp/build/compose/binaries/main/app/Paranoic -DestinationPath ../Paranoic-windows-console.zip
           ./gradlew.bat --no-daemon :composeApp:createDistributable
+      - name: Enable Unicode paths and add the portable diagnostic launcher
+        shell: pwsh
+        run: ./tools/build/windows_launcher.ps1 -Executable ui/composeApp/build/compose/binaries/main/app/Paranoic/Paranoic.exe -Diagnostics
       - name: Zip portable folder
         shell: pwsh
         run: Compress-Archive -Path ui/composeApp/build/compose/binaries/main/app/Paranoic -DestinationPath Paranoic-windows-portable.zip
