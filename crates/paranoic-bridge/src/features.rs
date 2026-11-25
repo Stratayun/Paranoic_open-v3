@@ -588,7 +588,12 @@ impl paranoic_formats::paranoic_vault::ManifestAnchor for FileAnchor {
             let mut file = options.open(&temporary)?;
             file.write_all(text.as_bytes())?;
             file.sync_all()?;
-            std::fs::rename(&temporary, &self.path)
+            std::fs::rename(&temporary, &self.path)?;
+            // The rename is durable only once the parent directory is synced; without
+            // it a power loss can bring back the older anchor and hide a rollback.
+            #[cfg(unix)]
+            if let Some(parent) = self.path.parent() { std::fs::File::open(parent)?.sync_all()?; }
+            Ok(())
         };
         write().map_err(paranoic_core::CoreError::io)
     }
