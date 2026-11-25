@@ -141,6 +141,10 @@ def android(abis, pdfium="fetch"):
             "--release", "--features", "pdf", "--bin", WORKER)
         destination = OUT / "native/android" / abi
         destination.mkdir(parents=True, exist_ok=True)
+        # cargo-ndk copies every cdylib in the graph (sevenz-rust2 declares one);
+        # only the bridge, the worker and PDFium belong in the APK.
+        for stray in destination.glob("libsevenz_rust2*.so"):
+            stray.unlink()
         shutil.copy2(CARGO / triples[abi] / "release" / WORKER, destination / "libparanoic_pdf_worker.so")
         # PDFium (B3) next to the worker, unless the owner supplied one.
         library = destination / "libpdfium.so"
