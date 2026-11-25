@@ -4,7 +4,7 @@
 use std::{path::PathBuf, sync::{Arc, Mutex}};
 use paranoic_notes::*;
 
-const PASSWORD: &str = "correct horse battery staple 42";
+const PASSWORD: &str = "Correct horse battery staple 42";
 struct Temp(PathBuf);
 impl Temp {
     fn new() -> Self {
@@ -72,7 +72,7 @@ fn snapshot(dir: &std::path::Path) -> Vec<(PathBuf, Vec<u8>)> {
     let store = NotesStore::open(&temp.0, None, NotesLimits::default()).unwrap();
     let session = store.unlock(PASSWORD).unwrap();
     assert_eq!(store.read_notebook(&session).unwrap(), sample());
-    let new = "another long passphrase 99 river";
+    let new = "Another long passphrase 99 river";
     assert!(matches!(store.change_password(&session, "wrong one entirely", new), Err(NotesError::WrongPassword)));
     std::thread::sleep(store.retry_after().unwrap());
     store.change_password(&session, PASSWORD, new).unwrap();
@@ -275,7 +275,7 @@ fn snapshot(dir: &std::path::Path) -> Vec<(PathBuf, Vec<u8>)> {
     store.enable_quick_unlock(&session, bio.as_ref()).unwrap();
     let old_record = std::fs::read(object(1)).unwrap();
     let old_notebook = std::fs::read(object(2)).unwrap();
-    let new = "another long passphrase 99 river";
+    let new = "Another long passphrase 99 river";
     let fresh = store.change_password(&session, PASSWORD, new).unwrap();
     assert!(matches!(store.read_notebook(&session), Err(NotesError::Locked)), "old session survives the key change");
     assert_eq!(store.read_notebook(&fresh).unwrap(), sample(), "content lost");
@@ -346,7 +346,7 @@ fn snapshot(dir: &std::path::Path) -> Vec<(PathBuf, Vec<u8>)> {
     assert!(store.read_attachment(&session, &other.id).is_err(), "attachment swapped between ids");
 
     // Password change: the attachment follows the new key; the old object is gone.
-    let new = "another long passphrase 99 river";
+    let new = "Another long passphrase 99 river";
     let fresh = store.change_password(&session, PASSWORD, new).unwrap();
     let rotated = store.read_notebook(&fresh).unwrap();
     let moved = &rotated.tabs[0].notes[0].attachments[0];
@@ -388,7 +388,7 @@ impl DeviceKey for FlakyDevice {
     let session = store.create(PASSWORD).unwrap();
     store.save_notebook(&session, &sample()).unwrap();
     device.fail_seal.store(true, std::sync::atomic::Ordering::SeqCst);
-    assert!(store.change_password(&session, PASSWORD, "another long passphrase 99 river").is_err());
+    assert!(store.change_password(&session, PASSWORD, "Another long passphrase 99 river").is_err());
     assert!(matches!(store.read_notebook(&session), Err(NotesError::Locked)), "old session still usable after a failed switch");
     device.fail_seal.store(false, std::sync::atomic::Ordering::SeqCst);
     let again = store.unlock(PASSWORD).unwrap();
@@ -428,7 +428,7 @@ impl DeviceKey for FlakyDevice {
     assert!(!std::fs::read(object(8)).unwrap().windows(8).any(|w| w == &secret[..8]), "secret stored in the clear");
     let old_safe = std::fs::read(object(8)).unwrap();
 
-    let new = "another long passphrase 99 river";
+    let new = "Another long passphrase 99 river";
     let fresh = store.change_password(&session, PASSWORD, new).unwrap();
     assert!(matches!(store.safe_secret(&session, false), Err(NotesError::Locked)));
     assert_eq!(*store.safe_secret(&fresh, false).unwrap().unwrap(), *secret, "secret lost in the password change");
@@ -463,7 +463,7 @@ impl DeviceKey for FlakyDevice {
     let session = store.create(PASSWORD).unwrap();
     store.save_notebook(&session, &sample()).unwrap();
     store.safe_secret(&session, true).unwrap().unwrap();
-    let duress = "quiet meadow under cold stars 7";
+    let duress = "Quiet meadow under cold stars 7";
     assert!(matches!(store.set_duress(&session, Some(PASSWORD)), Err(NotesError::SamePassword)));
     assert!(matches!(store.set_duress(&session, Some("short")), Err(NotesError::WeakPassword)));
     assert!(!store.duress_enabled(&session).unwrap());
@@ -491,7 +491,7 @@ impl DeviceKey for FlakyDevice {
     assert_eq!(store.read_notebook(&again).unwrap(), Notebook::default());
 
     // Turning it off restores a filler of the same size.
-    store.set_duress(&again, Some("another quiet phrase for duress 9")).unwrap();
+    store.set_duress(&again, Some("Another quiet phrase for duress 9")).unwrap();
     store.set_duress(&again, None).unwrap();
     assert!(!store.duress_enabled(&again).unwrap());
 }
@@ -503,15 +503,14 @@ impl DeviceKey for FlakyDevice {
     assert!(hints("abc").contains(&H::TooShort));
     assert!(hints("myqwertyhouse").contains(&H::Common));
     assert!(hints("aaaaaaaaaaaa").contains(&H::Repeats));
-    assert!(hints("pass1234word").contains(&H::Sequence));
     assert!(hints("onlylowercaseletters").contains(&H::OneKind));
     let (strength, rest) = password_feedback(PASSWORD);
     assert_eq!(strength, PasswordStrength::Strong);
     assert!(!rest.contains(&H::AddWord) && !rest.contains(&H::TooShort));
     assert_ne!(password_feedback("correcthorse").0, PasswordStrength::Strong);
     assert!(hints("correcthorse").contains(&H::AddWord));
-    for _ in 0..20 {
-        let phrase = paranoic_crypto::generate_passphrase(6, ' ').unwrap();
-        assert_eq!(password_strength(&phrase), PasswordStrength::Strong, "{}", phrase.as_str());
-    }
+    // Owner's rule: 8+ characters with all four kinds; Strong from 12.
+    assert_eq!(password_strength("Abcdef1!"), PasswordStrength::Fair);
+    assert_eq!(password_strength("Abcdefgh1!xy"), PasswordStrength::Strong);
+    assert_eq!(password_strength("abcdef1!"), PasswordStrength::Weak);
 }

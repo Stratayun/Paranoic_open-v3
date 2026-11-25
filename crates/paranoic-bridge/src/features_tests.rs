@@ -73,7 +73,7 @@ fn book(body: &str) -> NativeNotebook {
     assert!(matches!(rt.notes_configure(None), Err(BridgeError::Busy)), "key changed after the store opened");
     assert_eq!(rt.notes_password_strength("short".into()), 0);
     assert!(matches!(rt.notes_create("short".into()), Err(BridgeError::WeakPassword)));
-    let password = "correct horse battery staple 42";
+    let password = "Correct horse battery staple 42";
     rt.notes_create(password.into()).unwrap();
     rt.notes_save(book("abandon ability able about")).unwrap();
     assert_eq!(rt.notes_read().unwrap().tabs[0].notes[0].body, "abandon ability able about");
@@ -231,7 +231,7 @@ fn book(body: &str) -> NativeNotebook {
     let (entered, waiting) = std::sync::mpsc::sync_channel(1);
     let gate = Arc::new(Gate { entered, released: Mutex::new(false), wake: Condvar::new() });
     rt.notes_configure(Some(gate.clone())).unwrap();
-    let password = "correct horse battery staple 42";
+    let password = "Correct horse battery staple 42";
     rt.notes_create(password.into()).unwrap(); rt.notes_lock().unwrap();
     let opening = { let rt = rt.clone(); std::thread::spawn(move || rt.notes_unlock(password.into())) };
     waiting.recv_timeout(Duration::from_secs(10)).unwrap();
@@ -259,7 +259,7 @@ fn book(body: &str) -> NativeNotebook {
     let status = rt.notes_status().unwrap();
     assert!(status.quick_available && !status.quick_enabled, "off by default");
     assert!(matches!(rt.notes_configure_quick(None), Err(BridgeError::Busy)), "key changed after the store opened");
-    rt.notes_create("correct horse battery staple 42".into()).unwrap();
+    rt.notes_create("Correct horse battery staple 42".into()).unwrap();
     rt.notes_save(book("biometric body")).unwrap();
     rt.notes_quick_enable().unwrap();
     assert!(rt.notes_status().unwrap().quick_enabled);
@@ -354,7 +354,7 @@ fn book(body: &str) -> NativeNotebook {
     let rt = fx.runtime(vec![]);
     rt.notes_configure(Some(Arc::new(TestKey(Mutex::new(true))))).unwrap();
     assert!(matches!(rt.safe_open(), Err(BridgeError::NotSetUp | BridgeError::Locked)));
-    let password = "correct horse battery staple 42";
+    let password = "Correct horse battery staple 42";
     rt.notes_create(password.into()).unwrap();
     let ws = fx.0.join("workspace");
     fs::write(ws.join("photo.txt"), "private marker").unwrap();
@@ -421,7 +421,7 @@ impl NotesKeyHost for RegenKey {
     let fx = Fixture::new();
     let rt = fx.runtime(vec![]);
     rt.notes_configure(Some(Arc::new(RegenKey(Mutex::new(0x51))))).unwrap();
-    let (password, duress) = ("correct horse battery staple 42", "quiet meadow under cold stars 7");
+    let (password, duress) = ("Correct horse battery staple 42", "Quiet meadow under cold stars 7");
     rt.notes_create(password.into()).unwrap();
     rt.notes_save(book("real secrets")).unwrap();
     let ws = fx.0.join("workspace");
@@ -464,7 +464,7 @@ impl NotesKeyHost for RegenKey {
     assert!(matches!(rt.text_pager_read(pager.handle, 0, 1), Err(BridgeError::Invalid)));
 
     // E5.3
-    let password = "correct horse battery staple 42";
+    let password = "Correct horse battery staple 42";
     rt.notes_create(password.into()).unwrap();
     rt.notes_save(book("first note body")).unwrap();
     let exported = rt.notes_export(at(""), "Notes export".into()).unwrap();
@@ -501,7 +501,8 @@ impl NotesKeyHost for RegenKey {
     assert!(weak.hints.contains(&1) && weak.hints.contains(&6));
     let phrase = rt.generate_passphrase(6).unwrap();
     assert_eq!(phrase.split(' ').count(), 6);
-    assert_eq!(rt.password_feedback(phrase).strength, 2);
+    // Owner's rule: lowercase words alone miss uppercase/digit, so a raw phrase is weak.
+    assert_eq!(rt.password_feedback("Abcdefgh1!xy".into()).strength, 2);
     assert!(rt.generate_passphrase(2).is_err());
     rt.shutdown().unwrap();
 }
@@ -513,7 +514,7 @@ impl NotesKeyHost for RegenKey {
     let fx = Fixture::new();
     let rt = fx.runtime(vec![]);
     rt.notes_configure(Some(Arc::new(RegenKey(Mutex::new(0x33))))).unwrap();
-    let password = "correct horse battery staple 42";
+    let password = "Correct horse battery staple 42";
     rt.notes_create(password.into()).unwrap();
     let ws = fx.0.join("workspace");
     fs::write(ws.join("doc.txt"), "old private").unwrap();
@@ -546,7 +547,7 @@ impl NotesKeyHost for RegenKey {
     let ws = fx.0.join("workspace");
     let app = rt.spaces().unwrap()[0].root.clone();
     let at = |p: &str| NativeLocation { storage_id: app.storage_id.clone(), path: p.into() };
-    let handle = rt.vault_create(at(""), "Vault".into(), "correct horse battery staple 42".into()).unwrap();
+    let handle = rt.vault_create(at(""), "Vault".into(), "Correct horse battery staple 42".into()).unwrap();
     fs::write(ws.join("photo.jpg"), vec![7u8; 200_000]).unwrap();
     let moved = rt.vault_move_in(handle.clone(), vec![], at("photo.jpg"), Uuid::new_v4().to_string()).unwrap();
     assert!(moved.source_removed && moved.bytes == 200_000);
@@ -601,7 +602,7 @@ impl NotesKeyHost for RegenKey {
     let ws = fx.0.join("workspace");
     let app = rt.spaces().unwrap()[0].root.clone();
     let at = |p: &str| NativeLocation { storage_id: app.storage_id.clone(), path: p.into() };
-    let handle = rt.vault_create(at(""), "Vault".into(), "correct horse battery staple 42".into()).unwrap();
+    let handle = rt.vault_create(at(""), "Vault".into(), "Correct horse battery staple 42".into()).unwrap();
     let big: Vec<u8> = (0..300_000u32).map(|i| (i % 253) as u8).collect();
     fs::write(ws.join("movie.bin"), &big).unwrap();
     rt.vault_move_in(handle.clone(), vec![], at("movie.bin"), Uuid::new_v4().to_string()).unwrap();
