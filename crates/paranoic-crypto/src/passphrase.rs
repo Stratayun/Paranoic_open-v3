@@ -1,61 +1,63 @@
-//! Plan 6.1: passphrases of random words (EFF Large Wordlist, 7776 words:
-//! log2(7776) ≈ 12.9 bits per word). Chosen with the OS random source and
-//! rejection sampling, so every word is equally likely.
+//! Random passwords from the OS random source (no external word list).
+//! Owner's rule (25.11.2026): every generated password contains a lowercase
+//! letter, an uppercase letter, a digit and a symbol. Characters are picked by
+//! rejection sampling, so every character of the alphabet is equally likely.
 use crate::{random_bytes, CryptoError, Result};
 use zeroize::Zeroizing;
 
-const WORDS_TEXT: &str = include_str!("../data/eff_large_wordlist.txt");
-pub const WORDLIST_LEN: usize = 7776;
+const LOWER: &str = "abcdefghijkmnopqrstuvwxyz";
+const UPPER: &str = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+const DIGITS: &str = "23456789";
+const SYMBOLS: &str = "!#$%&*+-=?@_~";
 
-fn words() -> impl Iterator<Item = &'static str> { WORDS_TEXT.lines().filter(|w| !w.is_empty()) }
-
-/// `count` words (4..=10; 6 ≈ 77 bits) joined by `separator` (one of " -._").
-pub fn generate_passphrase(count: usize, separator: char) -> Result<Zeroizing<String>> {
-    if !(4..=10).contains(&count) || !matches!(separator, ' ' | '-' | '.' | '_') { return Err(CryptoError::InvalidInput); }
-    let list: Vec<&str> = words().collect();
-    if list.len() != WORDLIST_LEN { return Err(CryptoError::InvalidInput); }
-    let mut out = Zeroizing::new(String::new());
-    let mut picked = 0;
-    while picked < count {
-        let mut raw = [0u8; 2];
+fn uniform(below: usize) -> Result<usize> {
+    let limit = 256 - 256 % below;
+    loop {
+        let mut raw = [0u8; 1];
         random_bytes(&mut raw)?;
-        let value = u16::from_le_bytes(raw) as usize;
-        // 65536 = 8 × 7776 + 3328: values from 62208 up would favour the first words.
-        if value >= WORDLIST_LEN * 8 { continue; }
-        if picked > 0 { out.push(separator); }
-        out.push_str(list[value % WORDLIST_LEN]);
-        picked += 1;
+        if (raw[0] as usize) < limit { return Ok(raw[0] as usize % below); }
     }
-    Ok(out)
 }
-/// Estimated strength in bits of a generated passphrase of `count` words.
-pub fn passphrase_bits(count: usize) -> f64 { count as f64 * (WORDLIST_LEN as f64).log2() }
+
+/// A `length`-character password (12..=64) with all four kinds of characters.
+/// Look-alike characters (l, I, O, 0, 1) are left out for readability.
+pub fn generate_password(length: usize) -> Result<Zeroizing<String>> {
+    if !(12..=64).contains(&length) { return Err(CryptoError::InvalidInput); }
+    let groups = [LOWER, UPPER, DIGITS, SYMBOLS];
+    let all: Vec<char> = groups.concat().chars().collect();
+    loop {
+        let mut picked = Zeroizing::new(Vec::with_capacity(length));
+        for _ in 0..length { picked.push(all[uniform(all.len())?]); }
+        if groups.iter().all(|g| picked.iter().any(|c| g.contains(*c))) {
+            return Ok(Zeroizing::new(picked.iter().collect()));
+        }
+    }
+}
+
+/// Kept for the bridge contract: `words` (4..=10) selects the length, 3 characters per word.
+pub fn generate_passphrase(words: usize, _separator: char) -> Result<Zeroizing<String>> {
+    if !(4..=10).contains(&words) { return Err(CryptoError::InvalidInput); }
+    generate_password((words * 3).max(12))
+}
+
+/// Entropy of a generated password of `length` characters, in bits.
+pub fn passphrase_bits(length: usize) -> f64 {
+    length as f64 * ((LOWER.len() + UPPER.len() + DIGITS.len() + SYMBOLS.len()) as f64).log2()
+}
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     use super::*;
-    #[test] fn wordlist_and_generation() {
-        let list: Vec<&str> = words().collect();
-        assert_eq!(list.len(), WORDLIST_LEN);
-        let unique: std::collections::BTreeSet<_> = list.iter().collect();
-        assert_eq!(unique.len(), WORDLIST_LEN, "duplicate words");
-        assert!(list.iter().all(|w| (3..=9).contains(&w.len()) && w.bytes().all(|b| b.is_ascii_lowercase() || b == b'-')));
-        let phrase = generate_passphrase(6, '-').unwrap();
-        let parts: Vec<&str> = phrase.split('-').collect();
-        // Some EFF words contain '-' themselves, so split by the list instead.
-        assert!(parts.len() >= 6 && parts.iter().all(|p| !p.is_empty()));
-        let spaced = generate_passphrase(6, ' ').unwrap();
-        assert_eq!(spaced.split(' ').count(), 6);
-        assert!(spaced.split(' ').all(|w| unique.contains(&w)));
-        assert_ne!(*generate_passphrase(6, ' ').unwrap(), *spaced, "two runs gave the same phrase");
-        assert!(generate_passphrase(3, ' ').is_err() && generate_passphrase(11, ' ').is_err() && generate_passphrase(6, 'x').is_err());
-        assert!(passphrase_bits(6) > 77.0 && passphrase_bits(6) < 78.0);
-    }
-    /// Rough uniformity: over 50 000 words every first letter group appears.
-    #[test] fn draws_cover_the_list() {
-        let mut first = std::collections::BTreeSet::new();
-        for _ in 0..5000 { for w in generate_passphrase(10, ' ').unwrap().split(' ') { first.insert(w.as_bytes()[0]); } }
-        assert_eq!(first.len(), 26);
+    #[test] fn generated_passwords_have_all_kinds_and_differ() {
+        for _ in 0..200 {
+            let p = generate_password(16).unwrap();
+            assert_eq!(p.chars().count(), 16);
+            assert!(p.chars().any(|c| c.is_ascii_lowercase()) && p.chars().any(|c| c.is_ascii_uppercase())
+                && p.chars().any(|c| c.is_ascii_digit()) && p.chars().any(|c| !c.is_alphanumeric()));
+        }
+        assert_ne!(*generate_password(16).unwrap(), *generate_password(16).unwrap());
+        assert!(generate_password(8).is_err() && generate_password(65).is_err());
+        assert_eq!(generate_passphrase(6, ' ').unwrap().chars().count(), 18);
+        assert!(generate_passphrase(3, ' ').is_err());
     }
 }

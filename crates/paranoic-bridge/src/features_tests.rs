@@ -500,7 +500,7 @@ impl NotesKeyHost for RegenKey {
     assert_eq!(weak.strength, 0);
     assert!(weak.hints.contains(&1) && weak.hints.contains(&6));
     let phrase = rt.generate_passphrase(6).unwrap();
-    assert_eq!(phrase.split(' ').count(), 6);
+    assert_eq!(rt.password_feedback(phrase).strength, 2, "generated passwords satisfy the rule");
     // Owner's rule: lowercase words alone miss uppercase/digit, so a raw phrase is weak.
     assert_eq!(rt.password_feedback("Abcdefgh1!xy".into()).strength, 2);
     assert!(rt.generate_passphrase(2).is_err());

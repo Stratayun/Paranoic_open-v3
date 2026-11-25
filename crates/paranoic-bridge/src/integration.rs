@@ -194,7 +194,7 @@ impl NativeRuntime {
         NativePasswordFeedback { strength: match strength { S::Weak => 0, S::Fair => 1, S::Strong => 2 },
             hints: hints.into_iter().map(|h| match h { H::TooShort => 1, H::Common => 2, H::Repeats => 3, H::Sequence => 4, H::OneKind => 5, H::AddWord => 6 }).collect() }
     }
-    /// `words` (4..=10) random words from the EFF list, separated by spaces.
+    /// A random password of `words` × 3 characters (min 12) with all four kinds of characters.
     pub fn generate_passphrase(&self, words: u8) -> Result<String> {
         Ok(paranoic_crypto::generate_passphrase(words as usize, ' ').map_err(|_| BridgeError::Invalid)?.to_string())
     }

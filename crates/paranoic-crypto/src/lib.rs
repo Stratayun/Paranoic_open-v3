@@ -4,7 +4,7 @@
 use argon2::{Algorithm, Argon2, Params, Version};
 use chacha20poly1305::{aead::{Aead, KeyInit, Payload}, XChaCha20Poly1305, XNonce};
 pub mod passphrase;
-pub use passphrase::{generate_passphrase, passphrase_bits};
+pub use passphrase::{generate_passphrase, generate_password, passphrase_bits};
 use rand_core::{OsRng, RngCore};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
