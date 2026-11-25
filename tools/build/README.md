@@ -5,7 +5,7 @@ Kotlin bindings generated from that exact library, with JNA 5.17.0. Checksums ar
 left enabled. Both generated Kotlin and native libraries are build outputs.
 
 Required tools when the owner authorizes a build:
-Rust 1.87+, Cargo, Python3, JDK17, Android SDK36 and NDK, cargo-ndk, and the Rust
+Rust 1.89+, Cargo, Python3, JDK17, Android SDK36 and NDK, cargo-ndk, and the Rust
 targets matching the desired Android ABIs. Windows native packages/MSI are built
 on Windows, using matching JDK/architecture and packaging tools.
 

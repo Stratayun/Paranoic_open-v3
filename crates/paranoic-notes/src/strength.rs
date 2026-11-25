@@ -71,6 +71,7 @@ mod audit_tests {
     }
     /// Audit 13: length is Unicode scalar values (the UI counts code points too).
     #[test] fn length_counts_scalar_values() {
+        assert_eq!(password_strength("Aa729583𝔸"), PasswordStrength::Weak, "a supplementary Unicode letter is not a symbol");
         assert_eq!(password_strength("Aa1!😀😀"), PasswordStrength::Weak, "6 characters");
         assert_eq!(password_strength("Aa1!😀😀😺x"), PasswordStrength::Fair, "8 characters");
     }

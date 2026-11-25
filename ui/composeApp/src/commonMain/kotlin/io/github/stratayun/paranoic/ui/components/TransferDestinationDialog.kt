@@ -18,14 +18,6 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 
-/** Legacy fail-only picker retained for callers that use the old copy contract. */
-@Composable
-fun CopyDestinationDialog(core: CoreGateway, source: FileItem, spaces: List<Space>,
-    onDismiss: () -> Unit, onCopy: (Location, String) -> Unit) {
-    TransferDestinationDialog(core, source, spaces, TransferMode.Copy, onDismiss,
-        onTransfer = { parent, name, _, _ -> onCopy(parent, name) }, conflictChoices = false)
-}
-
 /** Browsing and policies are presentation only; Core performs every file operation. */
 @Composable
 fun TransferDestinationDialog(core: CoreGateway, source: FileItem, spaces: List<Space>, mode: TransferMode,

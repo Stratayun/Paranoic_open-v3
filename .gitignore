@@ -6,3 +6,7 @@
 .idea/
 .DS_Store
 tools/interop/*/target/
+
+# Python interpreter caches
+__pycache__/
+*.py[cod]

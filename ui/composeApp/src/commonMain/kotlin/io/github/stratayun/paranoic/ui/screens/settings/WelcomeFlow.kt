@@ -1,6 +1,7 @@
 package io.github.stratayun.paranoic.ui.screens.settings
 
-import io.github.stratayun.paranoic.ui.components.PasswordRule
+import io.github.stratayun.paranoic.ui.components.rememberPasswordAssessment
+import io.github.stratayun.paranoic.ui.components.acceptsPassword
 import io.github.stratayun.paranoic.ui.components.PeekToggle
 import io.github.stratayun.paranoic.ui.components.peek
 import androidx.compose.foundation.layout.*
@@ -103,9 +104,10 @@ private fun WelcomeNotesPassword(core: CoreGateway, onBusy: (Boolean) -> Unit) {
                 label = { Text(tr("Новый пароль", "New password")) }, visualTransformation = peek("WelcomeFlow:14"), trailingIcon = { PeekToggle("WelcomeFlow:14") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false))
             OutlinedTextField(repeat, { if (it.length <= 4096) repeat = it }, enabled = !busy, singleLine = true,
                 label = { Text(tr("Повтор пароля", "Repeat password")) }, visualTransformation = peek("WelcomeFlow:15"), trailingIcon = { PeekToggle("WelcomeFlow:15") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false))
-            PasswordTools(core, password, !busy) { password = it; repeat = "" }
-            Text(tr("Не менее 12 символов. Пароль не сохраняется в настройках мастера.", "At least 12 characters. The wizard never saves the password in preferences."))
-            Button(enabled = !busy && PasswordRule.acceptable(password) && password == repeat && fault != CoreFault.OutcomeUnknown, onClick = {
+            val passwordAssessment = rememberPasswordAssessment(core, password)
+            PasswordTools(core, password, !busy, assessment = passwordAssessment) { password = it; repeat = "" }
+            Text(tr("Не менее 8 символов. Пароль не сохраняется в настройках мастера.", "At least 8 characters. The wizard never saves the password in preferences."))
+            Button(enabled = !busy && passwordAssessment.acceptsPassword() && password == repeat && fault != CoreFault.OutcomeUnknown, onClick = {
                 val secret = password; password = ""; repeat = ""; busy = true; onBusy(true)
                 scope.launch {
                     try {

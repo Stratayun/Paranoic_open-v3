@@ -244,16 +244,26 @@ impl LoopbackRedirect {
     /// local requests get 400 and are ignored. The page never claims success:
     /// the code exchange happens afterwards in `finish`.
     pub fn wait(self, pending: &AuthRequest, timeout: Duration, mut check: impl FnMut() -> Result<()>) -> Result<String> {
-        let until = Instant::now() + timeout;
+        let until = Instant::now().checked_add(timeout).ok_or_else(invalid)?;
+        let remaining = || until.checked_duration_since(Instant::now())
+            .filter(|duration| !duration.is_zero())
+            .ok_or_else(|| CoreError::new(ErrorCode::Cancelled, "cloud login timed out"));
         loop {
             check()?;
+            remaining()?;
             match self.listener.accept() {
                 Ok((mut stream, _)) => {
                     stream.set_nonblocking(false).map_err(CoreError::io)?;
-                    stream.set_read_timeout(Some(Duration::from_secs(5))).map_err(CoreError::io)?;
-                    let mut buffer = vec![0u8; 8192]; let mut filled = 0;
+                    let mut buffer = Zeroizing::new(vec![0u8; 8192]); let mut filled = 0;
                     while filled < buffer.len() && !buffer[..filled].windows(4).any(|w| w == b"\r\n\r\n") {
-                        match stream.read(&mut buffer[filled..]) { Ok(0) | Err(_) => break, Ok(n) => filled += n }
+                        check()?;
+                        stream.set_read_timeout(Some(remaining()?.min(Duration::from_millis(100)))).map_err(CoreError::io)?;
+                        match stream.read(&mut buffer[filled..]) {
+                            Ok(0) => break,
+                            Ok(n) => filled += n,
+                            Err(error) if matches!(error.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => continue,
+                            Err(_) => break,
+                        }
                     }
                     let request = String::from_utf8_lossy(&buffer[..filled]);
                     let target = Zeroizing::new(request.lines().next().and_then(|l| l.strip_prefix("GET ")).and_then(|l| l.split(' ').next()).unwrap_or("").to_owned());
@@ -262,14 +272,13 @@ impl LoopbackRedirect {
                         .and_then(|u| u.query_pairs().find(|(k, _)| k == "state").map(|(_, v)| constant_time_eq(v.as_bytes(), pending.state.as_bytes())))
                         .unwrap_or(false);
                     let body = if ok { "Paranoic: вернитесь в приложение. / Return to the app." } else { "Paranoic" };
+                    stream.set_write_timeout(Some(remaining()?.min(Duration::from_millis(100)))).map_err(CoreError::io)?;
                     let _ = write!(stream, "HTTP/1.1 {}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                         if ok { "200 OK" } else { "400 Bad Request" }, body.len(), body);
-                    buffer.iter_mut().for_each(|b| *b = 0);
                     if ok { return Ok(format!("http://127.0.0.1:{}{}", self.port, target.as_str())); }
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                    if Instant::now() >= until { return Err(CoreError::new(ErrorCode::Cancelled, "cloud login timed out")); }
-                    std::thread::sleep(Duration::from_millis(100));
+                    std::thread::sleep(remaining()?.min(Duration::from_millis(100)));
                 }
                 Err(error) => return Err(CoreError::io(error)),
             }
@@ -292,3 +301,37 @@ fn invalid() -> CoreError { CoreError::new(ErrorCode::InvalidInput, "invalid clo
 fn locked() -> CoreError { CoreError::new(ErrorCode::PermissionDenied, "cloud session is locked") }
 fn poisoned() -> CoreError { CoreError::new(ErrorCode::Internal, "cloud session state unavailable") }
 pub(crate) const SESSION_EXPIRED: &str = EXPIRED;
+
+#[cfg(test)]
+mod redirect_deadline_tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+    use super::*;
+
+    #[test]
+    fn incomplete_request_obeys_the_overall_deadline() {
+        let receiver = LoopbackRedirect::bind().unwrap();
+        let mut connection = std::net::TcpStream::connect(("127.0.0.1", receiver.port)).unwrap();
+        connection.write_all(b"GET /callback?").unwrap();
+        let pending = OAuthClient::onedrive("test", receiver.redirect_uri()).begin().unwrap();
+        let started = Instant::now();
+        let error = receiver.wait(&pending, Duration::from_millis(150), || Ok(())).unwrap_err();
+        assert_eq!(error.code, ErrorCode::Cancelled);
+        assert!(started.elapsed() < Duration::from_secs(2), "request blocked past deadline");
+    }
+
+    #[test]
+    fn incomplete_request_remains_cancellable() {
+        let receiver = LoopbackRedirect::bind().unwrap();
+        let mut connection = std::net::TcpStream::connect(("127.0.0.1", receiver.port)).unwrap();
+        connection.write_all(b"GET /callback?").unwrap();
+        let pending = OAuthClient::onedrive("test", receiver.redirect_uri()).begin().unwrap();
+        let mut checks = 0;
+        let started = Instant::now();
+        let error = receiver.wait(&pending, Duration::from_secs(30), || {
+            checks += 1;
+            if checks >= 3 { Err(CoreError::new(ErrorCode::Cancelled, "cancelled by caller")) } else { Ok(()) }
+        }).unwrap_err();
+        assert_eq!(error.message, "cancelled by caller");
+        assert!(started.elapsed() < Duration::from_secs(2), "request delayed cancellation");
+    }
+}

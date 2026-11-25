@@ -143,23 +143,6 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier) {
         style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
 }
 
-/** Accent card for a primary destination (reference: the lilac "Сейф" card). */
-@Composable
-fun AccentCard(title: String, subtitle: String, symbol: AppSymbol, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
-    val scheme = MaterialTheme.colorScheme
-    Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(32.dp), color = scheme.tertiaryContainer, contentColor = scheme.onTertiaryContainer) {
-        Row(Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = 20.dp, vertical = 18.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            ShapedIcon(symbol, ExpressiveShapes.Cookie9, scheme.onTertiaryContainer.copy(alpha = 0.10f), scheme.onTertiaryContainer, size = 56.dp)
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleLarge)
-                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = scheme.onTertiaryContainer.copy(alpha = 0.8f))
-            }
-            AppIcon(AppSymbol.Forward)
-        }
-    }
-}
-
 /**
  * Storage bar (owner's reference): a thick glass capsule with a dark rim; the filled part is a
  * purple→blue gradient with soft waves flowing inside it and a glowing orb at the fill edge.

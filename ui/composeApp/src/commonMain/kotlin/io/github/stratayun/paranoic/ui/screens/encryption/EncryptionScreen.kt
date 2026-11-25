@@ -562,11 +562,12 @@ private fun formatSize(bytes: ULong): String = when {
 private fun PasswordDialog(core: CoreGateway, create: Boolean, context: String, onDismiss: () -> Unit, onConfirm: (name: String, password: String) -> Unit) {
     var name by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    val passwordAssessment = rememberPasswordAssessment(core, if (create) password else "")
     var repeat by remember { mutableStateOf("") }
     var stage by remember { mutableIntStateOf(0) }
     val reviewing = stage == 2
     DisposableEffect(Unit) { onDispose { password = ""; repeat = "" } }
-    val valid = password.isNotEmpty() && (!create || plausibleName(name) && password == repeat && PasswordRule.acceptable(password))
+    val valid = password.isNotEmpty() && (!create || plausibleName(name) && password == repeat && passwordAssessment.acceptsPassword())
     AlertDialog(modifier = Modifier.trackSecretActivity(), onDismissRequest = { password = ""; repeat = ""; onDismiss() },
         title = { Text(if (create) tr("Новая зашифрованная папка", "New encrypted folder") else tr("Открыть зашифрованную папку", "Open encrypted folder")) },
         text = {
@@ -597,14 +598,14 @@ private fun PasswordDialog(core: CoreGateway, create: Boolean, context: String, 
                 OutlinedTextField(password, { if (it.length <= 4096) password = it }, singleLine = true, label = { Text(tr("Пароль", "Password")) },
                     visualTransformation = peek("EncryptionScreen:16"), trailingIcon = { PeekToggle("EncryptionScreen:16") }, keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
                 if (create) {
-                    PasswordTools(core, password) { password = it; repeat = "" }
+                    PasswordTools(core, password, assessment = passwordAssessment) { password = it; repeat = "" }
                     OutlinedTextField(repeat, { if (it.length <= 4096) repeat = it }, singleLine = true, label = { Text(tr("Повторите пароль", "Repeat password")) },
                         modifier = Modifier.fieldError(passwordMismatchText(), repeat.isNotEmpty() && repeat != password),
                         visualTransformation = peek("EncryptionScreen:17"), trailingIcon = { PeekToggle("EncryptionScreen:17") }, isError = repeat.isNotEmpty() && repeat != password,
                         supportingText = { if (repeat.isNotEmpty() && repeat != password) Text(passwordMismatchText()) },
                         keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
-                    Text(tr("Не меньше 12 символов; лучше фраза из нескольких слов. Забытый пароль восстановить нельзя.",
-                        "At least 12 characters; a phrase of several words is better. A forgotten password cannot be recovered."),
+                    Text(tr("Не меньше 8 символов; лучше фраза из нескольких слов. Забытый пароль восстановить нельзя.",
+                        "At least 8 characters; a phrase of several words is better. A forgotten password cannot be recovered."),
                         style = MaterialTheme.typography.bodySmall)
                 }
                 }
