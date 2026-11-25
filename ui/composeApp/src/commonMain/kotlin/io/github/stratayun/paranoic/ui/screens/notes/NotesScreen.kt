@@ -652,6 +652,7 @@ private fun NotesSettings(session: AppSession, status: NotesStatus, busy: Boolea
     if (changing) {
         var old by remember { mutableStateOf("") }
         var new by remember { mutableStateOf("") }
+        val passwordAssessment = rememberPasswordAssessment(session.core, new)
         var repeated by remember { mutableStateOf("") }
         DisposableEffect(Unit) { onDispose { old = ""; new = ""; repeated = "" } }
         AlertDialog(onDismissRequest = { old = ""; new = ""; repeated = ""; changing = false },
@@ -662,7 +663,7 @@ private fun NotesSettings(session: AppSession, status: NotesStatus, busy: Boolea
                         visualTransformation = peek("NotesScreen:11"), trailingIcon = { PeekToggle("NotesScreen:11") }, keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
                     OutlinedTextField(new, { new = it }, singleLine = true, label = { Text(tr("Новый пароль", "New password")) },
                         visualTransformation = peek("NotesScreen:12"), trailingIcon = { PeekToggle("NotesScreen:12") }, keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
-                    PasswordTools(session.core, new, !busy) { new = it; repeated = "" }
+                    PasswordTools(session.core, new, !busy, assessment = passwordAssessment) { new = it; repeated = "" }
                     OutlinedTextField(repeated, { if (it.length <= 4096) repeated = it }, singleLine = true,
                         label = { Text(tr("Повторите новый пароль", "Repeat new password")) },
                         visualTransformation = peek("NotesScreen:13"), trailingIcon = { PeekToggle("NotesScreen:13") }, keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password),
@@ -670,7 +671,7 @@ private fun NotesSettings(session: AppSession, status: NotesStatus, busy: Boolea
                         supportingText = { if (repeated.isNotEmpty() && repeated != new) Text(passwordMismatchText()) })
                 }
             },
-            confirmButton = { TextButton(enabled = !busy && old.isNotEmpty() && PasswordRule.acceptable(new) && new == repeated && old != new, onClick = {
+            confirmButton = { TextButton(enabled = !busy && old.isNotEmpty() && passwordAssessment.acceptsPassword() && new == repeated && old != new, onClick = {
                 val o = old; val n = new; old = ""; new = ""; repeated = ""; changing = false; onChangePassword(o, n)
             }) { Text(tr("Сменить", "Change")) } },
             dismissButton = { TextButton(onClick = { changing = false }) { Text(tr("Отмена", "Cancel")) } })

@@ -29,12 +29,13 @@ fun ArchiveDialog(session: AppSession, sources: List<FileItem>, action: ArchiveA
     var password by remember { mutableStateOf("") }
     var repeat by remember { mutableStateOf("") }
     var protected by remember { mutableStateOf(false) }
+    val passwordAssessment = rememberPasswordAssessment(session.core, if (action == ArchiveAction.Create && protected) password else "")
     var choosing by remember { mutableStateOf(false) }
     DisposableEffect(Unit) { onDispose { password = ""; repeat = "" } }
     val output = action != ArchiveAction.Open
     val to = parent
     val collision = output && to == session.files.folder && session.files.entries.any { it.name == name }
-    val passwordValid = action != ArchiveAction.Create || !protected || (format == ArchiveFormat.Zip && PasswordRule.acceptable(password) && password == repeat)
+    val passwordValid = action != ArchiveAction.Create || !protected || (format == ArchiveFormat.Zip && passwordAssessment.acceptsPassword() && password == repeat)
     val valid = session.core.connected && !session.writing && passwordValid &&
         (!output || to != null && session.files.spaces.spaceOf(to)?.writable == true && plausibleName(name) && !collision) &&
         session.directWrite?.phase != DirectWritePhase.Unknown && session.uncertain == null && session.uncertainAttention == null
@@ -46,6 +47,9 @@ fun ArchiveDialog(session: AppSession, sources: List<FileItem>, action: ArchiveA
     }
     AlertDialog(onDismissRequest = ::dismiss, title = { Text(title) }, text = {
         Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (action == ArchiveAction.Create && protected) {
+                PasswordTools(session.core, password, assessment = passwordAssessment) { password = it; repeat = "" }
+            }
             Text(if (action == ArchiveAction.Create) tr("Выбрано объектов: ${sources.size}", "Selected entries: ${sources.size}") else displayName(source.name))
             if (action == ArchiveAction.Open && session.archives.state.source?.location == source.location)
                 session.archives.state.fault?.let { FaultNotice(it) }

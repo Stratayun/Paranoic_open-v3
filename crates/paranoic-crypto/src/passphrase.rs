@@ -50,10 +50,10 @@ pub fn generate_password(length: usize) -> Result<Zeroizing<String>> {
         for _ in 0..length { picked.push(all[uniform(all.len())?]); }
         // The same acceptance as the notes policy: every kind, nothing well
         // known, no repeats or runs, so a generated password is always Strong.
-        let candidate: String = picked.iter().collect();
+        let candidate = Zeroizing::new(picked.iter().collect::<String>());
         if groups.iter().all(|g| picked.iter().any(|c| g.contains(*c))) && !contains_common(&candidate)
             && !has_repeats(&picked) && !has_sequence(&picked) {
-            return Ok(Zeroizing::new(picked.iter().collect()));
+            return Ok(candidate);
         }
     }
 }
@@ -62,12 +62,6 @@ pub fn generate_password(length: usize) -> Result<Zeroizing<String>> {
 pub fn generate_passphrase(words: usize, _separator: char) -> Result<Zeroizing<String>> {
     if !(4..=10).contains(&words) { return Err(CryptoError::InvalidInput); }
     generate_password((words * 3).max(12))
-}
-
-/// Upper bound of the entropy of a generated password of `length` characters,
-/// in bits: the full alphabet, before rejecting candidates (audit 15).
-pub fn passphrase_bits(length: usize) -> f64 {
-    length as f64 * ((LOWER.len() + UPPER.len() + DIGITS.len() + SYMBOLS.len()) as f64).log2()
 }
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
 package io.github.stratayun.paranoic.ui.screens.encryption
 
-import io.github.stratayun.paranoic.ui.components.PasswordRule
+import io.github.stratayun.paranoic.ui.components.rememberPasswordAssessment
+import io.github.stratayun.paranoic.ui.components.acceptsPassword
 import io.github.stratayun.paranoic.ui.components.PeekToggle
 import io.github.stratayun.paranoic.ui.components.peek
 import androidx.compose.foundation.layout.*
@@ -22,6 +23,7 @@ internal fun VaultChangePasswordDialog(core: CoreGateway, name: String, cryptoma
     onConfirm: (String, String) -> Unit) {
     var old by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    val passwordAssessment = rememberPasswordAssessment(core, password)
     var repeat by remember { mutableStateOf("") }
     fun clear() { old = ""; password = ""; repeat = "" }
     DisposableEffect(Unit) { onDispose { clear() } }
@@ -31,20 +33,20 @@ internal fun VaultChangePasswordDialog(core: CoreGateway, name: String, cryptoma
                 Text(displayName(name))
                 SecretField(old, { if (it.length <= 1024) old = it }, tr("Текущий пароль", "Current password"))
                 SecretField(password, { if (it.length <= 1024) password = it }, tr("Новый пароль", "New password"))
-                PasswordTools(core, password) { password = it; repeat = "" }
+                PasswordTools(core, password, assessment = passwordAssessment) { password = it; repeat = "" }
                 SecretField(repeat, { if (it.length <= 1024) repeat = it }, tr("Повторите новый пароль", "Repeat new password"),
                     if (repeat.isNotEmpty() && repeat != password) passwordMismatchText() else null)
-                Text(tr("Новый пароль: не меньше 12 символов; лучше длинная фраза. Текущий пароль проверяется перед изменением.",
-                    "Use at least 12 characters, preferably a long phrase. The current password is verified before changing it."))
+                Text(tr("Новый пароль: не меньше 8 символов; лучше длинная фраза. Текущий пароль проверяется перед изменением.",
+                    "Use at least 8 characters, preferably a long phrase. The current password is verified before changing it."))
                 Text(tr("Копии старого заголовка или файла ключей в облачных версиях и резервных копиях по-прежнему открываются старым паролем. Ключ содержимого не меняется.",
                     "Old headers or key files in cloud versions and backups still open with the old password. The content key is unchanged."))
                 if (cryptomator) Text(tr("Прерванная смена пароля доводится при следующем открытии Cryptomator. После неё нужен новый пароль.",
                     "An interrupted Cryptomator password change is completed on the next open. Use the new password afterwards."))
             }
         },
-        confirmButton = { TextButton(enabled = old.isNotEmpty() && PasswordRule.acceptable(password) && password == repeat && password != old,
+        confirmButton = { TextButton(enabled = old.isNotEmpty() && passwordAssessment.acceptsPassword() && password == repeat && password != old,
             onClick = {
-                if (old.isNotEmpty() && PasswordRule.acceptable(password) && password == repeat && password != old) {
+                if (old.isNotEmpty() && passwordAssessment.acceptsPassword() && password == repeat && password != old) {
                     val o = old; val n = password; clear(); onConfirm(o, n)
                 }
             }) { Text(tr("Сменить", "Change")) } },
@@ -80,12 +82,13 @@ internal fun VaultRecoveryOpenDialog(core: CoreGateway, name: String, canReset: 
     var recovery by remember { mutableStateOf("") }
     var resetting by remember { mutableStateOf(false) }
     var password by remember { mutableStateOf("") }
+    val passwordAssessment = rememberPasswordAssessment(core, password)
     var repeated by remember { mutableStateOf("") }
     fun clear() { recovery = ""; password = ""; repeated = "" }
     DisposableEffect(Unit) { onDispose { clear() } }
     val compact = recovery.filterNot { it in "- \t\n\r" }.uppercase()
     val valid = compact.length == 52 && compact.all { it in 'A'..'Z' || it in '2'..'7' } &&
-        (!resetting || canReset && PasswordRule.acceptable(password) && password == repeated)
+        (!resetting || canReset && passwordAssessment.acceptsPassword() && password == repeated)
     AlertDialog(modifier = Modifier.trackSecretActivity(), onDismissRequest = { clear(); onClose() },
         title = { Text(if (resetting) tr("Новый пароль по ключу", "Reset password with a key") else tr("Открыть по ключу восстановления", "Open with recovery key")) },
         text = { Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -101,11 +104,11 @@ internal fun VaultRecoveryOpenDialog(core: CoreGateway, name: String, canReset: 
                 "Password reset is unavailable in read-only mode or until vault preferences are loaded."))
             if (resetting) {
                 SecretField(password, { if (it.length <= 4096) password = it }, tr("Новый пароль", "New password"))
-                PasswordTools(core, password) { password = it; repeated = "" }
+                PasswordTools(core, password, assessment = passwordAssessment) { password = it; repeated = "" }
                 SecretField(repeated, { if (it.length <= 4096) repeated = it }, tr("Повторите новый пароль", "Repeat new password"),
                     if (repeated.isNotEmpty() && repeated != password) passwordMismatchText() else null)
-                Text(tr("Не меньше 12 символов. Пароль изменится после проверки ключа. Внешние копии старого заголовка могут сохранять доступ со старым паролем.",
-                    "At least 12 characters. The password changes after key verification. External copies of the old header may retain old-password access."))
+                Text(tr("Не меньше 8 символов. Пароль изменится после проверки ключа. Внешние копии старого заголовка могут сохранять доступ со старым паролем.",
+                    "At least 8 characters. The password changes after key verification. External copies of the old header may retain old-password access."))
             }
             Text(tr("Ключ хранилища не восстанавливает заметки. Заметки не переносятся и удаляются вместе с приложением.",
                 "A vault key cannot recover notes. Notes are not transferred and are removed with the app."), style = MaterialTheme.typography.bodySmall)

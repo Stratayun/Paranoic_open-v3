@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Explicit native build/code generation entry point. Never runs tests.
 Invoked by Gradle compilation/package tasks, or manually after owner authorizes a build.
-Requires Rust 1.87+, JDK 17, Android NDK + cargo-ndk for Android targets.
+Requires Rust 1.89+, JDK 17, Android NDK + cargo-ndk for Android targets.
 PDFium (B3): a pinned bblanchon/pdfium-binaries release (chromium/8125, built
 without V8/XFA) is downloaded once, checked against the SHA-256 recorded below
 BEFORE it is opened, and only the library and its license notices are taken.

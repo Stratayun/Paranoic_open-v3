@@ -398,18 +398,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cap-fs-ext"
-version = "3.4.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5528f85b1e134ae811704e41ef80930f56e795923f866813255bc342cc20654"
-dependencies = [
- "cap-primitives",
- "cap-std",
- "io-lifetimes",
- "windows-sys 0.59.0",
-]
-
-[[package]]
 name = "cap-primitives"
 version = "3.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2120,12 +2108,10 @@ dependencies = [
  "age",
  "argon2",
  "base64 0.22.1",
- "blake2",
  "blake3",
  "chacha20poly1305",
  "cipher 0.4.4",
  "cmac",
- "crc32fast",
  "ctr",
  "data-encoding",
  "hkdf",
@@ -2134,7 +2120,6 @@ dependencies = [
  "paranoic-core",
  "paranoic-crypto",
  "paranoic-local",
- "pbkdf2 0.12.2",
  "rand_core 0.6.4",
  "rusqlite",
  "scrypt",
@@ -2151,7 +2136,6 @@ dependencies = [
 name = "paranoic-local"
 version = "0.1.0"
 dependencies = [
- "cap-fs-ext",
  "cap-std",
  "paranoic-core",
  "paranoic-windows",

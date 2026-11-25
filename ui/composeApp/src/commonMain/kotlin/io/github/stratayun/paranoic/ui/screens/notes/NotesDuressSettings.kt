@@ -55,21 +55,20 @@ internal fun NotesDuressSettings(session: AppSession, enabled: Boolean, onSet: (
         var password by remember { mutableStateOf("") }
         var repeated by remember { mutableStateOf("") }
         var acknowledged by remember { mutableStateOf(false) }
-        var strength by remember { mutableStateOf<PasswordStrength?>(null) }
-        DisposableEffect(Unit) { onDispose { password = ""; repeated = ""; strength = null } }
+        val passwordAssessment = rememberPasswordAssessment(session.core, password)
+        DisposableEffect(Unit) { onDispose { password = ""; repeated = "" } }
         val ready = enabled && password.isNotEmpty() && password == repeated && acknowledged &&
-            strength != null && strength != PasswordStrength.Weak
+            passwordAssessment.acceptsPassword()
         AlertDialog(modifier = Modifier.trackSecretActivity(), onDismissRequest = { password = ""; repeated = ""; setting = false },
             title = { Text(tr("Настроить пароль под принуждением", "Configure a duress password")) },
             text = { Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(tr("Пароль должен быть сильным и отличаться от основного. Не проверяйте его вводом на экране входа: это уничтожит прежние данные.",
                     "Use a strong password different from the main password. Do not test it on the unlock screen: that would destroy the previous data."),
                     color = MaterialTheme.colorScheme.error)
-                OutlinedTextField(password, { if (it.length <= 4096) { password = it; strength = null } }, singleLine = true,
+                OutlinedTextField(password, { if (it.length <= 4096) { password = it } }, singleLine = true,
                     label = { Text(tr("Пароль под принуждением", "Duress password")) }, visualTransformation = peek("NotesDuressSettings:6"), trailingIcon = { PeekToggle("NotesDuressSettings:6") },
                     keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
-                val assessed = PasswordTools(session.core, password, enabled) { password = it; repeated = ""; strength = null }
-                SideEffect { strength = assessed }
+                PasswordTools(session.core, password, enabled, assessment = passwordAssessment) { password = it; repeated = "" }
                 OutlinedTextField(repeated, { if (it.length <= 4096) repeated = it }, singleLine = true,
                     label = { Text(tr("Повторите пароль", "Repeat password")) }, visualTransformation = peek("NotesDuressSettings:7"), trailingIcon = { PeekToggle("NotesDuressSettings:7") },
                     keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password),

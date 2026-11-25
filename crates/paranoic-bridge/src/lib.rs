@@ -578,3 +578,6 @@ impl NativeReader {
     pub fn close(&self) { if let Ok(mut state) = self.state.lock() { state.take(); } }
 }
 
+
+#[cfg(test)]
+mod test_support;
