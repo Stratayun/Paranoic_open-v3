@@ -39,3 +39,7 @@ fun visibleFiles(entries: List<FileItem>, options: FileListOptions): List<FileIt
     return ordered.sortedBy { if (it.kind == EntryKind.Directory) 0 else 1 }
 }
 
+
+/** Paranoic's own app-data folder (Core workspace). Not shown as a user place: the encrypted personal folder replaces it. */
+fun io.github.stratayun.paranoic.bridge.Space.isAppPrivate() = localContainer && !detachable && !androidTree && !cloud
+fun List<io.github.stratayun.paranoic.bridge.Space>.userPlaces() = filterNot { it.isAppPrivate() }

@@ -244,12 +244,12 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
                             enabled = canAct && selectedItems.all { it.canCopy(state.spaces) },
                             onClick = { moreMenu = false; inTab { archiveSources = selectedItems; archiveAction = ArchiveAction.Create } })
                         if (selected?.kind == EntryKind.File) {
-                            DropdownMenuItem(text = { Text(tr("Открыть архив…", "Open archive…")) }, leadingIcon = { AppIcon(AppSymbol.Archive) },
+                            if (isArchive(selected)) DropdownMenuItem(text = { Text(tr("Открыть архив…", "Open archive…")) }, leadingIcon = { AppIcon(AppSymbol.Archive) },
                                 enabled = actionable, onClick = { moreMenu = false; inTab { archiveSources = listOf(selected); archiveAction = ArchiveAction.Open } })
                             val cryptoEnabled = actionable && session.directWrite?.phase != DirectWritePhase.Unknown
-                            DropdownMenuItem(text = { Text(tr("Зашифровать файл…", "Encrypt file…")) }, leadingIcon = { AppIcon(AppSymbol.Vault) },
+                            if (!isEncrypted(selected)) DropdownMenuItem(text = { Text(tr("Зашифровать файл…", "Encrypt file…")) }, leadingIcon = { AppIcon(AppSymbol.Vault) },
                                 enabled = cryptoEnabled, onClick = { moreMenu = false; decrypting = false; cryptoSource = selected })
-                            DropdownMenuItem(text = { Text(tr("Расшифровать age…", "Decrypt age…")) }, leadingIcon = { AppIcon(AppSymbol.Passwords) },
+                            else DropdownMenuItem(text = { Text(tr("Расшифровать…", "Decrypt…")) }, leadingIcon = { AppIcon(AppSymbol.Passwords) },
                                 enabled = cryptoEnabled, onClick = { moreMenu = false; decrypting = true; cryptoSource = selected })
                         }
                         DropdownMenuItem(text = { Text(tr("Выбрать все видимые (${visible.size})", "Select all visible (${visible.size})")) },
@@ -277,8 +277,6 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
                         else -> onOpenFile(item) } }),
                 if (isArchive(item)) SheetAction(tr("Извлечь…", "Extract…"), AppSymbol.Download, single,
                     run = act { extractAfterOpen = true; if (session.openArchive(item, archiveFormat(item), null)) showingArchive = true }) else null,
-                if (isFile && !isArchive(item)) SheetAction(tr("Как архив", "As archive"), AppSymbol.Archive, single,
-                    run = act { archiveSources = listOf(item); archiveAction = ArchiveAction.Open }) else null,
                 SheetAction(tr("Выбрать", "Select"), AppSymbol.SelectAll, run = act { session.select(item.location) }),
             )),
             SheetGroup(tr("Упорядочить", "Organize"), listOfNotNull(
@@ -297,11 +295,11 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
                         run = act { deleting = item }) else null,
             )),
             SheetGroup(tr("Инструменты", "Tools"), listOfNotNull(
-                SheetAction(tr("Сжать…", "Compress…"), AppSymbol.Archive, single && item.canCopy(state.spaces),
-                    run = act { archiveSources = listOf(item); archiveAction = ArchiveAction.Create }),
-                if (isFile) SheetAction(tr("Зашифровать…", "Encrypt…"), AppSymbol.Vault, crypto,
+                if (!isArchive(item)) SheetAction(tr("Сжать…", "Compress…"), AppSymbol.Archive, single && item.canCopy(state.spaces),
+                    run = act { archiveSources = listOf(item); archiveAction = ArchiveAction.Create }) else null,
+                if (isFile && !isEncrypted(item)) SheetAction(tr("Зашифровать…", "Encrypt…"), AppSymbol.Vault, crypto,
                     run = act { decrypting = false; cryptoSource = item }) else null,
-                if (isFile) SheetAction(tr("Расшифровать…", "Decrypt…"), AppSymbol.Passwords, crypto,
+                if (isEncrypted(item)) SheetAction(tr("Расшифровать…", "Decrypt…"), AppSymbol.Passwords, crypto,
                     run = act { decrypting = true; cryptoSource = item }) else null,
                 SheetAction(tr("Свойства", "Properties"), AppSymbol.Info, run = { sheetFor = null; properties = item }),
             )),
@@ -424,6 +422,8 @@ private val lockedExt = setOf("age", "aes", "c9r", "pnc")
 /** Archives Core can list and extract (ZIP/ZIP64, 7z). */
 internal fun isArchive(item: FileItem) = item.kind == EntryKind.File &&
     item.name.substringAfterLast('.', "").lowercase() in setOf("zip", "7z")
+/** Files Paranoic can decrypt directly (age). */
+internal fun isEncrypted(item: FileItem) = item.kind == EntryKind.File && item.name.endsWith(".age", ignoreCase = true)
 internal fun archiveFormat(item: FileItem) = if (item.name.endsWith(".7z", true)) ArchiveFormat.SevenZip else ArchiveFormat.Zip
 
 internal fun fileSymbol(item: FileItem): AppSymbol {

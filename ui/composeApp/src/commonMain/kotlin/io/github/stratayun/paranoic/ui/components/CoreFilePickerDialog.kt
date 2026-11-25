@@ -1,11 +1,16 @@
 package io.github.stratayun.paranoic.ui.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.unit.dp
 import io.github.stratayun.paranoic.bridge.*
 import io.github.stratayun.paranoic.ui.state.*
@@ -51,60 +56,108 @@ fun CoreFilePickerDialog(core: CoreGateway, spaces: List<Space>, title: String, 
     val eligible = selected.isNotEmpty() && selected.all { item ->
         spaces.any { it.id == item.location.storageId && (!writable || it.writable) }
     }
-    AlertDialog(modifier = Modifier.trackSecretActivity(), onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(tr("Только уже подключённые папки. Исходные файлы сохраняются.", "Only connected folders are available. Source files are kept."),
-                style = MaterialTheme.typography.bodySmall)
-            Text(trail.joinToString(" / ") { displayName(it.name) }.ifEmpty { tr("Места", "Places") }, maxLines = 2)
-            Row {
-                TextButton(enabled = trail.isNotEmpty() && !loading, onClick = { trail = trail.dropLast(1) }) { Text(tr("Выше", "Up")) }
-                TextButton(enabled = folder != null && !loading, onClick = { attempt++ }) { Text(tr("Обновить", "Refresh")) }
-            }
-            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            fault?.let { FaultNotice(it) }
-            LazyColumn(Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 240.dp)) {
-                if (trail.isEmpty()) {
-                    items(spaces.filter { !writable || it.writable }, key = { it.id }) { space ->
-                        TextButton(onClick = { trail = listOf(FolderNode(space.root, space.name)) }) { Text(displayName(space.name)) }
+    var showHidden by remember { mutableStateOf(false) }
+    val places = spaces.userPlaces().filter { !writable || it.writable }
+    val scheme = MaterialTheme.colorScheme
+    val canConfirm = core.connected && if (kind == CorePickKind.Directory) ready else eligible && !loading
+    fun confirm() {
+        if (kind == CorePickKind.Directory) {
+            val node = trail.lastOrNull()
+            if (ready && node != null) onPick(listOf(FileItem(node.location, node.name, EntryKind.Directory, 0uL)))
+        } else if (eligible && !loading) onPick(selected.toList())
+    }
+    // Full-screen picker (reference: Files app): location bar, rows with icons, checkmarks, a confirm bar.
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize().trackSecretActivity(), color = scheme.surface) {
+            Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+                Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.actionDescription(tr("Отмена", "Cancel"))) { AppIcon(AppSymbol.Close) }
+                    Column(Modifier.weight(1f)) {
+                        Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                        Text(if (kind == CorePickKind.Directory) tr("Выберите папку", "Choose a folder")
+                            else tr("Отмечено: ${selected.size} из $maxSelection", "Selected: ${selected.size} of $maxSelection"),
+                            style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
                     }
-                    if (spaces.none { !writable || it.writable }) item { Text(tr("Нет подходящих подключённых папок.", "No suitable connected folders.")) }
-                } else {
-                    items(current?.items.orEmpty().filter { it.kind == EntryKind.Directory ||
-                        kind != CorePickKind.Directory && it.kind == EntryKind.File },
-                        key = { it.location.storageId + ":" + it.location.path }) { item ->
-                        Column(Modifier.fillMaxWidth()) {
-                            if (item.kind == EntryKind.Directory) TextButton(enabled = trail.size < 64,
-                                onClick = { trail = trail + FolderNode(item.location, item.name) }) {
-                                Text(tr("Открыть папку: ", "Open folder: ") + displayName(item.name))
+                    if (trail.isNotEmpty()) IconButton(onClick = { showHidden = !showHidden },
+                        modifier = Modifier.actionDescription(if (showHidden) tr("Скрыть служебные папки", "Hide dot folders") else tr("Показать служебные папки", "Show dot folders"))) {
+                        AppIcon(if (showHidden) AppSymbol.Info else AppSymbol.Search)
+                    }
+                }
+                Surface(Modifier.fillMaxWidth().padding(horizontal = 12.dp), shape = MaterialTheme.shapes.extraLarge, color = scheme.surfaceContainer) {
+                    Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(enabled = trail.isNotEmpty() && !loading, onClick = { trail = trail.dropLast(1) },
+                            modifier = Modifier.actionDescription(tr("Выше", "Up"))) { AppIcon(AppSymbol.Up) }
+                        Text(trail.joinToString(" › ") { displayName(it.name) }.ifEmpty { tr("Места", "Places") },
+                            Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                        IconButton(enabled = folder != null && !loading, onClick = { attempt++ },
+                            modifier = Modifier.actionDescription(tr("Обновить", "Refresh"))) { AppIcon(AppSymbol.Refresh) }
+                    }
+                }
+                if (loading) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp))
+                fault?.let { FaultNotice(it, Modifier.padding(horizontal = 12.dp)) }
+                LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (trail.isEmpty()) {
+                        items(places, key = { it.id }) { space ->
+                            PickerRow(displayName(space.name), if (space.cloud) AppSymbol.Cloud else AppSymbol.Phone, folder = true,
+                                checked = null, onClick = { trail = listOf(FolderNode(space.root, space.name)) })
+                        }
+                        if (places.isEmpty()) item { Text(tr("Нет подходящих мест.", "No suitable places."), Modifier.padding(16.dp)) }
+                    } else {
+                        val rows = current?.items.orEmpty()
+                            .filter { it.kind == EntryKind.Directory || kind != CorePickKind.Directory && it.kind == EntryKind.File }
+                            .filter { showHidden || !it.name.startsWith(".") }
+                            .sortedWith(compareBy<FileItem>({ it.kind != EntryKind.Directory }, { it.name.lowercase() }))
+                        items(rows, key = { it.location.storageId + ":" + it.location.path }) { item ->
+                            val pickable = kind != CorePickKind.Directory && (item.kind == EntryKind.File || kind == CorePickKind.FilesAndFolders)
+                            val checked = selected.any { it.location == item.location }
+                            fun toggle() {
+                                selected = if (!checked) { if (maxSelection == 1) listOf(item) else if (selected.size < maxSelection) selected + item else selected }
+                                    else selected.filterNot { it.location == item.location }
                             }
-                            if (kind != CorePickKind.Directory && (item.kind == EntryKind.File || kind == CorePickKind.FilesAndFolders)) {
-                                val checked = selected.any { it.location == item.location }
-                                LabeledCheckbox(displayName(item.name), checked,
-                                    enabled = checked || maxSelection == 1 || selected.size < maxSelection, onChange = { choose ->
-                                        selected = if (choose) {
-                                            if (maxSelection == 1) listOf(item) else selected + item
-                                        } else selected.filterNot { it.location == item.location }
-                                    })
-                            }
+                            PickerRow(displayName(item.name), if (item.kind == EntryKind.Directory) AppSymbol.Folder else pickerSymbol(item.name),
+                                folder = item.kind == EntryKind.Directory, checked = if (pickable) checked else null,
+                                onCheck = { toggle() },
+                                onClick = { if (item.kind == EntryKind.Directory) { if (trail.size < 64) trail = trail + FolderNode(item.location, item.name) } else if (pickable) toggle() })
+                        }
+                        if (current != null && rows.isEmpty()) item {
+                            Text(tr("Здесь пусто.", "Nothing here."), Modifier.padding(16.dp), color = scheme.onSurfaceVariant)
                         }
                     }
-                    if (current != null && current.items.isEmpty()) item { Text(tr("Папка пуста.", "The folder is empty.")) }
+                }
+                Surface(color = scheme.surfaceContainer) {
+                    Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (kind != CorePickKind.Directory) TextButton(enabled = selected.isNotEmpty(), onClick = { selected = emptyList() }) { Text(tr("Сбросить", "Reset")) }
+                        Spacer(Modifier.weight(1f))
+                        Button(enabled = canConfirm, onClick = ::confirm, modifier = Modifier.height(48.dp)) {
+                            Text(if (kind == CorePickKind.Directory) tr("Выбрать эту папку", "Choose this folder")
+                                else tr("Готово (${selected.size})", "Done (${selected.size})"))
+                        }
+                    }
                 }
             }
-            if ((current?.hidden ?: 0) > 0) Text(tr("Некоторые служебные или непереносимые имена скрыты Core.",
-                "Core hides some service or non-portable names."), style = MaterialTheme.typography.bodySmall)
-            if (kind != CorePickKind.Directory) Row {
-                Text(tr("Выбрано: ${selected.size} / $maxSelection", "Selected: ${selected.size} / $maxSelection"))
-                TextButton(enabled = selected.isNotEmpty(), onClick = { selected = emptyList() }) { Text(tr("Сбросить", "Reset")) }
-            }
-        } },
-        confirmButton = { TextButton(enabled = core.connected && if (kind == CorePickKind.Directory) ready else eligible && !loading,
-            onClick = {
-                if (kind == CorePickKind.Directory) {
-                    val node = trail.lastOrNull()
-                    if (ready && node != null) onPick(listOf(FileItem(node.location, node.name, EntryKind.Directory, 0uL)))
-                } else if (eligible && !loading) onPick(selected.toList())
-            }) { Text(if (kind == CorePickKind.Directory) tr("Выбрать эту папку", "Choose this folder") else tr("Выбрать", "Choose")) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Отмена", "Cancel")) } })
+        }
+    }
+}
+
+@Composable
+private fun PickerRow(title: String, symbol: AppSymbol, folder: Boolean, checked: Boolean?, onCheck: () -> Unit = {}, onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = if (checked == true) scheme.secondaryContainer else Color.Transparent) {
+        Row(Modifier.clickable(onClick = onClick).heightIn(min = 56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            ShapedIcon(symbol, MaterialTheme.shapes.medium, if (folder) scheme.primaryContainer else scheme.surfaceContainerHighest,
+                if (folder) scheme.onPrimaryContainer else scheme.onSurfaceVariant, size = 40.dp)
+            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, maxLines = 2)
+            if (checked != null) Checkbox(checked = checked, onCheckedChange = { onCheck() })
+            else if (folder) AppIcon(AppSymbol.Forward)
+        }
+    }
+}
+
+private fun pickerSymbol(name: String): AppSymbol = when (name.substringAfterLast('.', "").lowercase()) {
+    "png", "jpg", "jpeg", "gif", "webp", "heic", "bmp" -> AppSymbol.Photo
+    "mp4", "mkv", "webm", "mov", "avi", "3gp" -> AppSymbol.Video
+    "mp3", "flac", "ogg", "opus", "m4a", "wav", "aac" -> AppSymbol.Audio
+    "zip", "7z", "rar", "tar", "gz" -> AppSymbol.Archive
+    "age" -> AppSymbol.Vault
+    else -> AppSymbol.Document
 }

@@ -33,8 +33,9 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
     fun appPrivate(space: Space) = space.localContainer && !space.detachable && !space.androidTree && !space.cloud
     val privateTitle = tr("Файлы приложения", "App files")
     fun title(space: Space) = catalog.title(space.id, if (appPrivate(space)) privateTitle else space.name)
-    val hidden = spaces.filter { catalog.snapshot.find(it.id)?.hidden == true }
-    val visible = spaces.filter { catalog.snapshot.find(it.id)?.hidden != true }
+    val places = spaces.userPlaces()
+    val hidden = places.filter { catalog.snapshot.find(it.id)?.hidden == true }
+    val visible = places.filter { catalog.snapshot.find(it.id)?.hidden != true }
     val scheme = MaterialTheme.colorScheme
     fun symbol(space: Space) = when {
         appPrivate(space) -> AppSymbol.Vault

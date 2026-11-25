@@ -31,6 +31,7 @@ internal fun VaultLauncher(core: CoreGateway, spaces: List<Space>, catalog: Vaul
     backHandler: @Composable (Boolean, () -> Unit) -> Unit,
     onCreate: (FolderNode) -> Unit, onOpen: (FoundVault) -> Unit, onRelocate: (SavedVault, FoundVault) -> Unit,
     onRecovery: (FoundVault) -> Unit, onConnectFolder: (VaultFolderRequest) -> Unit) {
+    val spaces = spaces.userPlaces()
     var creating by remember { mutableStateOf<Boolean?>(null) }
     var trail by remember { mutableStateOf<List<FolderNode>>(emptyList()) }
     var folders by remember { mutableStateOf<List<FileItem>>(emptyList()) }
