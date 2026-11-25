@@ -52,18 +52,29 @@ try {
     while ((Get-Date) -lt $deadline) {
         $process.Refresh()
         if ($process.HasExited) { throw "Portable exited before opening its window. Exit code $($process.ExitCode)" }
-        if ([StartupWindow]::Exists($process.Id)) { $visible = $true; break }
+        if (@(Get-Process Paranoic -ErrorAction SilentlyContinue | Where-Object { [StartupWindow]::Exists($_.Id) }).Count -gt 0) { $visible = $true; break }
         Start-Sleep -Milliseconds 500
     }
     if (!$visible) { throw 'Portable did not show its application window within 60 seconds' }
     Start-Sleep -Seconds 10
     $process.Refresh()
-    if ($process.HasExited -or ![StartupWindow]::Exists($process.Id)) { throw 'Application window disappeared after startup' }
+    if ($process.HasExited -or @(Get-Process Paranoic -ErrorAction SilentlyContinue | Where-Object { [StartupWindow]::Exists($_.Id) }).Count -eq 0) { throw 'Application window disappeared after startup' }
     'PASS: visible Paranoic AWT window survived startup.' | Tee-Object (Join-Path $report 'result.txt')
 } catch {
     $_ | Out-String | Tee-Object (Join-Path $report 'result.txt')
     throw
 } finally {
+    Get-Process Paranoic -ErrorAction SilentlyContinue | Format-List Id,MainWindowTitle,MainWindowHandle,Responding |
+        Out-File (Join-Path $report 'processes.txt')
+    try {
+        Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+        $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
+        $screen = New-Object System.Drawing.Bitmap $bounds.Width,$bounds.Height
+        $graphics = [System.Drawing.Graphics]::FromImage($screen)
+        $graphics.CopyFromScreen($bounds.Left,$bounds.Top,0,0,$bounds.Size)
+        $screen.Save((Join-Path $report 'desktop.png'))
+        $graphics.Dispose(); $screen.Dispose()
+    } catch { $_ | Out-File (Join-Path $report 'screenshot-error.txt') }
     if ($process -and !$process.HasExited) { Stop-Process -Id $process.Id -Force }
     Get-ChildItem $unpacked -Recurse -File | Where-Object {
         $_.Name -in @('startup-error.txt', 'last-jvm-crash-v1.bin') -or $_.Name -like 'hs_err_pid*.log'
