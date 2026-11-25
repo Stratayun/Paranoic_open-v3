@@ -44,7 +44,7 @@ public static class StartupWindow {
 }
 '@
 $env:LOCALAPPDATA = Join-Path $unpacked 'user-data'
-$env:JPACKAGE_DEBUG = 'true'
+Remove-Item Env:JPACKAGE_DEBUG -ErrorAction SilentlyContinue
 if ($UnicodeTemp) {
     $env:TEMP = Join-Path $env:RUNNER_TEMP 'Временные файлы'
     $env:TMP = $env:TEMP
