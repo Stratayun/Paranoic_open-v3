@@ -325,6 +325,12 @@ fn png(width: u32, height: u32, rgb: [u8; 3], length: usize) -> Vec<u8> {
     assert_eq!(std::fs::metadata(h.file("photo.png"))?.len(), 4096);
     let second = cached_thumbnail(&h.core, &cache, &loc, 16, ImageLimits::default(), || Ok(()))?;
     assert_ne!(first.as_slice(), second.as_slice(), "stale thumbnail served after replacement");
+    // Audit 25: a replacement that keeps size AND modification time is still new.
+    let stamp = std::fs::metadata(h.file("photo.png"))?.modified()?;
+    std::fs::write(h.file("photo.png"), png(64, 32, [0, 0, 250], 4096))?;
+    std::fs::File::options().write(true).open(h.file("photo.png"))?.set_modified(stamp)?;
+    let third = cached_thumbnail(&h.core, &cache, &loc, 16, ImageLimits::default(), || Ok(()))?;
+    assert_ne!(second.as_slice(), third.as_slice(), "same size and time served the previous image");
     // Lock removes every object and refuses further use.
     cache.lock()?;
     assert!(cache.is_locked());

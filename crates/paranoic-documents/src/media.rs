@@ -76,7 +76,35 @@ impl Default for ImageLimits {
 /// Decoded RGBA8 pixels, row-major. Pixels are zeroized on drop.
 pub struct DecodedImage { pub width: u32, pub height: u32, pub rgba: Zeroizing<Vec<u8>> }
 
-fn decode(bytes: &[u8], limits: ImageLimits) -> Result<DynamicImage> {
+/// Decoded pixels allowed at once across all requests (audit 26): one 50 MP
+/// photo, or several smaller ones, but never two 256 MiB decodes together.
+const DECODE_BUDGET: u64 = 288 << 20;
+static DECODE_USED: std::sync::Mutex<u64> = std::sync::Mutex::new(0);
+static DECODE_FREE: std::sync::Condvar = std::sync::Condvar::new();
+/// Reservation of decoded-pixel memory; released on drop.
+struct DecodeReservation(u64);
+impl DecodeReservation {
+    fn take(bytes: u64) -> Result<Self> {
+        if bytes > DECODE_BUDGET { return Err(large()); }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        let mut used = DECODE_USED.lock().map_err(|_| poisoned())?;
+        while *used + bytes > DECODE_BUDGET {
+            let now = std::time::Instant::now();
+            if now >= deadline { return Err(CoreError::new(ErrorCode::Busy, "image decoder busy")); }
+            used = DECODE_FREE.wait_timeout(used, deadline - now).map_err(|_| poisoned())?.0;
+        }
+        *used += bytes;
+        Ok(Self(bytes))
+    }
+}
+impl Drop for DecodeReservation {
+    fn drop(&mut self) {
+        if let Ok(mut used) = DECODE_USED.lock() { *used = used.saturating_sub(self.0); }
+        DECODE_FREE.notify_all();
+    }
+}
+
+fn decode(bytes: &[u8], limits: ImageLimits) -> Result<(DynamicImage, DecodeReservation)> {
     if bytes.len() as u64 > limits.input_bytes { return Err(large()); }
     let media = sniff(&bytes[..bytes.len().min(64)]).filter(|m| m.decodable).ok_or_else(unsupported)?;
     let format = match media.mime { "image/png" => ImageFormat::Png, "image/jpeg" => ImageFormat::Jpeg, "image/gif" => ImageFormat::Gif,
@@ -89,10 +117,13 @@ fn decode(bytes: &[u8], limits: ImageLimits) -> Result<DynamicImage> {
     let (width, height) = decoder.dimensions();
     if width == 0 || height == 0 || width > limits.max_width || height > limits.max_height
         || (width as u64) * (height as u64) * 4 > limits.max_alloc { return Err(large()); }
+    // Reserved before the pixels exist; held while the caller uses the image.
+    // Orientation may need a second buffer of the same size.
+    let reservation = DecodeReservation::take((width as u64) * (height as u64) * 4)?;
     let orientation = decoder.orientation().ok();
     let mut image = DynamicImage::from_decoder(decoder).map_err(image_error)?;
     if let Some(orientation) = orientation { image.apply_orientation(orientation); }
-    Ok(image)
+    Ok((image, reservation))
 }
 fn image_error(error: image::ImageError) -> CoreError {
     match error {
@@ -104,7 +135,8 @@ fn image_error(error: image::ImageError) -> CoreError {
 
 /// Full-resolution view for the image viewer (first frame of animations).
 pub fn decode_image(bytes: &[u8], limits: ImageLimits) -> Result<DecodedImage> {
-    let image = decode(bytes, limits)?.into_rgba8();
+    let (image, _reserved) = decode(bytes, limits)?;
+    let image = image.into_rgba8();
     let (width, height) = image.dimensions();
     Ok(DecodedImage { width, height, rgba: Zeroizing::new(image.into_raw()) })
 }
@@ -112,7 +144,10 @@ pub fn decode_image(bytes: &[u8], limits: ImageLimits) -> Result<DecodedImage> {
 /// PNG fitting `max_side` (16..=2048: thumbnails and the full-screen viewer), metadata stripped.
 pub fn thumbnail_image(bytes: &[u8], max_side: u32, limits: ImageLimits) -> Result<Zeroizing<Vec<u8>>> {
     if !(16..=2048).contains(&max_side) { return Err(CoreError::new(ErrorCode::InvalidInput, "thumbnail size out of range")); }
-    encode_png(decode(bytes, limits)?.thumbnail(max_side, max_side))
+    let (image, reserved) = decode(bytes, limits)?;
+    let thumbnail = image.thumbnail(max_side, max_side);
+    drop(image); drop(reserved);
+    encode_png(thumbnail)
 }
 
 /// Thumbnail from a platform-decoded RGBA frame (e.g. a video frame from Media3).
@@ -133,10 +168,15 @@ fn encode_png(image: DynamicImage) -> Result<Zeroizing<Vec<u8>>> {
 
 /// Identity of a thumbnail: changes when the source object changes.
 #[derive(Clone, Debug)]
-pub struct ThumbnailKey { pub location: Location, pub bytes: u64, pub modified_unix_ms: Option<u64>, pub max_side: u32 }
+pub struct ThumbnailKey { pub location: Location, pub bytes: u64, pub modified_unix_ms: Option<u64>, pub max_side: u32,
+    /// BLAKE3 of the source bytes. Size and time alone do not identify a
+    /// version (a replacement may keep both, a provider may report no time;
+    /// audit 25), so `cached_thumbnail` always keys by content: the cache saves
+    /// the decoding, never the check.
+    pub content: Option<[u8; 32]> }
 impl ThumbnailKey {
     pub fn from_metadata(location: Location, metadata: &Metadata, max_side: u32) -> Self {
-        Self { location, bytes: metadata.bytes, modified_unix_ms: metadata.modified_unix_ms, max_side }
+        Self { location, bytes: metadata.bytes, modified_unix_ms: metadata.modified_unix_ms, max_side, content: None }
     }
 }
 
@@ -168,6 +208,7 @@ impl ThumbnailCache {
         hash.update(key.location.storage.0.as_bytes()); hash.update(&(path.len() as u64).to_le_bytes()); hash.update(path);
         hash.update(&key.bytes.to_le_bytes()); hash.update(&key.modified_unix_ms.map_or(u64::MAX, |v| v).to_le_bytes());
         hash.update(&key.max_side.to_le_bytes());
+        hash.update(&[u8::from(key.content.is_some())]); hash.update(&key.content.unwrap_or([0; 32]));
         let mut id = [0u8; 16]; id.copy_from_slice(&hash.finalize().as_bytes()[..16]);
         ObjectId::from_bytes(id)
     }
@@ -245,8 +286,7 @@ pub fn cached_thumbnail(core: &Core, cache: &ThumbnailCache, location: &Location
     check()?;
     let metadata = core.metadata(location)?;
     if metadata.kind != EntryKind::File || metadata.bytes > limits.input_bytes { return Err(large()); }
-    let key = ThumbnailKey::from_metadata(location.clone(), &metadata, max_side);
-    if let Some(png) = cache.get(&key)? { return Ok(png); }
+    let mut key = ThumbnailKey::from_metadata(location.clone(), &metadata, max_side);
     let mut input = core.open_read(location)?;
     if input.metadata()? != metadata { return Err(changed()); }
     let mut bytes = Zeroizing::new(Vec::with_capacity(metadata.bytes as usize));
@@ -259,6 +299,8 @@ pub fn cached_thumbnail(core: &Core, cache: &ThumbnailCache, location: &Location
         bytes.extend_from_slice(&buffer[..n]);
     }
     if bytes.len() as u64 != metadata.bytes || input.metadata()? != metadata { return Err(changed()); }
+    key.content = Some(*blake3::hash(&bytes).as_bytes());
+    if let Some(png) = cache.get(&key)? { return Ok(png); }
     check()?;
     let png = thumbnail_image(&bytes, max_side, limits)?;
     // An entry over the cache's size bound is simply not cached: it must not hide
