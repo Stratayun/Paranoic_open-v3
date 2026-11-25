@@ -283,8 +283,8 @@ impl NativeRuntime {
         #[cfg(any(target_os = "linux", target_os = "android"))]
         {
             use paranoic_local::NoReplaceProbe as P;
-            let path = std::fs::canonicalize(&grant.reference).map_err(|_| BridgeError::Denied)?;
-            return Ok(match paranoic_local::probe_noreplace(&path) { P::Supported => 0, P::Unsupported => 1, P::Ignored => 2, P::Failed => 3 });
+            // The probe opens the root once and works relative to that descriptor.
+            return Ok(match paranoic_local::probe_noreplace(std::path::Path::new(&grant.reference)) { P::Supported => 0, P::Unsupported => 1, P::Ignored => 2, P::Failed => 3 });
         }
         #[allow(unreachable_code)]
         Ok(4)

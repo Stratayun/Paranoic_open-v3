@@ -23,16 +23,16 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - name: Rust 1.87 (MSRV)
-        run: rustup toolchain install 1.87.0 --profile minimal --component clippy
+      - name: Rust 1.88 (MSRV)
+        run: rustup toolchain install 1.88.0 --profile minimal --component clippy
       - name: Check all crates and targets
-        run: cargo +1.87.0 check --locked --workspace --all-targets
+        run: cargo +1.88.0 check --locked --workspace --all-targets
       - name: Clippy
-        run: cargo +1.87.0 clippy --locked --workspace --all-targets
+        run: cargo +1.88.0 clippy --locked --workspace --all-targets
       - name: PDF worker (Windows build)
-        run: cargo +1.87.0 build --locked -p paranoic-documents --features pdf --bin paranoic-pdf-worker
+        run: cargo +1.88.0 build --locked -p paranoic-documents --features pdf --bin paranoic-pdf-worker
       - name: Windows platform tests (ACL, FileId, no-replace, confinement, private directory, local writes)
-        run: cargo +1.87.0 test --locked -p paranoic-windows -p paranoic-local -p paranoic-crypto -- --test-threads=1
+        run: cargo +1.88.0 test --locked -p paranoic-windows -p paranoic-local -p paranoic-crypto -- --test-threads=1
 
   kotlin:
     if: inputs.target == 'all' || inputs.target == 'kotlin'
@@ -44,8 +44,8 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - name: Rust 1.87 (MSRV)
-        run: rustup toolchain install 1.87.0 --profile minimal && rustup default 1.87.0
+      - name: Rust 1.88 (MSRV)
+        run: rustup toolchain install 1.88.0 --profile minimal && rustup default 1.88.0
       - uses: android-actions/setup-android@v3
         with:
           # The default also installs the obsolete 'tools' package, which fails

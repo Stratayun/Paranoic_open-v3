@@ -410,7 +410,10 @@ impl DeviceKey for FlakyDevice {
     let store = NotesStore::open(&temp.0, None, NotesLimits::default()).unwrap();
     assert!(matches!(store.unlock(PASSWORD), Err(NotesError::RateLimited { .. })));
     assert_eq!(std::fs::read(object(3)).unwrap().len(), 16, "damaged attempt record not rewritten: the delay restarts on every read");
-    assert!(!store.auto_wipe_enabled().unwrap(), "damaged settings treated as consent to auto-wipe");
+    // Audit 20: damage is reported, never read as "on"; extra bytes after a 1 included.
+    assert!(matches!(store.auto_wipe_enabled(), Err(NotesError::Corrupt)), "damaged settings not reported");
+    std::fs::write(object(6), [1u8, 0]).unwrap();
+    assert!(matches!(store.auto_wipe_enabled(), Err(NotesError::Corrupt)), "trailing bytes treated as consent to auto-wipe");
 }
 
 /// Plan 5.1: the personal folder's secret lives with the notes — made on first
@@ -472,6 +475,13 @@ impl DeviceKey for FlakyDevice {
     assert!(store.duress_enabled(&session).unwrap());
     assert_eq!(std::fs::read(object(10)).unwrap().len(), filler.len(), "a set duress password is visible by size");
     assert!(matches!(store.change_password(&session, PASSWORD, duress), Err(NotesError::SamePassword)));
+    // Audit 3: an update interrupted between the flag and the record (here the
+    // old filler is put back) is shown as what is on disk: not armed.
+    let armed = std::fs::read(object(10)).unwrap();
+    std::fs::write(object(10), &filler).unwrap();
+    assert!(!store.duress_enabled(&session).unwrap(), "flag shows armed while the record is filler");
+    std::fs::write(object(10), &armed).unwrap();
+    assert!(store.duress_enabled(&session).unwrap());
 
     // A wrong password still counts as wrong.
     store.lock().unwrap();

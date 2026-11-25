@@ -31,7 +31,10 @@ class NativeCoreIntegrationTest {
             val core = NativeCoreGateway.open(root.resolve("state").absolutePath, workspace.absolutePath,
                 "", "", NoAndroidDocuments, store, sealer)
             gateway = core
-            val password = "correct horse battery staple 42"
+            val password = "Correct horse battery staple 42!"
+            // Policy: lower, upper, digit and symbol. A phrase without them is refused before any state exists.
+            assertEquals(CoreResult.Failure(CoreFault.WeakPassword), core.notesCreate("correct horse battery staple 42"))
+            assertFalse(core.notesStatus().value().setUp)
             core.notesCreate(password).value()
             val notes = listOf(NoteTab("t", "Test", listOf(Note("n", "Title", "private marker", 1))))
             core.notesSave(notes).value()

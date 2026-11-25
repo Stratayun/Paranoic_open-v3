@@ -78,30 +78,76 @@ pub enum NoReplaceProbe {
 }
 
 /// Owner's diagnostics (audit finding 1): checks, inside `root`, whether
-/// `renameat2(RENAME_NOREPLACE)` really refuses to replace. Works in a fresh
-/// hidden folder of its own and removes it afterwards; touches nothing else.
+/// `renameat2(RENAME_NOREPLACE)` really refuses to replace.
+///
+/// Safe on a shared, concurrently written volume (audit finding 23): every
+/// step is relative to held directory descriptors, objects are created
+/// exclusively, at most two bytes are read, and cleanup removes only the
+/// entries this call created (matched by inode). Anything unexpected ends
+/// the probe as [`NoReplaceProbe::Failed`] and leaves foreign entries alone.
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn probe_noreplace(root: &std::path::Path) -> NoReplaceProbe {
-    use std::fs;
+    use rustix::fs::{fstat, mkdirat, openat, statat, unlinkat};
+    let dir_flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+    // The granted root itself may be reached through a link (e.g. /sdcard); everything below it may not.
+    let Ok(parent) = openat(rustix::fs::CWD, root, OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC, Mode::empty()) else { return NoReplaceProbe::Failed };
     let mut id = [0u8; 8];
     if getrandom_fill(&mut id).is_err() { return NoReplaceProbe::Failed; }
-    let dir = root.join(format!(".paranoic-probe-{}", id.iter().map(|b| format!("{b:02x}")).collect::<String>()));
-    if fs::create_dir(&dir).is_err() { return NoReplaceProbe::Failed; }
-    let result = (|| -> std::io::Result<NoReplaceProbe> {
-        let (a, b) = (dir.join("a"), dir.join("b"));
-        fs::write(&a, b"A")?; fs::write(&b, b"B")?;
-        let cwd = rustix::fs::CWD;
-        let outcome = rustix::fs::renameat_with(cwd, &a, cwd, &b, RenameFlags::NOREPLACE);
-        let now = fs::read(&b)?;
-        Ok(match outcome {
-            Err(e) if e == Errno::EXIST && now == b"B" => NoReplaceProbe::Supported,
-            Err(e) if (e == Errno::INVAL || e == Errno::NOSYS) && now == b"B" => NoReplaceProbe::Unsupported,
-            Ok(()) if now == b"A" => NoReplaceProbe::Ignored,
-            _ => NoReplaceProbe::Failed,
-        })
-    })();
-    let _ = fs::remove_dir_all(&dir);
-    result.unwrap_or(NoReplaceProbe::Failed)
+    let name = format!(".paranoic-probe-{}", id.iter().map(|b| format!("{b:02x}")).collect::<String>());
+    if mkdirat(&parent, name.as_str(), Mode::RWXU).is_err() { return NoReplaceProbe::Failed; }
+    let Ok(made) = statat(&parent, name.as_str(), AtFlags::SYMLINK_NOFOLLOW) else { return NoReplaceProbe::Failed };
+    let dir = match openat(&parent, name.as_str(), dir_flags, Mode::empty()) {
+        Ok(fd) => fd,
+        Err(_) => return NoReplaceProbe::Failed,
+    };
+    // The opened directory must be the one this call created.
+    match fstat(&dir) {
+        Ok(st) if st.st_dev == made.st_dev && st.st_ino == made.st_ino => {}
+        _ => return NoReplaceProbe::Failed,
+    }
+    let create = |name: &str, byte: u8| -> rustix::io::Result<rustix::fs::Stat> {
+        let fd = openat(&dir, name, OFlags::CREATE | OFlags::EXCL | OFlags::WRONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::RUSR | Mode::WUSR)?;
+        if rustix::io::write(&fd, &[byte])? != 1 { return Err(Errno::IO); }
+        fstat(&fd)
+    };
+    let (a, b) = match (create("a", b'A'), create("b", b'B')) {
+        (Ok(a), Ok(b)) => (a, b),
+        (a, b) => {
+            for (n, st) in [("a", a), ("b", b)] { if let Ok(st) = st { remove_own(&dir, n, &st); } }
+            let _ = unlinkat(&parent, name.as_str(), AtFlags::REMOVEDIR);
+            return NoReplaceProbe::Failed;
+        }
+    };
+    let outcome = rustix::fs::renameat_with(&dir, "a", &dir, "b", RenameFlags::NOREPLACE);
+    // Read at most two bytes of "b" without following links.
+    let content = openat(&dir, "b", OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC, Mode::empty()).ok().and_then(|fd| {
+        let mut buf = [0u8; 2];
+        rustix::io::read(&fd, &mut buf).ok().map(|n| buf[..n].to_vec())
+    });
+    let verdict = match (outcome, content.as_deref()) {
+        (Err(e), Some(b"B")) if e == Errno::EXIST => NoReplaceProbe::Supported,
+        (Err(e), Some(b"B")) if e == Errno::INVAL || e == Errno::NOSYS => NoReplaceProbe::Unsupported,
+        (Ok(()), Some(b"A")) => NoReplaceProbe::Ignored,
+        _ => NoReplaceProbe::Failed,
+    };
+    // After an ignored flag "b" holds a's inode; remove whichever of ours remains.
+    remove_own(&dir, "a", &a);
+    remove_own(&dir, "b", &b);
+    remove_own(&dir, "b", &a);
+    // Fails (and leaves it) if anything foreign appeared inside.
+    let _ = unlinkat(&parent, name.as_str(), AtFlags::REMOVEDIR);
+    verdict
+}
+
+/// Unlinks `name` only if it is still the object identified by `st`.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn remove_own<D: AsFd>(dir: D, name: &str, st: &rustix::fs::Stat) {
+    if let Ok(now) = rustix::fs::statat(&dir, name, AtFlags::SYMLINK_NOFOLLOW) {
+        if now.st_dev == st.st_dev && now.st_ino == st.st_ino {
+            let _ = rustix::fs::unlinkat(&dir, name, AtFlags::empty());
+        }
+    }
 }
 
 #[cfg(any(target_os = "linux", target_os = "android"))]

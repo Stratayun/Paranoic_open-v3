@@ -152,7 +152,10 @@ const CTX_DURESS: &[u8] = b"paranoic/notes/v1/duress-wrap";
 const FIXED: [[u8; 16]; 10] = [KEY, NOTEBOOK, ATTEMPTS, QUICK_SEALED, QUICK_WRAP, SETTINGS, NOTEBOOK_NEXT, SAFE, SAFE_NEXT, DURESS];
 
 #[derive(Clone, Default, Serialize, Deserialize)]
-struct Extra { #[serde(default)] safe: Option<String>, #[serde(default)] duress: bool }
+struct Extra { #[serde(default)] safe: Option<String>, #[serde(default)] duress: bool,
+    /// Tail of the DURESS record written when the flag was set: tells whether the
+    /// record on disk is the armed one, whatever order an interrupted update left.
+    #[serde(default)] duress_tag: Option<Vec<u8>> }
 impl Drop for Extra { fn drop(&mut self) { if let Some(s) = &mut self.safe { s.zeroize(); } } }
 const CTX_ATTACHMENT: &[u8] = b"paranoic/notes/v1/attachment/";
 /// Wrong passwords in a row that trigger Clear when auto-wipe is enabled.
@@ -248,27 +251,44 @@ impl NotesStore {
         // written atomically, and the wrap is deliberately indistinguishable from
         // filler. Order the writes so a crash between them can only leave the flag
         // ON while the wipe is NOT armed — never "shown as off but still armed".
+        // The flag also records a tag of the exact armed record (audit 3), so
+        // `duress_enabled` reports what is on disk in both crash directions.
         let mut extra = self.open_extra(&session.key)?.unwrap_or_default();
         if duress.is_some() {
+            let record = self.duress_record(duress)?;
             extra.duress = true;
+            extra.duress_tag = Some(record_tag(&record));
             self.write_extra(SAFE, &session.key, &extra)?;
-            self.write_duress(duress)
+            self.replace(DURESS, &record)
         } else {
             self.write_duress(None)?;
             extra.duress = false;
+            extra.duress_tag = None;
             self.write_extra(SAFE, &session.key, &extra)
         }
     }
     pub fn duress_enabled(&self, session: &NotesSession) -> Result<bool> {
         self.check(session)?;
-        Ok(self.open_extra(&session.key)?.is_some_and(|e| e.duress))
+        let Some(extra) = self.open_extra(&session.key)? else { return Ok(false) };
+        if !extra.duress { return Ok(false); }
+        match &extra.duress_tag {
+            // Armed only if the record on disk is the one the flag was set for.
+            Some(tag) => Ok(self.directory.contains(ObjectId::from_bytes(DURESS)).map_err(io)?
+                && record_tag(&self.read(DURESS)?) == *tag),
+            None => Ok(true), // set before tags existed
+        }
     }
     fn write_duress(&self, password: Option<&str>) -> Result<()> {
+        let record = self.duress_record(password)?;
+        self.replace(DURESS, &record)
+    }
+    /// The DURESS record for `password`, or an indistinguishable filler for `None`.
+    fn duress_record(&self, password: Option<&str>) -> Result<Vec<u8>> {
         let mut filler = Zeroizing::new(vec![0u8; 32]);
         paranoic_crypto::random_bytes(&mut filler).map_err(crypto)?;
         let throwaway = SecretKey::generate().map_err(crypto)?;
         let wrapped = throwaway.wrap(password.map_or(&filler[..], str::as_bytes), CTX_DURESS).map_err(crypto)?;
-        self.write_wrapped(DURESS, &wrapped)
+        self.wrapped_record(&wrapped)
     }
 
     /// Quick unlock with the host's authentication-bound key (biometrics).
@@ -567,7 +587,9 @@ impl NotesStore {
         // Damaged settings are NOT consent to destroy the notes: auto-wipe is
         // only on when the user enabled it and the record says so (external
         // audit, 2026-11-14; rule 6).
-        Ok(self.read(SETTINGS)?.first().is_some_and(|flag| *flag == 1))
+        // Only the exact one-byte encodings are valid (audit 20); anything else is
+        // reported as damage and never enables the wipe.
+        match self.read(SETTINGS)?.as_slice() { [0] => Ok(false), [1] => Ok(true), _ => Err(NotesError::Corrupt) }
     }
     pub fn set_auto_wipe(&self, session: &NotesSession, enabled: bool) -> Result<()> {
         self.check(session)?;
@@ -587,7 +609,10 @@ impl NotesStore {
     }
     /// True if `password` opens the duress record (one key derivation).
     fn is_duress(&self, password: &str) -> Result<bool> {
-        let Ok(record) = self.read(DURESS) else { return Ok(false) };
+        // Absent record: no duress password. A read error is reported, never
+        // counted as a mismatch (audit 3): the caller then changes no counter.
+        if !self.directory.contains(ObjectId::from_bytes(DURESS)).map_err(io)? { return Ok(false); }
+        let record = self.read(DURESS)?;
         let wrapped = self.open_key_record(&record)?;
         Ok(SecretKey::unwrap(&wrapped, password.as_bytes(), CTX_DURESS).is_ok())
     }
@@ -612,7 +637,8 @@ impl NotesStore {
                 let delay = (1u64 << (delay_level - 1)).min(30) * 1000;
                 // Persisted before reporting: a restart resets neither the delay nor the count.
                 self.store_attempts(Attempts { delay_level, next_ms: now_ms().saturating_add(delay), total })?;
-                if total >= AUTO_WIPE_ATTEMPTS && self.auto_wipe_enabled()? {
+                // Damaged settings never consent to the wipe.
+                if total >= AUTO_WIPE_ATTEMPTS && self.auto_wipe_enabled().unwrap_or(false) {
                     return match self.clear(None) { Ok(_) => Err(NotesError::Wiped), Err(error) => Err(error) };
                 }
                 Err(NotesError::WrongPassword)
@@ -626,13 +652,17 @@ impl NotesStore {
     }
     /// Key-record layout (magic, device flag, payload) for `object`.
     fn write_wrapped(&self, object: [u8; 16], wrapped: &[u8]) -> Result<()> {
+        let record = self.wrapped_record(wrapped)?;
+        self.replace(object, &record)
+    }
+    fn wrapped_record(&self, wrapped: &[u8]) -> Result<Vec<u8>> {
         let wrapped = wrapped.to_vec();
         let (flag, payload) = match &self.device {
             Some(device) => (1u8, device.seal(&wrapped).map_err(|_| NotesError::Device)?),
             None => (0u8, wrapped),
         };
         let mut record = KEY_MAGIC.to_vec(); record.push(flag); record.extend_from_slice(&payload);
-        self.replace(object, &record)
+        Ok(record)
     }
     fn open_key_record(&self, record: &[u8]) -> Result<Zeroizing<Vec<u8>>> {
         if record.len() < 9 || &record[..8] != KEY_MAGIC { return Err(NotesError::Corrupt); }
@@ -726,3 +756,7 @@ fn crypto(error: CryptoError) -> NotesError {
 fn io(error: CryptoError) -> NotesError {
     match error { CryptoError::Busy => NotesError::Io, CryptoError::Permissions => NotesError::Device, _ => NotesError::Io }
 }
+
+/// Identifies one written record: the last 16 bytes of its sealed wrap, which
+/// carry the random nonce/tag of that particular write.
+fn record_tag(record: &[u8]) -> Vec<u8> { record[record.len().saturating_sub(16)..].to_vec() }
