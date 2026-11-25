@@ -2,6 +2,13 @@ package io.github.stratayun.paranoic.ui.screens.encryption
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.combinedClickable
+import io.github.stratayun.paranoic.ui.components.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -37,7 +44,7 @@ fun EncryptionScreen(session: AppSession, onBrowseFiles: () -> Unit) {
     EncryptionScreen(session, remember { DocumentExitGuard() }, onBrowseFiles = onBrowseFiles)
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
     folderReturn: VaultFolderReturn? = null, onFolderReturnConsumed: () -> Unit = {},
@@ -194,57 +201,87 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
             val l = listing
             if (session.vaultCatalog.failed) Text(tr("Хранилище открыто, но сохранить карточку не удалось. Её прежние данные сохранены; перечитайте каталог после блокировки.",
                 "The vault is open, but its card could not be saved. Previous details are retained; reload the catalog after locking."), color = MaterialTheme.colorScheme.error)
-            LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            var sheetEntry by remember(open.handle) { mutableStateOf<VaultEntry?>(null) }
+            var vaultMenu by remember(open.handle) { mutableStateOf(false) }
+            var addMenu by remember(open.handle) { mutableStateOf(false) }
+            val scheme = MaterialTheme.colorScheme
+            val canWrite = !busy && !reading && !uncertain && open.writable
+            LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(displayName(open.name) + path.joinToString("") { " / " + displayName(it) }, Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleMedium)
-                OutlinedButton(enabled = !busy, onClick = {
-                    session.pause(); session.resume()
-                }) { Text(tr("Заблокировать", "Lock")) }
-            }
-            Text((if (format == FolderFormat.Cryptomator) "Cryptomator" else "Paranoic 1.8") + " · " + tr("Открыто", "Unlocked"))
-            Text(tr("Место: /", "Location: /") + displayName(open.root.path), style = MaterialTheme.typography.bodySmall)
-            Text(tr("Автоблокировка: ${idleSeconds / 60} мин бездействия", "Idle lock: ${idleSeconds / 60} min"), style = MaterialTheme.typography.bodySmall)
-            if (!open.writable) Text(tr("Хранилище доступно только для чтения.", "This vault is read-only."))
-            Text(tr("Настройки карточки доступны после блокировки.", "Card settings are available after locking."), style = MaterialTheme.typography.bodySmall)
-            } }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(enabled = !busy && !reading && !uncertain && open.writable,
-                    onClick = { dialog = Dialog.ChangePassword }) { Text(tr("Сменить пароль…", "Change password…")) }
-                if (format == FolderFormat.Paranoic) TextButton(enabled = !busy && !reading && !uncertain && open.writable,
-                    onClick = { dialog = Dialog.RecoverySetup }) { Text(tr("Создать ключ восстановления…", "Create recovery key…")) }
-            }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (path.isNotEmpty()) TextButton(enabled = !busy && !reading, onClick = { reload(open, path.dropLast(1)) }) { Text(tr("↑ Вверх", "↑ Up")) }
-                TextButton(enabled = !busy && !reading && !uncertain && open.writable, onClick = { dialog = Dialog.Mkdir }) { Text(tr("+ Папка", "+ Folder")) }
-                TextButton(enabled = !busy && !reading && !uncertain && open.writable,
-                    onClick = { dialog = Dialog.CreateText }) { Text(tr("+ Текст", "+ Text")) }
-                TextButton(enabled = !busy && !reading && !uncertain && open.writable && selectedFiles.isNotEmpty(), onClick = {
-                    val sources = selectedFiles.map { it.location }
-                    act {
-                        var last: CoreResult<Unit> = CoreResult.Value(Unit)
-                        for (s in sources) { last = gateway.add(open.handle, path, s); if (last is CoreResult.Failure) break }
-                        last
+            Surface(Modifier.fillMaxWidth().padding(top = 8.dp), shape = RoundedCornerShape(28.dp), color = scheme.primaryContainer, contentColor = scheme.onPrimaryContainer) {
+                Row(Modifier.padding(start = 16.dp, end = 4.dp, top = 14.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    ShapedIcon(AppSymbol.Vault, ExpressiveShapes.Cookie9, scheme.onPrimaryContainer.copy(alpha = 0.12f), scheme.onPrimaryContainer)
+                    Column(Modifier.weight(1f)) {
+                        Text(displayName(open.name), style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text((if (format == FolderFormat.Cryptomator) "Cryptomator" else "Paranoic 1.8") + " · " + tr("открыто", "unlocked") +
+                            " · " + tr("автоблок ${idleSeconds / 60} мин", "auto-lock ${idleSeconds / 60} min") +
+                            if (!open.writable) tr(" · только чтение", " · read-only") else "",
+                            style = MaterialTheme.typography.bodyMedium, color = scheme.onPrimaryContainer.copy(alpha = 0.8f))
                     }
-                }) { Text(tr("Зашифровать выделенные (${selectedFiles.size})", "Encrypt selected (${selectedFiles.size})")) }
-                if (format == FolderFormat.Paranoic) TextButton(enabled = !busy && !reading && !uncertain && open.writable && selectedFiles.isNotEmpty(),
-                    onClick = { dialog = Dialog.ImportMove(selectedFiles.toList(), path.toList()) }) {
-                    Text(tr("Переместить в хранилище (${selectedFiles.size})…", "Move into vault (${selectedFiles.size})…"))
+                    FilledIconButton(enabled = !busy, onClick = { session.pause(); session.resume() },
+                        modifier = Modifier.actionDescription(tr("Заблокировать", "Lock"))) { AppIcon(AppSymbol.Vault) }
+                    Box {
+                        IconButton(onClick = { vaultMenu = true }, modifier = Modifier.actionDescription(tr("Ещё", "More"))) { AppIcon(AppSymbol.More) }
+                        DropdownMenu(vaultMenu, { vaultMenu = false }) {
+                            DropdownMenuItem(text = { Text(tr("Сменить пароль…", "Change password…")) }, leadingIcon = { AppIcon(AppSymbol.Passwords) },
+                                enabled = canWrite, onClick = { vaultMenu = false; dialog = Dialog.ChangePassword })
+                            if (format == FolderFormat.Paranoic) DropdownMenuItem(text = { Text(tr("Ключ восстановления…", "Recovery key…")) },
+                                leadingIcon = { AppIcon(AppSymbol.Security) }, enabled = canWrite, onClick = { vaultMenu = false; dialog = Dialog.RecoverySetup })
+                            DropdownMenuItem(text = { Text(tr("Сведения", "Details")) }, leadingIcon = { AppIcon(AppSymbol.Info) },
+                                onClick = { vaultMenu = false; details = !details })
+                        }
+                    }
                 }
             }
-            if (selectedFiles.isEmpty()) Text(tr("Чтобы добавить файлы, выделите их в файловом менеджере. «Зашифровать» сохраняет исходники; «Переместить» требует отдельного подтверждения.",
-                "To add files, select them in the file manager. Encrypt keeps the sources; Move requires separate confirmation."), style = MaterialTheme.typography.bodySmall)
-            if (format == FolderFormat.Paranoic) Text(tr("Для замены содержимого выделите один исходный файл в разделе файлов, затем откройте папку 1.8. Имя заменяемого файла сохранится.",
-                "To replace content, select one source file in Files, then open the 1.8 vault. The vault file keeps its name."), style = MaterialTheme.typography.bodySmall)
+            if (details) Text(tr("Место: /", "Location: /") + displayName(open.root.path) + ". " +
+                tr("Настройки карточки (название, автоблокировка) меняются после блокировки.", "Card settings (name, auto-lock) can be changed after locking."),
+                style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+            Surface(shape = MaterialTheme.shapes.extraLarge, color = scheme.surfaceContainer) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(enabled = path.isNotEmpty() && !busy && !reading, onClick = { reload(open, path.dropLast(1)) },
+                        modifier = Modifier.actionDescription(tr("На уровень выше", "Up one level"))) { AppIcon(AppSymbol.Up) }
+                    Text(if (path.isEmpty()) tr("Корень хранилища", "Vault root") else path.joinToString(" › ") { displayName(it) },
+                        Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Box {
+                        FilledTonalIconButton(enabled = canWrite, onClick = { addMenu = true },
+                            modifier = Modifier.actionDescription(tr("Создать", "Create"))) { AppIcon(AppSymbol.Add) }
+                        DropdownMenu(addMenu, { addMenu = false }) {
+                            DropdownMenuItem(text = { Text(tr("Новая папка", "New folder")) }, leadingIcon = { AppIcon(AppSymbol.NewFolder) },
+                                onClick = { addMenu = false; dialog = Dialog.Mkdir })
+                            DropdownMenuItem(text = { Text(tr("Текстовый файл / Markdown", "Text / Markdown file")) }, leadingIcon = { AppIcon(AppSymbol.NewFile) },
+                                onClick = { addMenu = false; dialog = Dialog.CreateText })
+                        }
+                    }
+                }
+            }
+            if (selectedFiles.isNotEmpty()) Surface(shape = MaterialTheme.shapes.extraLarge, color = scheme.tertiaryContainer) {
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(tr("Выбрано в «Файлах»: ${selectedFiles.size}", "Selected in Files: ${selectedFiles.size}"), style = MaterialTheme.typography.titleSmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(enabled = canWrite, onClick = {
+                            val sources = selectedFiles.map { it.location }
+                            act {
+                                var last: CoreResult<Unit> = CoreResult.Value(Unit)
+                                for (s in sources) { last = gateway.add(open.handle, path, s); if (last is CoreResult.Failure) break }
+                                last
+                            }
+                        }) { Text(tr("Зашифровать сюда", "Encrypt here")) }
+                        if (format == FolderFormat.Paranoic) OutlinedButton(enabled = canWrite,
+                            onClick = { dialog = Dialog.ImportMove(selectedFiles.toList(), path.toList()) }) { Text(tr("Переместить…", "Move…")) }
+                    }
+                    Text(tr("«Зашифровать» оставляет исходники на месте.", "Encrypt keeps the originals."), style = MaterialTheme.typography.bodySmall)
+                }
+            } else Text(tr("Чтобы добавить файлы: в «Файлах» долгое нажатие → «Выбрать», затем вернитесь сюда.",
+                "To add files: in Files long-press → Select, then come back here."), Modifier.padding(horizontal = 8.dp),
+                style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
             if (busy || reading) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
             }
             if (l != null) {
                 if (format == FolderFormat.Paranoic) item {
-                    IncomingFilesSection(incoming, !busy && !reading && !uncertain && open.writable, l.entries.map { it.name }) { id, name ->
+                    IncomingFilesSection(incoming, canWrite, l.entries.map { it.name }) { id, name ->
                         act {
                             val document = incoming.take(id) ?: return@act CoreResult.Failure(CoreFault.Changed)
                             try { gateway.addIncoming(open.handle, path.toList(), name, document) } finally { document.discard() }
@@ -252,43 +289,48 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
                     }
                 }
                 if (format == FolderFormat.Paranoic && l.damaged > 0) item { Text(tr("Повреждённых или подменённых записей: ${l.damaged} (не показаны).",
-                    "Damaged or tampered entries: ${l.damaged} (not shown)."), color = MaterialTheme.colorScheme.error) }
+                    "Damaged or tampered entries: ${l.damaged} (not shown)."), color = scheme.error) }
                 if (format == FolderFormat.Cryptomator && l.damaged > 0) item { Text(tr("Не показано неподдерживаемых объектов: ${l.damaged}", "Unsupported objects omitted: ${l.damaged}")) }
-                if (l.entries.isEmpty()) item { Text(tr("Папка пуста.", "The folder is empty.")) }
-                    items(l.entries, key = { (if (it.folder) "d:" else "f:") + it.name }) { e ->
-                        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).then(if (e.folder) Modifier.keyboardFocusOutline().clickable(enabled = !busy && !reading,
-                            role = Role.Button, onClickLabel = tr("Открыть папку", "Open folder")) { reload(open, path + e.name) } else Modifier),
-                            verticalAlignment = Alignment.CenterVertically) {
-                            Text((if (e.folder) "📁 " else "📄 ") + displayName(e.name), Modifier.weight(1f))
-                            if (!e.folder) Text((if (format == FolderFormat.Cryptomator) tr("Шифротекст: ", "Ciphertext: ") else "") + formatSize(e.size), style = MaterialTheme.typography.bodySmall)
-                        }
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (!e.folder) {
-                                TextButton(enabled = !busy && !reading,
-                                    onClick = { viewing = e to path.toList() }) { Text(tr("Открыть внутри", "Open inside")) }
-                                TextButton(enabled = !busy && !reading && !uncertain && here != null && files.writable, onClick = {
-                                    here?.let { to -> dialog = Dialog.Export(e, to) }
-                                }) { Text(tr("Расшифровать", "Decrypt")) }
+                if (l.entries.isEmpty()) item {
+                    Column(Modifier.fillMaxWidth().padding(top = 40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        ShapedIcon(AppSymbol.Vault, ExpressiveShapes.Sunny, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 96.dp)
+                        Text(tr("Здесь пока пусто", "Nothing here yet"), style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+                items(l.entries, key = { (if (it.folder) "d:" else "f:") + it.name }) { e ->
+                    val symbol = if (e.folder) AppSymbol.Folder else vaultSymbol(e.name)
+                    Surface(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).combinedClickable(enabled = !busy && !reading,
+                        onClickLabel = if (e.folder) tr("Открыть папку", "Open folder") else tr("Открыть внутри", "Open inside"),
+                        onLongClickLabel = tr("Действия", "Actions"), onLongClick = { sheetEntry = e },
+                        onClick = { if (e.folder) reload(open, path + e.name) else viewing = e to path.toList() }),
+                        color = Color.Transparent) {
+                        Row(Modifier.heightIn(min = 64.dp).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            ShapedIcon(symbol, MaterialTheme.shapes.medium,
+                                if (e.folder) scheme.primaryContainer else scheme.surfaceContainerHighest,
+                                if (e.folder) scheme.onPrimaryContainer else scheme.onSurfaceVariant)
+                            Column(Modifier.weight(1f)) {
+                                Text(displayName(e.name), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                if (!e.folder) Text((if (format == FolderFormat.Cryptomator) tr("≈ ", "≈ ") else "") + formatSize(e.size),
+                                    style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
                             }
-                            if (format == FolderFormat.Paranoic) {
-                                TextButton(enabled = !busy && !reading && !uncertain && open.writable,
-                                    onClick = { dialog = Dialog.Move(e, path.toList()) }) { Text(tr("Перенести…", "Move…")) }
-                                if (!e.folder) TextButton(enabled = !busy && !reading && !uncertain && open.writable && selectedFiles.size == 1,
-                                    onClick = { selectedFiles.singleOrNull()?.let { source -> dialog = Dialog.Replace(e, path.toList(), source) } }) {
-                                    Text(tr("Заменить содержимое…", "Replace content…"))
-                                }
-                            }
-                            TextButton(enabled = !busy && !reading && !uncertain && open.writable, onClick = { dialog = Dialog.Rename(e) }) { Text(tr("Имя", "Rename")) }
-                            TextButton(enabled = !busy && !reading && !uncertain && open.writable, onClick = { dialog = Dialog.Delete(e) }) { Text(tr("Удалить", "Delete")) }
-                        }
+                            IconButton(onClick = { sheetEntry = e }, modifier = Modifier.actionDescription(tr("Действия: ", "Actions: ") + displayName(e.name))) { AppIcon(AppSymbol.More) }
                         }
                     }
-                item { Text(tr("«Расшифровать» создаёт новый файл в текущей папке файлового менеджера${here?.let { " (" + displayName(it.name) + ")" } ?: ""}; существующие файлы не перезаписываются.",
-                    "\"Decrypt\" creates a new file in the file manager's current folder${here?.let { " (" + displayName(it.name) + ")" } ?: ""}; existing files are not overwritten."),
-                    style = MaterialTheme.typography.bodySmall) }
+                }
+                item { Text(tr("«Расшифровать» создаёт новый файл в текущей папке «Файлов»${here?.let { " (" + displayName(it.name) + ")" } ?: ""}; существующие файлы не перезаписываются.",
+                    "\"Decrypt\" creates a new file in the current Files folder${here?.let { " (" + displayName(it.name) + ")" } ?: ""}; existing files are not overwritten."),
+                    Modifier.padding(8.dp), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant) }
             }
             }
+            sheetEntry?.let { entry -> VaultEntrySheet(entry, format, canWrite, !busy && !reading && !uncertain && here != null && files.writable,
+                selectedFiles.size == 1, onDismiss = { sheetEntry = null },
+                onOpen = { e -> if (e.folder) reload(open, path + e.name) else viewing = e to path.toList() },
+                onDecrypt = { e -> here?.let { to -> dialog = Dialog.Export(e, to) } },
+                onMove = { e -> dialog = Dialog.Move(e, path.toList()) },
+                onReplace = { e -> selectedFiles.singleOrNull()?.let { source -> dialog = Dialog.Replace(e, path.toList(), source) } },
+                onRename = { e -> dialog = Dialog.Rename(e) },
+                onDelete = { e -> dialog = Dialog.Delete(e) }) }
         }
     }
 
@@ -554,4 +596,33 @@ private fun NameOnlyDialog(title: String, initial: String, onDismiss: () -> Unit
             supportingText = { if (name.isNotEmpty() && !plausibleName(name)) Text(nameErrorText()) }) },
         confirmButton = { TextButton(enabled = plausibleName(name) && name != initial, onClick = { onConfirm(name) }) { Text(tr("Сохранить", "Save")) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Отмена", "Cancel")) } })
+}
+
+private fun vaultSymbol(name: String): AppSymbol = when (name.substringAfterLast('.', "").lowercase()) {
+    "png", "jpg", "jpeg", "gif", "webp", "heic", "bmp" -> AppSymbol.Photo
+    "mp4", "mkv", "webm", "mov", "avi" -> AppSymbol.Video
+    "mp3", "flac", "ogg", "opus", "m4a", "wav" -> AppSymbol.Audio
+    "zip", "7z", "rar", "tar", "gz", "xz" -> AppSymbol.Archive
+    else -> AppSymbol.Document
+}
+
+@Composable
+private fun VaultEntrySheet(entry: VaultEntry, format: FolderFormat, canWrite: Boolean, canDecrypt: Boolean, oneSelected: Boolean,
+    onDismiss: () -> Unit, onOpen: (VaultEntry) -> Unit, onDecrypt: (VaultEntry) -> Unit, onMove: (VaultEntry) -> Unit,
+    onReplace: (VaultEntry) -> Unit, onRename: (VaultEntry) -> Unit, onDelete: (VaultEntry) -> Unit) {
+    fun run(action: (VaultEntry) -> Unit): () -> Unit = { onDismiss(); action(entry) }
+    val paranoic = format == FolderFormat.Paranoic
+    FileActionSheet(entry.name, if (entry.folder) tr("Папка в хранилище", "Folder in vault") else formatSize(entry.size),
+        if (entry.folder) AppSymbol.Folder else vaultSymbol(entry.name), listOf(
+        SheetGroup(tr("Открыть", "Open"), listOfNotNull(
+            SheetAction(if (entry.folder) tr("Открыть", "Open") else tr("Открыть внутри", "Open inside"), AppSymbol.Forward, run = run(onOpen)),
+            if (!entry.folder) SheetAction(tr("Расшифровать в «Файлы»", "Decrypt to Files"), AppSymbol.Download, canDecrypt, run = run(onDecrypt)) else null,
+        )),
+        SheetGroup(tr("Упорядочить", "Organize"), listOfNotNull(
+            if (paranoic) SheetAction(tr("Перенести…", "Move…"), AppSymbol.MoveTo, canWrite, run = run(onMove)) else null,
+            if (paranoic && !entry.folder) SheetAction(tr("Заменить содержимое", "Replace content"), AppSymbol.Refresh, canWrite && oneSelected, run = run(onReplace)) else null,
+            SheetAction(tr("Переименовать", "Rename"), AppSymbol.Edit, canWrite, run = run(onRename)),
+            SheetAction(tr("Удалить", "Delete"), AppSymbol.Trash, canWrite, danger = true, run = run(onDelete)),
+        )),
+    ), onDismiss = onDismiss)
 }

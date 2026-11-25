@@ -279,9 +279,19 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                             FaultNotice(fault, Modifier.padding(12.dp))
                         }
                         session.directWrite?.let { operation ->
+                            // Success notices fade on their own; failures and unknown outcomes stay until dismissed.
+                            LaunchedEffect(operation) {
+                                if (operation.phase == DirectWritePhase.Done) { kotlinx.coroutines.delay(4000); session.dismissDirectWrite() }
+                            }
+                            Surface(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), shape = MaterialTheme.shapes.large,
+                                color = when (operation.phase) {
+                                    DirectWritePhase.Failed, DirectWritePhase.Unknown -> MaterialTheme.colorScheme.errorContainer
+                                    DirectWritePhase.Done -> MaterialTheme.colorScheme.secondaryContainer
+                                    DirectWritePhase.Running -> MaterialTheme.colorScheme.surfaceContainerHigh
+                                }) { Column(Modifier.padding(vertical = 4.dp)) {
                             Text(when (operation.phase) {
                                 DirectWritePhase.Running -> tr("Выполняется операция… Исходные объекты сохраняются.", "Processing… Source entries are kept.")
-                                DirectWritePhase.Done -> tr("Новый результат создан.", "New output created.")
+                                DirectWritePhase.Done -> tr("Готово: новый файл создан.", "Done: new file created.")
                                 DirectWritePhase.Failed -> if (operation.kind == DirectWriteKind.DecryptFile && session.writeFault == CoreFault.WrongPassword)
                                     tr("Неверный пароль или повреждённый файл: эти случаи могут быть неразличимы.", "Wrong password or damaged file: these cases may be indistinguishable.")
                                     else tr("Операция не завершена. Проверьте сообщение об ошибке и папку назначения.", "The operation did not complete. Check the error message and destination folder.")
@@ -295,8 +305,9 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                     Text(if (operation.cancelling) tr("Отмена запрошена…", "Cancellation requested…") else tr("Отменить", "Cancel"))
                                 }
                             } else TextButton(onClick = session::dismissDirectWrite) {
-                                Text(if (operation.phase == DirectWritePhase.Unknown) tr("Проверил(а), закрыть сообщение", "Inspected, dismiss message") else tr("Закрыть сообщение", "Dismiss message"))
+                                Text(if (operation.phase == DirectWritePhase.Unknown) tr("Проверил(а), закрыть", "Inspected, dismiss") else tr("Закрыть", "Dismiss"))
                             }
+                            } }
                         }
                         session.uncertain?.let { pending ->
                             Text(when (pending.notInJournal) {
