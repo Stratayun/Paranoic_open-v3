@@ -45,14 +45,22 @@ impl Http {
         let response = self.send(request, idempotent)?;
         if response.status().is_success() { Ok(response) } else { Err(status_error(&response, idempotent)) }
     }
+    /// After a 2xx a changing request may already be applied: if its
+    /// confirmation cannot be read, the outcome is uncertain (audit 9), not a
+    /// plain I/O or protocol error that invites a blind retry.
     pub(crate) fn json<T: DeserializeOwned>(&self, request: RequestBuilder, idempotent: bool) -> Result<T> {
-        read_json(self.ok(request, idempotent)?)
+        let response = self.ok(request, idempotent)?;
+        read_json(response).map_err(|error| if idempotent { error } else { crate::uncertain() })
     }
 }
 
+const MAX_JSON: u64 = 16 << 20;
+
 pub(crate) fn read_json<T: DeserializeOwned>(response: Response) -> Result<T> {
     let mut body = Vec::new();
-    response.take(16 << 20).read_to_end(&mut body).map_err(|_| CoreError::new(ErrorCode::Io, "cloud response truncated"))?;
+    // limit+1: an over-long reply is reported as such, not parsed truncated.
+    response.take(MAX_JSON + 1).read_to_end(&mut body).map_err(|_| CoreError::new(ErrorCode::Io, "cloud response truncated"))?;
+    if body.len() as u64 > MAX_JSON { return Err(CoreError::new(ErrorCode::LimitExceeded, "cloud response too large")); }
     serde_json::from_slice(&body).map_err(|_| crate::protocol())
 }
 

@@ -103,8 +103,11 @@ impl TextPager {
         let mut rows = Rows { row_bytes: limits.row_bytes, current: 0, open: false };
         let (mut count, mut marks, mut before) = (0u64, vec![start], start);
         let mut total = start;
+        let declared = source.bytes;
         let mut feed = |bytes: &[u8], total: &mut u64| -> Result<()> {
-            *total += bytes.len() as u64;
+            // Stop as soon as the stream outgrows the declared size (audit 8):
+            // a growing file or an inexact provider never costs more than the limit.
+            *total = total.checked_add(bytes.len() as u64).filter(|t| *t <= declared).ok_or_else(changed)?;
             decoder.push(bytes, &mut |c, end| {
                 if c == '\0' { return Err(invalid()); }
                 if let Some((next, _)) = rows.step(c, before, end) {

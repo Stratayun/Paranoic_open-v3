@@ -212,7 +212,8 @@ impl CloudProvider for PCloud {
             pumped?; Ok::<_, CoreError>((sent, response?))
         })?;
         if !response.status().is_success() { return Err(crate::http::status_error(&response, false)); }
-        let value = check(crate::http::read_json(response)?, false)?;
+        // After a 2xx the upload may exist: an unreadable confirmation is uncertain (audit 9).
+        let value = check(crate::http::read_json(response).map_err(|_| crate::uncertain())?, false)?;
         let created: Meta = value.get("metadata").and_then(|m| m.as_array()).and_then(|m| m.first()).cloned()
             .map(serde_json::from_value).transpose().map_err(|_| crate::protocol())?.ok_or_else(crate::uncertain)?;
         let file = created.fileid.ok_or_else(crate::uncertain)?;
