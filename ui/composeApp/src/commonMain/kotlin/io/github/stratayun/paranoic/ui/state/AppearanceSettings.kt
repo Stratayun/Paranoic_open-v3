@@ -1,7 +1,8 @@
 package io.github.stratayun.paranoic.ui.state
 
 // Adapted from v1.5 AppearanceSettings. Only non-secret UI preferences.
-enum class ThemePack(val key: String) { Expressive("expressive"), Base("base"), Mono("mono"), Paranoic("paranoic") }
+/** One theme for now (Material 3 Expressive). Older saved keys (base/mono/paranoic) fall back to it. */
+enum class ThemePack(val key: String) { Expressive("expressive") }
 enum class Brightness(val key: String) { System("system"), Light("light"), Dark("dark"), Amoled("amoled") }
 enum class ContentDensity(val key: String) { Comfortable("comfortable"), Compact("compact") }
 enum class FontChoice(val key: String) { System("system"), Theme("theme") }

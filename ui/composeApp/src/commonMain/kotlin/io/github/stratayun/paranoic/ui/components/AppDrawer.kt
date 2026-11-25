@@ -39,7 +39,6 @@ fun DrawerFooter(
     Column(modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         SectionLabel(tr("Инструменты", "Tools"))
         val rows = listOf(
-            Triple(tr("Хранилища", "Vaults"), AppSymbol.Security, onVaults),
             Triple(tr("Синхронизация и бэкап", "Sync and backup"), AppSymbol.Sync, onSync),
             Triple(tr("Диагностика", "Diagnostics"), AppSymbol.Analytics, onDiagnostics),
         )
@@ -48,9 +47,7 @@ fun DrawerFooter(
                 leading = { ShapedIcon(symbol, ExpressiveShapes.Cookie9, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 44.dp) },
                 onClick = action)
         }
-        Spacer(Modifier.height(16.dp))
-        AccentCard(tr("Сейф", "Safe"), tr("Заметки и личная папка — зашифрованы", "Notes and private folder — encrypted"),
-            AppSymbol.Vault, onSafe, enabled = enabled)
+        Spacer(Modifier.height(12.dp))
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             val pill = Modifier.weight(1f).height(64.dp)

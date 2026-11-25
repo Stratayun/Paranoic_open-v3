@@ -7,10 +7,11 @@ class AppearanceCompatibilityTest {
         val saved = mapOf("theme" to "mono", "brightness" to "amoled", "density" to "compact",
             "font" to "theme", "language" to "en", "view" to "grid")
         val settings = AppearanceCodec.decode(saved::get)
-        assertEquals(AppearanceSettings(ThemePack.Mono, Brightness.Amoled, ContentDensity.Compact,
+        // Retired theme packs decode to the single Expressive theme; other keys are kept.
+        assertEquals(AppearanceSettings(ThemePack.Expressive, Brightness.Amoled, ContentDensity.Compact,
             FontChoice.Theme, UiLanguage.English, FileView.Grid), settings)
         // v1.5 had no welcome flag; it decodes as not completed and is written from then on.
-        assertEquals(saved + ("welcome_completed" to "false"), AppearanceCodec.encode(settings))
+        assertEquals(saved + ("theme" to "expressive") + ("welcome_completed" to "false"), AppearanceCodec.encode(settings))
     }
 
     @Test fun futureOrCorruptValuesFallBackIndependently() {

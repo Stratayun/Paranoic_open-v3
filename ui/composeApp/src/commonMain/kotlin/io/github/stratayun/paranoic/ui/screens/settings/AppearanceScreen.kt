@@ -52,7 +52,6 @@ fun AppearanceScreen(settings: AppearanceSettings, saving: Boolean, saved: Boole
     var section by remember { mutableStateOf<SettingsSection?>(null) }
     var query by remember { mutableStateOf("") }
     val entries = listOf(
-        SettingEntry(SettingId.Theme, SettingsSection.Appearance, tr("Тема", "Theme"), "тема оформление базовая монохромная paranoic theme appearance base mono"),
         SettingEntry(SettingId.Brightness, SettingsSection.Appearance, tr("Яркость", "Brightness"), "яркость оформление светлая тёмная темная система amoled brightness appearance light dark system"),
         SettingEntry(SettingId.Density, SettingsSection.Appearance, tr("Плотность", "Density"), "плотность оформление компактная обычная density appearance compact comfortable"),
         SettingEntry(SettingId.Font, SettingsSection.Appearance, tr("Шрифт", "Font"), "шрифт оформление системный по теме font appearance system theme"),
@@ -115,7 +114,7 @@ fun AppearanceScreen(settings: AppearanceSettings, saving: Boolean, saved: Boole
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (search.isNotEmpty()) Text(entry.section.label(), style = MaterialTheme.typography.labelMedium)
                     when (entry.id) {
-                        SettingId.Theme -> ThemeChoices(settings, !saving, onChange)
+                        SettingId.Theme -> Unit
                         SettingId.Brightness -> ChoiceRow(entry.title, settings.brightness, Brightness.entries, !saving, {
                             when (it) {
                                 Brightness.System -> tr("Как в системе", "System")
@@ -159,30 +158,6 @@ fun AppearanceScreen(settings: AppearanceSettings, saving: Boolean, saved: Boole
     }
 }
 
-@Composable
-private fun ThemeChoices(settings: AppearanceSettings, enabled: Boolean, onChange: (AppearanceSettings) -> Unit) {
-    Text(tr("Тема", "Theme"), Modifier.sectionHeading(), style = MaterialTheme.typography.titleMedium)
-    Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        ThemePack.entries.forEach { pack ->
-            Surface(shape = MaterialTheme.shapes.medium,
-                border = BorderStroke(if (settings.theme == pack) 2.dp else 1.dp,
-                    if (settings.theme == pack) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)) {
-                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).keyboardFocusOutline()
-                    .selectable(settings.theme == pack, enabled = enabled, role = Role.RadioButton,
-                        onClick = { onChange(settings.copy(theme = pack)) })
-                    .padding(LocalThemeTokens.current.itemPadding), verticalAlignment = Alignment.CenterVertically) {
-                    Text(when (pack) {
-                        ThemePack.Expressive -> "Material Expressive"
-                        ThemePack.Base -> tr("Базовая", "Base")
-                        ThemePack.Mono -> tr("Монохромная", "Mono")
-                        ThemePack.Paranoic -> "Paranoic"
-                    }, Modifier.weight(1f))
-                    RadioButton(selected = settings.theme == pack, onClick = null, enabled = enabled)
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun <T> ChoiceRow(title: String, selected: T, values: List<T>, enabled: Boolean,

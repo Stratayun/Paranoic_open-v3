@@ -239,21 +239,11 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                 if (incomingDocuments.documents.isNotEmpty()) TextButton(onClick = {
                                     leaveDocument { destination = Destination.Notes }
                                 }) { Text(tr("Входящие (${incomingDocuments.documents.size})", "Incoming (${incomingDocuments.documents.size})")) }
+                                // Tasks appear here only while something runs; everything else lives in the ☰ menu.
                                 val running = session.jobs.count { it.phase == JobPhase.Queued || it.phase == JobPhase.Running }
-                                IconButton(onClick = { leaveDocument { destination = Destination.Operations } },
+                                if (running > 0) IconButton(onClick = { leaveDocument { destination = Destination.Operations } },
                                     modifier = Modifier.actionDescription(tr("Задачи: $running", "Tasks: $running"))) {
-                                    BadgedBox(badge = { if (running > 0) Badge { Text("$running") } }) { AppIcon(AppSymbol.Tasks) }
-                                }
-                                Box {
-                                    IconButton(onClick = { moreMenu = true }, modifier = Modifier.actionDescription(tr("Ещё", "More"))) { AppIcon(AppSymbol.More) }
-                                    DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
-                                        DropdownMenuItem(text = { Text(tr("Синхронизация и бэкап", "Sync and backup")) },
-                                            onClick = { moreMenu = false; leaveDocument { destination = Destination.Sync } })
-                                        DropdownMenuItem(text = { Text(tr("Настройки", "Settings")) },
-                                            onClick = { moreMenu = false; leaveDocument { destination = Destination.Settings } })
-                                        DropdownMenuItem(text = { Text(tr("Диагностика", "Diagnostics")) },
-                                            onClick = { moreMenu = false; leaveDocument { destination = Destination.Diagnostics } })
-                                    }
+                                    BadgedBox(badge = { Badge { Text("$running") } }) { AppIcon(AppSymbol.Tasks) }
                                 }
                             })
                     },
