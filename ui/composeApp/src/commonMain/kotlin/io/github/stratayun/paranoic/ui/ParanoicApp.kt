@@ -219,7 +219,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                 SpacesPanel(session.files.spaces, session.places, core.connected, session.writing || documentExit.busy,
                                     onConnect = { scope.launch { placesDrawer.close() }; guardedPickFolder() },
                                     onOpen = { space -> openSpace(space); scope.launch { placesDrawer.close() } },
-                                    onDetach = detachSpace, onConnectServer = connectServer)
+                                    onDetach = detachSpace, onConnectServer = connectServer,
+                                    onOpenPath = { space, path -> leaveDocument { session.openPath(space, path); destination = Destination.Files }; scope.launch { placesDrawer.close() } })
                                 }
                                 drawerFooter(true)
                             }
@@ -335,7 +336,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                     }
                                     key(session.secretsEpoch) {
                                     SpacesPanel(session.files.spaces, session.places, core.connected, session.writing || documentExit.busy, guardedPickFolder, openSpace, detachSpace,
-                                        onConnectServer = connectServer)
+                                        onConnectServer = connectServer,
+                                        onOpenPath = { space, path -> leaveDocument { session.openPath(space, path); destination = Destination.Files } })
                                     }
                                     drawerFooter(false)
                                 }

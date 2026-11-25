@@ -82,6 +82,14 @@ object AndroidStorageAccess {
     private fun internalLabel(context: Context): String =
         if (context.resources.configuration.locales[0].language == "ru") "Внутренняя память" else "Internal storage"
 
+    /** Free/total bytes of the mounted volume with this label. */
+    fun usage(context: Context, label: String): io.github.stratayun.paranoic.ui.state.VolumeUsage? = try {
+        volumes(context).firstOrNull { it.label == label }?.let {
+            val stat = android.os.StatFs(it.path)
+            io.github.stratayun.paranoic.ui.state.VolumeUsage(stat.availableBytes, stat.totalBytes)
+        }
+    } catch (_: Exception) { null }
+
     /** Label for a saved grant reference; null for anything that is not a current volume root. */
     fun labelFor(context: Context, reference: String): String? =
         volumes(context).firstOrNull { it.path == reference }?.label

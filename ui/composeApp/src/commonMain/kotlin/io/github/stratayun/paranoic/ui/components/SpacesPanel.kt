@@ -1,5 +1,12 @@
 package io.github.stratayun.paranoic.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,7 +22,7 @@ import io.github.stratayun.paranoic.ui.state.*
 @Composable
 fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, busy: Boolean, onConnect: () -> Unit,
     onOpen: (Space) -> Unit, onDetach: (Space) -> Unit, modifier: Modifier = Modifier,
-    onConnectServer: ((String, String, String) -> Unit)? = null) {
+    onConnectServer: ((String, String, String) -> Unit)? = null, onOpenPath: ((Space, String) -> Unit)? = null) {
     var serverDialog by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf<Space?>(null) }
     var renaming by remember { mutableStateOf<Space?>(null) }
@@ -47,7 +54,8 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
         else -> kindDevice
     } + if (space.writable) "" else readOnly
     Column(modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        SectionLabel(tr("Места", "Places"))
+        val device = visible.firstOrNull { !appPrivate(it) && !it.cloud && !it.androidTree }
+        if (device == null || onOpenPath == null) SectionLabel(tr("Места", "Places"))
         if (catalog.busy) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
             Text(tr("Обновляем список мест…", "Updating places…"))
@@ -67,6 +75,14 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
             tr("Добавьте папку, чтобы начать работу с файлами.", "Add a folder to start browsing files.")
             else tr("Все подключённые места скрыты из меню.", "All connected places are hidden from the menu."),
             Modifier.padding(horizontal = 12.dp), color = scheme.onSurfaceVariant)
+        val usage = device?.let { LocalVolumeUsage.current(title(it)) }
+        if (device != null && usage != null && usage.totalBytes > 0) StorageCard(displayName(title(device)), usage,
+            enabled = connected && !busy, onClick = { onOpen(device.copy(name = title(device))) })
+        if (device != null && onOpenPath != null) {
+            SectionLabel(tr("Места", "Places"))
+            QuickPlaces(enabled = connected && !busy) { path -> onOpenPath(device.copy(name = title(device)), path) }
+            SectionLabel(tr("Хранилища устройства и папки", "Storage and folders"))
+        }
         GroupedList(visible) { space, position ->
             val index = visible.indexOf(space)
             var menu by remember(space.id) { mutableStateOf(false) }
@@ -152,5 +168,60 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
                 "The app will disconnect \"${displayName(title(space))}\". Files and vault cards are kept. Use Hide to remove the place from the menu.")) },
             confirmButton = { TextButton(enabled = connected && !busy, onClick = { confirm = null; onDetach(space) }) { Text(tr("Отозвать доступ", "Revoke access")) } },
             dismissButton = { TextButton(onClick = { confirm = null }) { Text(tr("Отмена", "Cancel")) } })
+    }
+}
+
+/** Reference: Strata drawer storage card with a wavy usage bar. */
+@Composable
+private fun StorageCard(title: String, usage: VolumeUsage, enabled: Boolean, onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val used = 1f - usage.freeBytes.toFloat() / usage.totalBytes
+    Surface(Modifier.fillMaxWidth().padding(top = 8.dp), shape = RoundedCornerShape(32.dp), color = scheme.surfaceContainerHigh) {
+        Column(Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleLarge)
+                    Text(tr("Свободно ", "Free ") + gb(usage.freeBytes) + tr(" из ", " of ") + gb(usage.totalBytes),
+                        style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+                }
+                Box(Modifier.size(56.dp).clip(ExpressiveShapes.Cookie9).background(scheme.secondaryContainer), contentAlignment = Alignment.Center) {
+                    Text("${(used * 100).toInt()}%", style = MaterialTheme.typography.labelLarge, color = scheme.onSecondaryContainer)
+                }
+            }
+            WavyProgress(used)
+        }
+    }
+}
+
+@Composable
+private fun gb(bytes: Long): String {
+    val tenths = bytes * 10 / (1024L * 1024 * 1024)
+    return "${tenths / 10}${tr(",", ".")}${tenths % 10} " + tr("ГБ", "GB")
+}
+
+/** Standard shared-storage folders as coloured shaped tiles (reference: Strata "Места"). */
+@Composable
+private fun QuickPlaces(enabled: Boolean, onOpen: (String) -> Unit) {
+    data class Quick(val label: String, val path: String, val symbol: AppSymbol, val shape: androidx.compose.ui.graphics.Shape, val bg: Color, val fg: Color)
+    val items = listOf(
+        Quick(tr("Загрузки", "Downloads"), "Download", AppSymbol.Download, ExpressiveShapes.Triangle, Color(0xFF2E5B34), Color(0xFFB6F2AF)),
+        Quick(tr("Изображения", "Pictures"), "Pictures", AppSymbol.Photo, ExpressiveShapes.Flower, Color(0xFF1F4D47), Color(0xFFA6F0E3)),
+        Quick(tr("Камера", "Camera"), "DCIM", AppSymbol.Camera, ExpressiveShapes.Sunny, Color(0xFF2B3F7A), Color(0xFFDCE1FF)),
+        Quick(tr("Фильмы", "Movies"), "Movies", AppSymbol.Video, ExpressiveShapes.Cookie6, Color(0xFF51336E), Color(0xFFF0DBFF)),
+        Quick(tr("Музыка", "Music"), "Music", AppSymbol.Audio, ExpressiveShapes.Cookie9, Color(0xFF6A2F52), Color(0xFFFFD8EC)),
+        Quick(tr("Документы", "Documents"), "Documents", AppSymbol.Document, ExpressiveShapes.Clover, Color(0xFF6E2E2E), Color(0xFFFFDAD6)),
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        items.chunked(3).forEach { row ->
+            Row(Modifier.fillMaxWidth()) {
+                row.forEach { q ->
+                    Column(Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).clickable(enabled = enabled, role = Role.Button) { onOpen(q.path) }
+                        .padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        ShapedIcon(q.symbol, q.shape, q.bg, q.fg, size = 64.dp)
+                        Text(q.label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                    }
+                }
+            }
+        }
     }
 }

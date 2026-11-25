@@ -218,6 +218,17 @@ class AppSession(val core: CoreGateway, private val scope: CoroutineScope, priva
         }
     }
     fun openSpace(space: Space) = browse(listOf(FolderNode(space.root, space.name)))
+    /** Opens a subfolder of a place by its relative path ("DCIM/Camera"); a missing folder shows its Core fault. */
+    fun openPath(space: Space, relative: String) {
+        val parts = relative.split('/').filter { it.isNotEmpty() }
+        var path = space.root.path
+        val trail = mutableListOf(FolderNode(space.root, space.name))
+        for (part in parts) {
+            path = if (path.isEmpty()) part else "$path/$part"
+            trail += FolderNode(Location(space.root.storageId, path), part)
+        }
+        browse(trail)
+    }
     fun openFolder(item: FileItem) {
         if (item.kind == EntryKind.Directory) browse(files.trail + FolderNode(item.location, item.name))
     }

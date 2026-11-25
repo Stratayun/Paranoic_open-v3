@@ -45,7 +45,9 @@ class MainActivity : FragmentActivity() {
             val allowCapture = screenshotPolicy.allowed
             SideEffect { applyScreenshotPolicy(allowCapture) }
             var language by remember { mutableStateOf(preferences.read().language) }
-            CompositionLocalProvider(LocalUiLanguage provides language) {
+            val context = this@MainActivity
+            CompositionLocalProvider(LocalUiLanguage provides language,
+                io.github.stratayun.paranoic.ui.state.LocalVolumeUsage provides { label -> AndroidStorageAccess.usage(context, label) }) {
             val attachmentPicker = rememberAndroidNotesAttachmentPicker()
             val authenticate = rememberAndroidAuthentication(this)
             val notesBiometric = rememberAndroidNotesBiometric(this, app.notesQuickKey)
