@@ -1,6 +1,11 @@
 package io.github.stratayun.paranoic.ui.screens.notes
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -19,7 +24,7 @@ import kotlinx.coroutines.*
 
 /** Safe uses the authenticated notes session and ordinary vault calls. Never
  * reconstruct its physical path, put it in the vault catalog or expose a grant. */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 internal fun PersonalFilesPane(session: AppSession, enabled: Boolean, onBusy: (Boolean) -> Unit, onLock: () -> Unit,
     incoming: IncomingDocuments = NoIncomingDocuments,
@@ -127,31 +132,49 @@ internal fun PersonalFilesPane(session: AppSession, enabled: Boolean, onBusy: (B
             } finally { finish(operation) }
         }
     }
+    val scheme = MaterialTheme.colorScheme
+    var addMenu by remember { mutableStateOf(false) }
+    var sheetEntry by remember { mutableStateOf<VaultEntry?>(null) }
+    var copyingMany by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(tr("Личная папка", "Personal folder"), Modifier.sectionHeading(), style = MaterialTheme.typography.titleLarge)
-        Text(tr("Открывается паролем Сейфа или его биометрией. Скрыта из обычных «Файлов», не синхронизируется. Открытые копии создаются только по команде «Расшифровать в…».",
-            "Opens with the Safe password or its biometrics. Hidden from ordinary Files and never synchronized. Plaintext copies are created only through Decrypt to…"),
-            style = MaterialTheme.typography.bodySmall)
         fault?.let { FaultNotice(it) }
         if (completed) Text(importReport?.let { if (it.sourceRemoved) tr("Перемещено в Сейф.", "Moved into the Safe.")
-            else tr("Скопировано, исходник сохранён", "Copied; source kept") } ?: tr("Операция завершена.", "Operation completed."))
+            else tr("Скопировано, исходник сохранён", "Copied; source kept") } ?: tr("Готово.", "Done."), color = scheme.primary)
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (opened == null) {
-            Button(enabled = !busy && !requested && writesReady, onClick = { requested = true }) {
-                Text(tr("Открыть личную папку", "Open personal folder"))
+            Column(Modifier.fillMaxWidth().padding(top = 32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ShapedIcon(AppSymbol.Vault, ExpressiveShapes.Cookie9, scheme.tertiaryContainer, scheme.onTertiaryContainer, size = 104.dp)
+                Text(tr("Личная папка", "Personal folder"), style = MaterialTheme.typography.titleLarge)
+                Text(tr("Зашифрована ключом Сейфа, скрыта из «Файлов» и не синхронизируется.",
+                    "Encrypted with the Safe key, hidden from Files and never synchronized."),
+                    style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+                Button(enabled = !busy && !requested && writesReady, onClick = { requested = true }, modifier = Modifier.height(52.dp)) {
+                    AppIcon(AppSymbol.Forward); Spacer(Modifier.width(8.dp)); Text(tr("Открыть", "Open"))
+                }
             }
-            Text(tr("При первом открытии создаётся защищённая папка. Пароль и ключи отдельно вводить не нужно.",
-                "The protected folder is created on first open. No separate password or key is needed."), style = MaterialTheme.typography.bodySmall)
         } else {
-            Text("/" + path.joinToString(" / ") { displayName(it) }, maxLines = 3)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(enabled = !busy && path.isNotEmpty(), onClick = { path = path.dropLast(1) }) { Text(tr("Выше", "Up")) }
-                TextButton(enabled = !busy, onClick = { revision++ }) { Text(tr("Обновить", "Refresh")) }
-                TextButton(enabled = ready && path.size < 64, onClick = { dialog = PersonalDialog.Create }) { Text(tr("Новая папка…", "New folder…")) }
-                TextButton(enabled = ready, onClick = { dialog = PersonalDialog.CreateText }) { Text(tr("Новый текст…", "New text…")) }
-                TextButton(enabled = ready, onClick = { pickingMove = false; picking = true }) { Text(tr("Копировать файл сюда…", "Copy a file here…")) }
-                TextButton(enabled = ready, onClick = { pickingMove = true; picking = true }) { Text(tr("Переместить файл в Сейф…", "Move a file into the Safe…")) }
-                TextButton(enabled = !busy, onClick = onLock) { Text(tr("Заблокировать Сейф", "Lock Safe")) }
+            Surface(shape = MaterialTheme.shapes.extraLarge, color = scheme.surfaceContainer) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(enabled = !busy && path.isNotEmpty(), onClick = { path = path.dropLast(1) },
+                        modifier = Modifier.actionDescription(tr("На уровень выше", "Up one level"))) { AppIcon(AppSymbol.Up) }
+                    Text(if (path.isEmpty()) tr("Личная папка", "Personal folder") else path.joinToString(" › ") { displayName(it) },
+                        Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                    IconButton(enabled = !busy, onClick = { revision++ }, modifier = Modifier.actionDescription(tr("Обновить", "Refresh"))) { AppIcon(AppSymbol.Refresh) }
+                    Box {
+                        FilledTonalIconButton(enabled = ready, onClick = { addMenu = true },
+                            modifier = Modifier.actionDescription(tr("Добавить", "Add"))) { AppIcon(AppSymbol.Add) }
+                        DropdownMenu(addMenu, { addMenu = false }) {
+                            DropdownMenuItem(text = { Text(tr("Копировать файлы сюда…", "Copy files here…")) }, leadingIcon = { AppIcon(AppSymbol.Upload) },
+                                onClick = { addMenu = false; copyingMany = true })
+                            DropdownMenuItem(text = { Text(tr("Переместить файл в Сейф…", "Move a file into the Safe…")) }, leadingIcon = { AppIcon(AppSymbol.MoveTo) },
+                                onClick = { addMenu = false; pickingMove = true; picking = true })
+                            DropdownMenuItem(text = { Text(tr("Новая папка", "New folder")) }, leadingIcon = { AppIcon(AppSymbol.NewFolder) },
+                                enabled = path.size < 64, onClick = { addMenu = false; dialog = PersonalDialog.Create })
+                            DropdownMenuItem(text = { Text(tr("Текстовый файл / Markdown", "Text / Markdown file")) }, leadingIcon = { AppIcon(AppSymbol.NewFile) },
+                                onClick = { addMenu = false; dialog = PersonalDialog.CreateText })
+                        }
+                    }
+                }
             }
             current?.let { value ->
                 IncomingFilesSection(incoming, ready, value.entries.map { it.name }) { id, name ->
@@ -161,26 +184,62 @@ internal fun PersonalFilesPane(session: AppSession, enabled: Boolean, onBusy: (B
                     }
                 }
                 if (value.damaged > 0) Text(tr("Объектов с ошибкой проверки: ${value.damaged}. Они не показаны.",
-                    "Objects that failed verification: ${value.damaged}. They are not displayed."), color = MaterialTheme.colorScheme.error)
-                if (value.entries.isEmpty()) Text(tr("Папка пуста. Создайте папку или скопируйте файл внутрь.", "The folder is empty. Create a folder or copy a file into it."))
-                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
-                    items(value.entries, key = { (if (it.folder) "d:" else "f:") + it.name }) { entry ->
-                        Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                            if (entry.folder) TextButton(enabled = !busy && path.size < 64, onClick = { path = path + entry.name }) {
-                                Text(tr("Папка: ", "Folder: ") + displayName(entry.name))
-                            } else Text(displayName(entry.name), style = MaterialTheme.typography.titleMedium)
-                            if (!entry.folder) Text(tr("${entry.size} байт", "${entry.size} bytes"), style = MaterialTheme.typography.bodySmall)
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                if (!entry.folder) TextButton(enabled = !busy, onClick = { viewing = entry to path.toList() }) { Text(tr("Открыть внутри", "Open inside")) }
-                                TextButton(enabled = ready, onClick = { dialog = PersonalDialog.Rename(entry) }) { Text(tr("Переименовать…", "Rename…")) }
-                                TextButton(enabled = ready, onClick = { dialog = PersonalDialog.Move(entry) }) { Text(tr("В другую папку…", "Move within Safe…")) }
-                                if (!entry.folder) TextButton(enabled = ready, onClick = { dialog = PersonalDialog.Export(entry) }) { Text(tr("Расшифровать в…", "Decrypt to…")) }
-                                TextButton(enabled = ready, onClick = { dialog = PersonalDialog.Delete(entry) }) { Text(tr("Удалить…", "Delete…")) }
+                    "Objects that failed verification: ${value.damaged}. They are not displayed."), color = scheme.error)
+                if (value.entries.isEmpty()) Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ShapedIcon(AppSymbol.Folder, ExpressiveShapes.Sunny, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 88.dp)
+                    Text(tr("Здесь пока пусто", "Nothing here yet"), style = MaterialTheme.typography.titleMedium)
+                    FilledTonalButton(enabled = ready, onClick = { copyingMany = true }) {
+                        AppIcon(AppSymbol.Upload); Spacer(Modifier.width(8.dp)); Text(tr("Добавить файлы", "Add files"))
+                    }
+                }
+                value.entries.forEach { entry ->
+                    Surface(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).combinedClickable(enabled = !busy,
+                        onLongClick = { sheetEntry = entry },
+                        onClick = { if (entry.folder) { if (path.size < 64) path = path + entry.name } else viewing = entry to path.toList() }),
+                        color = Color.Transparent) {
+                        Row(Modifier.heightIn(min = 60.dp).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            ShapedIcon(if (entry.folder) AppSymbol.Folder else AppSymbol.Document, MaterialTheme.shapes.medium,
+                                if (entry.folder) scheme.primaryContainer else scheme.surfaceContainerHighest,
+                                if (entry.folder) scheme.onPrimaryContainer else scheme.onSurfaceVariant, size = 44.dp)
+                            Column(Modifier.weight(1f)) {
+                                Text(displayName(entry.name), style = MaterialTheme.typography.titleMedium, maxLines = 2)
+                                if (!entry.folder) Text(tr("${entry.size} байт", "${entry.size} bytes"), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                             }
+                            IconButton(onClick = { sheetEntry = entry }, modifier = Modifier.actionDescription(tr("Действия: ", "Actions: ") + displayName(entry.name))) { AppIcon(AppSymbol.More) }
                         }
                     }
                 }
             }
+            TextButton(enabled = !busy, onClick = onLock) { AppIcon(AppSymbol.Vault); Spacer(Modifier.width(8.dp)); Text(tr("Заблокировать Сейф", "Lock Safe")) }
+        }
+    }
+    sheetEntry?.let { entry ->
+        fun run(next: () -> Unit): () -> Unit = { sheetEntry = null; next() }
+        FileActionSheet(entry.name, if (entry.folder) tr("Папка в Сейфе", "Folder in the Safe") else tr("${entry.size} байт", "${entry.size} bytes"),
+            if (entry.folder) AppSymbol.Folder else AppSymbol.Document, listOf(
+            SheetGroup(tr("Открыть", "Open"), listOfNotNull(
+                SheetAction(if (entry.folder) tr("Открыть", "Open") else tr("Открыть внутри", "Open inside"), AppSymbol.Forward,
+                    run = run { if (entry.folder) path = path + entry.name else viewing = entry to path.toList() }),
+                if (!entry.folder) SheetAction(tr("Выгрузить в…", "Export to…"), AppSymbol.Download, ready, run = run { dialog = PersonalDialog.Export(entry) }) else null,
+            )),
+            SheetGroup(tr("Упорядочить", "Organize"), listOf(
+                SheetAction(tr("Переименовать", "Rename"), AppSymbol.Edit, ready, run = run { dialog = PersonalDialog.Rename(entry) }),
+                SheetAction(tr("В другую папку", "Move within Safe"), AppSymbol.MoveTo, ready, run = run { dialog = PersonalDialog.Move(entry) }),
+                SheetAction(tr("Удалить", "Delete"), AppSymbol.Trash, ready, danger = true, run = run { dialog = PersonalDialog.Delete(entry) }),
+            )),
+        ), onDismiss = { sheetEntry = null })
+    }
+    if (copyingMany) CoreFilePickerDialog(core, session.files.spaces, tr("Копировать в личную папку", "Copy into the personal folder"), CorePickKind.Files,
+        maxSelection = 32, onDismiss = { copyingMany = false }) { picked ->
+        copyingMany = false
+        val sources = picked.map { it.location }
+        // Copies only; originals stay. An existing name fails that file, nothing is replaced.
+        if (sources.isNotEmpty()) write { h, p ->
+            var last: CoreResult<Unit> = CoreResult.Value(Unit)
+            for (source in sources) { last = core.vaultAdd(h, p, source); if (last is CoreResult.Failure) break }
+            last
         }
     }
     if (picking) CoreFilePickerDialog(core, session.files.spaces, tr("Файл для личной папки", "File for the personal folder"), CorePickKind.Files,
