@@ -1,6 +1,6 @@
 //! Retain a directory wrapper while changing its shortening class.
 use super::*;
-use cap_std::fs::{DirBuilderExt, OpenOptionsExt, MetadataExt, PermissionsExt};
+use cap_std::fs::{DirBuilderExt, OpenOptionsExt, MetadataExt};
 use paranoic_core::DirectoryReshape;
 
 fn directory(parent: &Dir, name: &str) -> Result<Dir> {
@@ -53,11 +53,11 @@ pub(super) fn rename(storage: &LocalStorage, source: &ResourcePath, target: &Res
     parent.create_dir_with(&temporary, &builder).map_err(CoreError::io)?;
     let staging = directory(&parent, &temporary)?;
     let metadata = staging.dir_metadata().map_err(CoreError::io)?;
-    if metadata.uid() != rustix::process::geteuid().as_raw() || metadata.permissions().mode() & 0o077 != 0 {
+    if !crate::shared::staging_private(&metadata, storage.shared_root) {
         return Err(CoreError::new(ErrorCode::PermissionDenied, "reshape staging is not private"));
     }
     sync_directory(&parent)?;
-    rustix::fs::renameat_with(&parent, source_name, &staging, "entry", rustix::fs::RenameFlags::NOREPLACE)
+    crate::shared::rename_noreplace(&parent, source_name, &staging, "entry", storage.shared_root)
         .map_err(|e| CoreError::io(e.into()))?;
     sync_directory(&staging)?; sync_directory(&parent)?;
     // Never recursively clean this directory: it now owns the sole wrapper.
@@ -70,12 +70,12 @@ pub(super) fn rename(storage: &LocalStorage, source: &ResourcePath, target: &Res
         file.sync_all().map_err(CoreError::io)?;
     } else {
         // Preserve the former mapping as recovery evidence instead of unlinking.
-        rustix::fs::renameat_with(&entry, "name.c9s", &staging, "old-mapping", rustix::fs::RenameFlags::NOREPLACE)
+        crate::shared::rename_noreplace(&entry, "name.c9s", &staging, "old-mapping", storage.shared_root)
             .map_err(|e| CoreError::io(e.into()))?;
     }
     sync_directory(&entry)?; sync_directory(&staging)?;
     verify(&entry, &layout.link, layout.new_mapping.as_deref())?;
-    rustix::fs::renameat_with(&staging, "entry", &destination, target_name, rustix::fs::RenameFlags::NOREPLACE)
+    crate::shared::rename_noreplace(&staging, "entry", &destination, target_name, storage.shared_root)
         .map_err(|e| CoreError::io(e.into()))?;
     sync_directory(&destination)?; sync_directory(&staging)?;
     verify(&directory(&destination, target_name)?, &layout.link, layout.new_mapping.as_deref())
@@ -110,7 +110,7 @@ fn classify(parent: &Dir, name: &str, layout: &DirectoryReshape, check: &mut dyn
         (false, true) => O::NewMapping, _ => O::Different })
 }
 
-fn private_staging(parent: &Dir, job: JobId) -> Result<Option<Dir>> {
+fn private_staging(parent: &Dir, job: JobId, shared: bool) -> Result<Option<Dir>> {
     let name = format!(".paranoic-{}", job.0);
     let staging = match directory(parent, &name) {
         Ok(dir) => dir,
@@ -119,7 +119,7 @@ fn private_staging(parent: &Dir, job: JobId) -> Result<Option<Dir>> {
     };
     let metadata = staging.dir_metadata().map_err(CoreError::io)?;
     let visible = parent.symlink_metadata(&name).map_err(CoreError::io)?;
-    if metadata.uid() != rustix::process::geteuid().as_raw() || metadata.permissions().mode() & 0o077 != 0
+    if !crate::shared::staging_private(&metadata, shared)
         || visible.dev() != metadata.dev() || visible.ino() != metadata.ino() {
         return Err(CoreError::new(ErrorCode::PermissionDenied, "reshape staging is not private"));
     }
@@ -135,7 +135,7 @@ pub(super) fn inspect(storage: &LocalStorage, source: &ResourcePath, target: &Re
     let (destination, target_name) = storage.parent(target)?;
     let source = classify(&parent, name, layout, check)?;
     let target = classify(&destination, target_name, layout, check)?;
-    let staging = private_staging(&parent, job)?;
+    let staging = private_staging(&parent, job, storage.shared_root)?;
     let staged_entry = match &staging { Some(dir) => classify(dir, "entry", layout, check)?, None => O::Missing };
     check()?;
     Ok(MappedRenameObservation { source, target, staged_entry, staging_present: staging.is_some() })
@@ -161,7 +161,7 @@ pub(super) fn recover(storage: &LocalStorage, source: &ResourcePath, target: &Re
             Err(e) => return Err(CoreError::io(e)),
         }
     }
-    let staging = private_staging(&parent, original)?
+    let staging = private_staging(&parent, original, storage.shared_root)?
         .ok_or_else(|| CoreError::new(ErrorCode::NotFound, "reshape staging is missing"))?;
     let state = classify(&staging, "entry", layout, &mut || Ok(()))?;
     let (desired, destination, name) = match action {
@@ -183,19 +183,19 @@ pub(super) fn recover(storage: &LocalStorage, source: &ResourcePath, target: &Re
                 file.write_all(bytes).map_err(CoreError::io)?;
                 file.sync_all().map_err(CoreError::io)?;
                 drop(file);
-                rustix::fs::renameat_with(&staging, &fragment, &entry, "name.c9s", rustix::fs::RenameFlags::NOREPLACE)
+                crate::shared::rename_noreplace(&staging, &fragment, &entry, "name.c9s", storage.shared_root)
                     .map_err(|e| CoreError::io(e.into()))?;
             }
             None => {
                 let preserved = format!("old-mapping-{}", recovery.0);
-                rustix::fs::renameat_with(&entry, "name.c9s", &staging, &preserved, rustix::fs::RenameFlags::NOREPLACE)
+                crate::shared::rename_noreplace(&entry, "name.c9s", &staging, &preserved, storage.shared_root)
                     .map_err(|e| CoreError::io(e.into()))?;
             }
         }
         sync_directory(&entry)?; sync_directory(&staging)?;
     }
     verify(&entry, &layout.link, desired)?;
-    rustix::fs::renameat_with(&staging, "entry", destination, name, rustix::fs::RenameFlags::NOREPLACE)
+    crate::shared::rename_noreplace(&staging, "entry", destination, name, storage.shared_root)
         .map_err(|e| CoreError::io(e.into()))?;
     sync_directory(destination)?; sync_directory(&staging)?;
     // Staging (with any preserved mapping) is left for inspection.

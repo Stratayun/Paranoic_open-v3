@@ -220,6 +220,11 @@ fn provider(grant: &NativeGrant, host: Arc<dyn AndroidDocuments>, state: &Path, 
         }
         // Writable: Linux stages in 0700 folders, Windows in owner-only ACL folders
         // (register У-19). The OS still decides whether the user may write there.
+        // Android: a non-SAF grant is shared storage reached through "All
+        // files access" (FUSE, no renameat2 flags, no hard links).
+        if cfg!(target_os = "android") {
+            return Ok(Arc::new(LocalStorage::open_shared(id, path, Access::ReadWrite)?));
+        }
         Ok(Arc::new(LocalStorage::open(id, path, Access::ReadWrite)?))
     }
 }

@@ -1,6 +1,6 @@
 //! Retained recovery staging for mapped wrapper renames and moves.
 use super::*;
-use cap_std::fs::{DirBuilderExt, OpenOptionsExt, MetadataExt, PermissionsExt};
+use cap_std::fs::{DirBuilderExt, OpenOptionsExt, MetadataExt};
 
 fn open_dir(parent: &Dir, name: &str) -> Result<Dir> {
     let fd = rustix::fs::openat(parent, name, rustix::fs::OFlags::RDONLY |
@@ -45,13 +45,13 @@ pub(super) fn rename(storage: &LocalStorage, source: &ResourcePath, target: &Res
     parent.create_dir_with(&temporary, &builder).map_err(CoreError::io)?;
     let staging = open_dir(&parent, &temporary)?;
     let metadata = staging.dir_metadata().map_err(CoreError::io)?;
-    if metadata.uid() != rustix::process::geteuid().as_raw() || metadata.permissions().mode() & 0o077 != 0 {
+    if !crate::shared::staging_private(&metadata, storage.shared_root) {
         return Err(CoreError::new(ErrorCode::PermissionDenied, "rename staging is not private"));
     }
     sync_directory(&parent)?;
     // No Drop cleanup: after detachment this is the sole reachable payload.
     // Even failures before detachment leave evidence for explicit recovery.
-    rustix::fs::renameat_with(&parent, source_name, &staging, "entry", rustix::fs::RenameFlags::NOREPLACE)
+    crate::shared::rename_noreplace(&parent, source_name, &staging, "entry", storage.shared_root)
         .map_err(|e| CoreError::io(e.into()))?;
     sync_directory(&staging)?;
     sync_directory(&parent)?;
@@ -67,7 +67,7 @@ pub(super) fn rename(storage: &LocalStorage, source: &ResourcePath, target: &Res
     sync_directory(&entry)?;
     sync_directory(&staging)?;
     mapping(&entry, new)?;
-    rustix::fs::renameat_with(&staging, "entry", &target_parent, target_name, rustix::fs::RenameFlags::NOREPLACE)
+    crate::shared::rename_noreplace(&staging, "entry", &target_parent, target_name, storage.shared_root)
         .map_err(|e| CoreError::io(e.into()))?;
     sync_directory(&target_parent)?;
     sync_directory(&staging)?;
@@ -136,7 +136,7 @@ pub(super) fn inspect(storage: &LocalStorage, source: &ResourcePath, target: &Re
     };
     let staged_entry = if let Some(dir) = &staging {
         let metadata = dir.dir_metadata().map_err(CoreError::io)?;
-        if metadata.uid() != rustix::process::geteuid().as_raw() || metadata.permissions().mode() & 0o077 != 0 {
+        if !crate::shared::staging_private(&metadata, storage.shared_root) {
             return Err(CoreError::new(ErrorCode::PermissionDenied, "rename staging is not private"));
         }
         observe(dir, "entry", old, new, check)?
@@ -170,7 +170,7 @@ pub(super) fn recover(storage: &LocalStorage, source: &ResourcePath, target: &Re
     let staging = open_dir(&parent, &temporary)?;
     let metadata = staging.dir_metadata().map_err(CoreError::io)?;
     let visible = parent.symlink_metadata(&temporary).map_err(CoreError::io)?;
-    if metadata.uid() != rustix::process::geteuid().as_raw() || metadata.permissions().mode() & 0o077 != 0
+    if !crate::shared::staging_private(&metadata, storage.shared_root)
         || visible.dev() != metadata.dev() || visible.ino() != metadata.ino() {
         return Err(CoreError::new(ErrorCode::PermissionDenied, "recovery staging ownership changed"));
     }
@@ -193,7 +193,7 @@ pub(super) fn recover(storage: &LocalStorage, source: &ResourcePath, target: &Re
     sync_directory(&staging)?;
     mapping(&entry, expected)?;
     let (destination, name) = match action { A::Complete => (&target_parent, target_name), A::RestoreSource => (&parent, source_name) };
-    rustix::fs::renameat_with(&staging, "entry", destination, name, rustix::fs::RenameFlags::NOREPLACE)
+    crate::shared::rename_noreplace(&staging, "entry", destination, name, storage.shared_root)
         .map_err(|e| CoreError::io(e.into()))?;
     sync_directory(destination)?;
     sync_directory(&staging)?;

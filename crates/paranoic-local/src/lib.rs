@@ -11,6 +11,8 @@ mod mapped_rename;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 mod directory_reshape;
 
+#[cfg(unix)]
+mod shared;
 #[cfg(windows)]
 mod windows;
 
@@ -28,6 +30,9 @@ pub struct LocalStorage {
     root: Dir,
     access: Access,
     private_root: bool,
+    /// Android shared storage (FUSE): see `shared.rs`.
+    #[cfg_attr(not(any(target_os = "linux", target_os = "android")), allow(dead_code))]
+    shared_root: bool,
     /// Absolute root path, needed only by Windows calls that take paths
     /// (ACL of staging folders, no-replace rename).
     #[cfg_attr(not(windows), allow(dead_code))]
@@ -40,7 +45,16 @@ impl LocalStorage {
     pub fn open(id: StorageId, root: impl AsRef<Path>, access: Access) -> Result<Self> {
         let root_path = std::fs::canonicalize(root.as_ref()).map_err(CoreError::io)?;
         let root = Dir::open_ambient_dir(&root_path, ambient_authority()).map_err(CoreError::io)?;
-        Ok(Self { id, root, access, private_root: false, root_path })
+        Ok(Self { id, root, access, private_root: false, shared_root: false, root_path })
+    }
+
+    /// Android shared storage reached through "All files access"
+    /// (`/storage/emulated/N`, SD cards). Writes use the FUSE-compatible
+    /// publication in `shared.rs`; never use it for app-private roots.
+    pub fn open_shared(id: StorageId, root: impl AsRef<Path>, access: Access) -> Result<Self> {
+        let mut storage = Self::open(id, root, access)?;
+        storage.shared_root = true;
+        Ok(storage)
     }
 
     /// Only for the host-created, per-user application files directory, whose
@@ -238,14 +252,13 @@ impl Storage for LocalStorage {
         let staging = parent.open_dir(&temporary).map_err(CoreError::io)?;
         #[cfg(unix)]
         {
-            use cap_std::fs::{MetadataExt, PermissionsExt};
             let metadata = staging.dir_metadata().map_err(CoreError::io)?;
-            if metadata.uid() != rustix::process::geteuid().as_raw() || metadata.permissions().mode() & 0o077 != 0 {
+            if !crate::shared::staging_private(&metadata, self.shared_root) {
                 return Err(CoreError::new(ErrorCode::PermissionDenied, "staging directory is not private to the current user"));
             }
         }
         let mut stage = LocalStage {
-            parent, staging, temporary, target: name.to_owned(), file: None, cleaned: false,
+            parent, staging, temporary, target: name.to_owned(), file: None, cleaned: false, shared: self.shared_root,
         };
         let mut options = OpenOptions::new();
         options.write(true).create_new(true);
@@ -295,14 +308,13 @@ impl Storage for LocalStorage {
         let directory = parent.open_dir(&temporary).map_err(CoreError::io)?;
         #[cfg(unix)]
         {
-            use cap_std::fs::{MetadataExt, PermissionsExt};
             let metadata = directory.dir_metadata().map_err(CoreError::io)?;
-            if metadata.uid() != rustix::process::geteuid().as_raw() || metadata.permissions().mode() & 0o077 != 0 {
+            if !crate::shared::staging_private(&metadata, self.shared_root) {
                 return Err(CoreError::new(ErrorCode::PermissionDenied, "bundle staging is not private"));
             }
         }
         let mut stage = LocalBundle { parent, directory, temporary, target: name.to_owned(),
-            content: content.to_owned(), sidecar: sidecar.to_owned(), file: None, finished: false };
+            content: content.to_owned(), sidecar: sidecar.to_owned(), file: None, finished: false, shared: self.shared_root };
         let mut options = OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
@@ -335,7 +347,7 @@ impl Storage for LocalStorage {
             if !metadata.is_file() && !metadata.is_dir() {
                 return Err(CoreError::new(ErrorCode::Unsupported, "only files and directories can be moved"));
             }
-            rustix::fs::renameat_with(&source_parent, source_name, &target_parent, target_name, rustix::fs::RenameFlags::NOREPLACE)
+            crate::shared::rename_noreplace(&source_parent, source_name, &target_parent, target_name, self.shared_root)
                 .map_err(|error| CoreError::io(std::io::Error::from(error)))?;
             sync_directory(&target_parent)?;
             sync_directory(&source_parent)
@@ -533,6 +545,8 @@ struct LocalStage {
     target: String,
     file: Option<File>,
     cleaned: bool,
+    #[cfg_attr(not(any(target_os = "linux", target_os = "android")), allow(dead_code))]
+    shared: bool,
 }
 
 impl LocalStage {
@@ -574,7 +588,7 @@ impl StagedWrite for LocalStage {
         // links in app data (SELinux), so link() alone made every write there
         // fail. Filesystems without RENAME_NOREPLACE fall back to link().
         #[cfg(any(target_os = "linux", target_os = "android"))]
-        match rustix::fs::renameat_with(&self.staging, "payload", &self.parent, self.target.as_str(), rustix::fs::RenameFlags::NOREPLACE) {
+        match crate::shared::rename_noreplace(&self.staging, "payload", &self.parent, self.target.as_str(), self.shared) {
             Ok(()) => {
                 sync_directory(&self.parent)?;
                 return self.cleanup_after_move();
@@ -629,6 +643,8 @@ fn closed_writer() -> std::io::Error {
 struct LocalBundle {
     parent: Dir, directory: Dir, temporary: String, target: String,
     content: String, sidecar: String, file: Option<File>, finished: bool,
+    #[cfg_attr(not(any(target_os = "linux", target_os = "android")), allow(dead_code))]
+    shared: bool,
 }
 impl LocalBundle {
     fn cleanup(&mut self) -> Result<()> {
@@ -662,8 +678,8 @@ impl StagedWrite for LocalBundle {
         sync_directory(&self.directory)?;
         #[cfg(any(target_os = "linux", target_os = "android"))]
         {
-            rustix::fs::renameat_with(&self.parent, self.temporary.as_str(), &self.parent,
-                self.target.as_str(), rustix::fs::RenameFlags::NOREPLACE)
+            crate::shared::rename_noreplace(&self.parent, self.temporary.as_str(), &self.parent,
+                self.target.as_str(), self.shared)
                 .map_err(|e| CoreError::io(std::io::Error::from(e)))?;
             // Never clean up through the held directory after it became public.
             self.finished = true;

@@ -116,7 +116,7 @@ impl Drop for PendingTree {
 
 pub(super) fn publish(storage: &LocalStorage, target: &ResourcePath, job: JobId,
     files: &[PreparedTreeFile], checkpoint: &mut dyn FnMut() -> Result<()>) -> Result<()> {
-    use cap_std::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+    use cap_std::fs::{DirBuilderExt, MetadataExt};
     storage.writable()?;
     validate_prepared_tree(files)?;
     let (parent, name) = storage.parent(target)?;
@@ -134,7 +134,7 @@ pub(super) fn publish(storage: &LocalStorage, target: &ResourcePath, job: JobId,
         }
     };
     let metadata = directory.dir_metadata().map_err(CoreError::io)?;
-    if metadata.uid() != rustix::process::geteuid().as_raw() || metadata.permissions().mode() & 0o077 != 0 {
+    if !crate::shared::staging_private(&metadata, storage.shared_root) {
         // Ownership is uncertain: do not traverse or remove this directory.
         return Err(CoreError::new(ErrorCode::PermissionDenied, "bootstrap staging is not private"));
     }
@@ -147,8 +147,8 @@ pub(super) fn publish(storage: &LocalStorage, target: &ResourcePath, job: JobId,
         if !visible.is_dir() || visible.dev() != metadata.dev() || visible.ino() != metadata.ino() {
             return Err(CoreError::new(ErrorCode::NeedsAttention, "bootstrap staging identity changed"));
         }
-        rustix::fs::renameat_with(&pending.parent, pending.temporary.as_str(), &pending.parent,
-            name, rustix::fs::RenameFlags::NOREPLACE).map_err(|e| CoreError::io(std::io::Error::from(e)))?;
+        crate::shared::rename_noreplace(&pending.parent, pending.temporary.as_str(), &pending.parent,
+            name, storage.shared_root).map_err(|e| CoreError::io(std::io::Error::from(e)))?;
         // Rename is the publication boundary, even if parent fsync fails.
         pending.finished = true;
         Ok(())
