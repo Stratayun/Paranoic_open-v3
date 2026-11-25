@@ -551,17 +551,32 @@ fn ok() -> paranoic_crypto::Result<()> { Ok(()) }
 struct FileAnchor { path: PathBuf }
 static ANCHORS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 const ANCHOR_LIMIT: usize = 100_000;
+/// One line is at most 32 hex + space + 20 digits + newline.
+const ANCHOR_BYTES: u64 = ANCHOR_LIMIT as u64 * 54;
 impl FileAnchor {
     fn read(&self) -> paranoic_core::Result<std::collections::BTreeMap<String, u64>> {
-        let text = match std::fs::read_to_string(&self.path) {
-            Ok(text) => text,
+        use std::io::Read;
+        // Bounded and validated as a whole (audit 21): a damaged or oversized
+        // file is an integrity error, never silently a shorter list that would
+        // look like a first open and hide a rollback.
+        let damaged = || paranoic_core::CoreError::new(paranoic_core::ErrorCode::Integrity, "rollback anchors damaged");
+        let file = match std::fs::File::open(&self.path) {
+            Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Default::default()),
             Err(error) => return Err(paranoic_core::CoreError::io(error)),
         };
+        let mut raw = Vec::new();
+        file.take(ANCHOR_BYTES + 1).read_to_end(&mut raw).map_err(paranoic_core::CoreError::io)?;
+        if raw.len() as u64 > ANCHOR_BYTES { return Err(damaged()); }
+        let text = String::from_utf8(raw).map_err(|_| damaged())?;
+        if !text.is_empty() && !text.ends_with('\n') { return Err(damaged()); }
         let mut out = std::collections::BTreeMap::new();
-        for line in text.lines().take(ANCHOR_LIMIT) {
-            let Some((id, sequence)) = line.split_once(' ') else { continue };
-            if let Ok(sequence) = sequence.parse() { out.insert(id.to_owned(), sequence); }
+        for line in text.lines() {
+            let (id, sequence) = line.split_once(' ').ok_or_else(damaged)?;
+            if id.len() != 32 || !id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) { return Err(damaged()); }
+            if sequence.is_empty() || !sequence.bytes().all(|b| b.is_ascii_digit()) { return Err(damaged()); }
+            let sequence: u64 = sequence.parse().map_err(|_| damaged())?;
+            if out.insert(id.to_owned(), sequence).is_some() || out.len() > ANCHOR_LIMIT { return Err(damaged()); }
         }
         Ok(out)
     }
@@ -577,6 +592,9 @@ impl paranoic_formats::paranoic_vault::ManifestAnchor for FileAnchor {
         let mut all = self.read()?;
         let id = anchor_id(vault_id);
         if all.get(&id).is_some_and(|seen| *seen >= sequence) { return Ok(()); }
+        if !all.contains_key(&id) && all.len() >= ANCHOR_LIMIT {
+            return Err(paranoic_core::CoreError::new(paranoic_core::ErrorCode::LimitExceeded, "too many rollback anchors"));
+        }
         all.insert(id, sequence);
         let text: String = all.iter().map(|(id, seq)| format!("{id} {seq}\n")).collect();
         let temporary = self.path.with_extension("tmp");
@@ -878,3 +896,23 @@ impl paranoic_crypto::StreamSink for StageSink {
     }
 }
 
+
+#[cfg(test)]
+mod anchor_tests {
+    use super::*;
+    use paranoic_formats::paranoic_vault::ManifestAnchor;
+    /// Audit 21: a damaged anchor file is reported, never read as "no anchor".
+    #[test] fn damaged_anchor_file_is_an_integrity_error() {
+        let dir = std::env::temp_dir().join(format!("paranoic-anchor-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&dir).unwrap();
+        let anchor = FileAnchor { path: dir.join("anchors") };
+        let id = [7u8; 16];
+        anchor.raise(&id, 5).unwrap();
+        assert_eq!(anchor.get(&id).unwrap(), Some(5));
+        for bad in [&b"garbage\n"[..], b"0707070707070707070707070707070 5\n", b"07070707070707070707070707070707 5", b"07070707070707070707070707070707 -1\n"] {
+            std::fs::write(&anchor.path, bad).unwrap();
+            assert!(matches!(anchor.get(&id), Err(e) if e.code == paranoic_core::ErrorCode::Integrity), "{bad:?}");
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
