@@ -8,7 +8,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import io.github.stratayun.paranoic.bridge.*
 import io.github.stratayun.paranoic.ui.components.*
@@ -67,12 +66,12 @@ internal fun NotesDuressSettings(session: AppSession, enabled: Boolean, onSet: (
                     "Use a strong password different from the main password. Do not test it on the unlock screen: that would destroy the previous data."),
                     color = MaterialTheme.colorScheme.error)
                 OutlinedTextField(password, { if (it.length <= 4096) { password = it; strength = null } }, singleLine = true,
-                    label = { Text(tr("Пароль под принуждением", "Duress password")) }, visualTransformation = PasswordVisualTransformation(),
+                    label = { Text(tr("Пароль под принуждением", "Duress password")) }, visualTransformation = peek("NotesDuressSettings:6"), trailingIcon = { PeekToggle("NotesDuressSettings:6") },
                     keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
                 val assessed = PasswordTools(session.core, password, enabled) { password = it; repeated = ""; strength = null }
                 SideEffect { strength = assessed }
                 OutlinedTextField(repeated, { if (it.length <= 4096) repeated = it }, singleLine = true,
-                    label = { Text(tr("Повторите пароль", "Repeat password")) }, visualTransformation = PasswordVisualTransformation(),
+                    label = { Text(tr("Повторите пароль", "Repeat password")) }, visualTransformation = peek("NotesDuressSettings:7"), trailingIcon = { PeekToggle("NotesDuressSettings:7") },
                     keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password),
                     isError = repeated.isNotEmpty() && repeated != password)
                 LabeledCheckbox(tr("Понимаю: использование этого пароля уничтожит прежние данные", "I understand: using this password destroys the previous data"),

@@ -10,7 +10,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import io.github.stratayun.paranoic.bridge.*
 import io.github.stratayun.paranoic.ui.components.*
@@ -58,7 +57,7 @@ internal fun VaultArchivePane(session: AppSession, gateway: EncryptedFolderGatew
             }
             OutlinedTextField(password, { if (it.length <= 4096) password = it }, enabled = !guard.busy, singleLine = true,
                 label = { Text(tr("Пароль архива, если нужен", "Archive password, if required")) },
-                visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
+                visualTransformation = peek("VaultArchivePane:20"), trailingIcon = { PeekToggle("VaultArchivePane:20") }, keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
             Text(tr("Пароль не сохраняется: для каждой операции введите его заново.", "The password is not stored: enter it again for each operation."), style = MaterialTheme.typography.bodySmall)
             TextButton(enabled = !guard.busy, onClick = {
                 val secret = password.takeIf { it.isNotEmpty() }; password = ""; busy(true)

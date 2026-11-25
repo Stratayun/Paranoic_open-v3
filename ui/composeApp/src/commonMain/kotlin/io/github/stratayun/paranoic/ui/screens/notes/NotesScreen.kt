@@ -15,7 +15,6 @@ import io.github.stratayun.paranoic.ui.components.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -179,7 +178,9 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
             }
             !current.unlocked -> {
                 if (current.quickEnabled && current.quickAvailable && biometric.available) {
-                    OutlinedButton(enabled = !busy, onClick = { quick(false) }) { Text(tr("Открыть биометрией", "Unlock with biometrics")) }
+                    FilledTonalButton(enabled = !busy, onClick = { quick(false) }, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                        AppIcon(AppSymbol.Fingerprint); Spacer(Modifier.width(8.dp)); Text(tr("Открыть по биометрии", "Unlock with biometrics"))
+                    }
                 }
                 UnlockNotes(current, busy, onRefresh = { act { reloadStatus() } }) { password ->
                     act {
@@ -434,12 +435,12 @@ private fun CreateNotes(session: AppSession, status: NotesStatus, busy: Boolean,
         Text(tr("Один отдельный пароль для заметок и личной папки. Содержимое Сейфа скрыто из файлового менеджера, не уходит в облако и не синхронизируется. Забытый пароль заметок восстановить нельзя.",
             "One separate password for notes and the personal folder. Safe data is hidden from the file manager, never goes to the cloud and is not synchronized. A forgotten notes password cannot be recovered."))
         OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), singleLine = true,
-            label = { Text(tr("Пароль", "Password")) }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
+            label = { Text(tr("Пароль", "Password")) }, visualTransformation = peek("NotesScreen:8"), trailingIcon = { PeekToggle("NotesScreen:8") }, keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
         val strength = PasswordTools(session.core, password, !busy) {
             password = it; repeat = ""
         }
         OutlinedTextField(repeat, { repeat = it }, Modifier.fillMaxWidth().fieldError(passwordMismatchText(), repeat.isNotEmpty() && repeat != password), singleLine = true,
-            label = { Text(tr("Повторите пароль", "Repeat password")) }, visualTransformation = PasswordVisualTransformation(),
+            label = { Text(tr("Повторите пароль", "Repeat password")) }, visualTransformation = peek("NotesScreen:9"), trailingIcon = { PeekToggle("NotesScreen:9") },
             isError = repeat.isNotEmpty() && repeat != password, supportingText = { if (repeat.isNotEmpty() && repeat != password) Text(passwordMismatchText()) },
             keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
         GuaranteeText(status.guarantee)
@@ -461,7 +462,7 @@ private fun UnlockNotes(status: NotesStatus, busy: Boolean, onRefresh: () -> Uni
     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(tr("Заметки заблокированы", "Notes are locked"), Modifier.sectionHeading(), style = MaterialTheme.typography.headlineSmall)
         OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), singleLine = true,
-            label = { Text(tr("Пароль", "Password")) }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
+            label = { Text(tr("Пароль", "Password")) }, visualTransformation = peek("NotesScreen:10"), trailingIcon = { PeekToggle("NotesScreen:10") }, keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
         // The attempt counter is deliberately not shown; only the wait and the auto-wipe state.
         if (wait > 0) Text(tr("Следующая попытка через ${(wait + 999) / 1000} с.", "Next attempt in ${(wait + 999) / 1000} s."))
         if (status.autoWipe) Text(tr("Включено автостирание: после серии неверных паролей заметки будут уничтожены.",
@@ -599,35 +600,44 @@ private fun NotesSettings(session: AppSession, status: NotesStatus, busy: Boolea
     var changing by remember { mutableStateOf(false) }
     var clearing by remember { mutableStateOf(false) }
     var enablingQuick by remember { mutableStateOf(false) }
-    TextButton(onClick = { expanded = !expanded }, modifier = Modifier.actionDescription(
-        if (expanded) tr("Скрыть настройки заметок", "Hide notes settings") else tr("Показать настройки заметок", "Show notes settings"))) {
-        Text(tr("Настройки заметок", "Notes settings") + if (expanded) " ▾" else " ▸")
-    }
-    if (!expanded) return
-    GuaranteeText(status.guarantee)
-    Text(tr("Быстрый вход в заметки — отдельный путь доступа. Пароль надёжнее биометрии. Clear и автостирание уничтожают и его ключи.",
-        "Quick notes unlock is a separate access path. A password is safer than biometrics. Clear and auto-wipe destroy its keys too."))
-    LabeledSwitch(tr("Быстрый вход биометрией", "Quick biometric unlock"), checked = status.quickEnabled,
-        enabled = !busy && (status.quickEnabled || status.quickAvailable && biometricAvailable),
-        onChange = { enable -> if (enable) enablingQuick = true else onQuick(false) })
-    if (!biometricAvailable || !status.quickAvailable) Text(tr(
-        "Для включения нужны Android 11+ и сильная биометрия. При смене биометрии войдите паролем и настройте быстрый вход заново.",
-        "Enabling requires Android 11+ and strong biometrics. After biometric enrollment changes, use the password and set up quick unlock again."))
+    val scheme = MaterialTheme.colorScheme
+    val quickAllowed = !busy && (status.quickEnabled || status.quickAvailable && biometricAvailable)
+    SectionLabel(tr("Безопасность Сейфа", "Safe security"))
+    GroupedRow(tr("Вход по биометрии", "Biometric unlock"), GroupPosition.First,
+        subtitle = if (!biometricAvailable || !status.quickAvailable) tr("Нужны Android 11+ и сильная биометрия", "Needs Android 11+ and strong biometrics")
+            else tr("Отпечаток или лицо вместо пароля", "Fingerprint or face instead of the password"),
+        enabled = quickAllowed,
+        leading = { ShapedIcon(AppSymbol.Fingerprint, MaterialTheme.shapes.medium, scheme.secondaryContainer, scheme.onSecondaryContainer, size = 40.dp) },
+        trailing = { Switch(checked = status.quickEnabled, enabled = quickAllowed,
+            onCheckedChange = { enable -> if (enable) enablingQuick = true else onQuick(false) }) },
+        onClick = { if (status.quickEnabled) onQuick(false) else enablingQuick = true })
+    Spacer(Modifier.height(2.dp))
+    GroupedRow(tr("Сменить пароль", "Change password"), GroupPosition.Middle, enabled = !busy,
+        leading = { ShapedIcon(AppSymbol.Passwords, MaterialTheme.shapes.medium, scheme.secondaryContainer, scheme.onSecondaryContainer, size = 40.dp) },
+        trailing = { AppIcon(AppSymbol.Forward) }, onClick = { changing = true })
+    Spacer(Modifier.height(2.dp))
+    GroupedRow(tr("Clear — стереть Сейф", "Clear — erase the Safe"), GroupPosition.Middle, enabled = !busy,
+        subtitle = tr("Заметки и личная папка уничтожаются вместе с ключами", "Notes and the personal folder are destroyed with their keys"),
+        leading = { ShapedIcon(AppSymbol.Trash, MaterialTheme.shapes.medium, scheme.errorContainer, scheme.onErrorContainer, size = 40.dp) },
+        onClick = { clearing = true })
+    Spacer(Modifier.height(2.dp))
+    GroupedRow(tr("Дополнительно", "More"), GroupPosition.Last,
+        subtitle = tr("Автостирание, пароль под принуждением", "Auto-wipe, duress password"),
+        leading = { ShapedIcon(AppSymbol.Settings, MaterialTheme.shapes.medium, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 40.dp) },
+        trailing = { AppIcon(if (expanded) AppSymbol.Up else AppSymbol.Forward) }, onClick = { expanded = !expanded })
     if (enablingQuick) AlertDialog(onDismissRequest = { enablingQuick = false },
         title = { Text(tr("Включить быстрый вход?", "Enable quick unlock?")) },
         text = { Text(tr("Биометрия даст дополнительный доступ к заметкам без пароля. Пароль надёжнее. Ключи не используются для входа в приложение или файлов.",
             "Biometrics add access to notes without a password. A password is safer. These keys are separate from app-entry authentication and files.")) },
         confirmButton = { TextButton(enabled = !busy, onClick = { enablingQuick = false; onQuick(true) }) { Text(tr("Подтвердить биометрией", "Confirm with biometrics")) } },
         dismissButton = { TextButton(onClick = { enablingQuick = false }) { Text(tr("Отмена", "Cancel")) } })
+    if (expanded) Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        GuaranteeText(status.guarantee)
     LabeledSwitch(tr("Автостирание после ${status.wipeAfter} неверных паролей", "Auto-wipe after ${status.wipeAfter} wrong passwords"),
         checked = status.autoWipe, enabled = !busy, onChange = onAutoWipe)
     NotesDuressSettings(session, !busy, onDuress)
     Text(tr("Защищает от подбора, но опечатки тоже считаются.", "Protects against guessing, but typos count too."),
         style = MaterialTheme.typography.bodySmall)
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(enabled = !busy, onClick = { changing = true }) { Text(tr("Сменить пароль", "Change password")) }
-        OutlinedButton(enabled = !busy, onClick = { clearing = true },
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(tr("Clear — стереть всё", "Clear — erase all")) }
     }
     if (changing) {
         var old by remember { mutableStateOf("") }
@@ -639,18 +649,18 @@ private fun NotesSettings(session: AppSession, status: NotesStatus, busy: Boolea
             text = {
                 Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(old, { old = it }, singleLine = true, label = { Text(tr("Текущий пароль", "Current password")) },
-                        visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
+                        visualTransformation = peek("NotesScreen:11"), trailingIcon = { PeekToggle("NotesScreen:11") }, keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
                     OutlinedTextField(new, { new = it }, singleLine = true, label = { Text(tr("Новый пароль", "New password")) },
-                        visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
+                        visualTransformation = peek("NotesScreen:12"), trailingIcon = { PeekToggle("NotesScreen:12") }, keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
                     PasswordTools(session.core, new, !busy) { new = it; repeated = "" }
                     OutlinedTextField(repeated, { if (it.length <= 4096) repeated = it }, singleLine = true,
                         label = { Text(tr("Повторите новый пароль", "Repeat new password")) },
-                        visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password),
+                        visualTransformation = peek("NotesScreen:13"), trailingIcon = { PeekToggle("NotesScreen:13") }, keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password),
                         isError = repeated.isNotEmpty() && repeated != new,
                         supportingText = { if (repeated.isNotEmpty() && repeated != new) Text(passwordMismatchText()) })
                 }
             },
-            confirmButton = { TextButton(enabled = !busy && old.isNotEmpty() && new.length >= 12 && new == repeated && old != new, onClick = {
+            confirmButton = { TextButton(enabled = !busy && old.isNotEmpty() && PasswordRule.acceptable(new) && new == repeated && old != new, onClick = {
                 val o = old; val n = new; old = ""; new = ""; repeated = ""; changing = false; onChangePassword(o, n)
             }) { Text(tr("Сменить", "Change")) } },
             dismissButton = { TextButton(onClick = { changing = false }) { Text(tr("Отмена", "Cancel")) } })

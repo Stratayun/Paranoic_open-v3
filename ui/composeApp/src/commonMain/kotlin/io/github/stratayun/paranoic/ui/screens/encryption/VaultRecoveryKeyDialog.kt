@@ -1,5 +1,7 @@
 package io.github.stratayun.paranoic.ui.screens.encryption
 
+import io.github.stratayun.paranoic.ui.components.PeekToggle
+import io.github.stratayun.paranoic.ui.components.peek
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -9,7 +11,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import io.github.stratayun.paranoic.bridge.*
@@ -69,7 +70,7 @@ internal fun VaultRecoveryKeyDialog(core: CoreGateway, keyText: String, onClose:
                         }
                     }, singleLine = true, enabled = !busy,
                         label = { Text(tr("Группа ${group.toLong() + 1}", "Group ${group.toLong() + 1}")) },
-                        visualTransformation = PasswordVisualTransformation(),
+                        visualTransformation = peek("VaultRecoveryKeyDialog:19"), trailingIcon = { PeekToggle("VaultRecoveryKeyDialog:19") },
                         keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
                 }
                 if (mismatch) Text(tr("Группы не совпали. Проверьте свою запись.", "The groups did not match. Check your recorded copy."),

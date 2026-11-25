@@ -8,7 +8,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import io.github.stratayun.paranoic.bridge.*
 import io.github.stratayun.paranoic.ui.state.*
@@ -35,7 +34,7 @@ fun ArchiveDialog(session: AppSession, sources: List<FileItem>, action: ArchiveA
     val output = action != ArchiveAction.Open
     val to = parent
     val collision = output && to == session.files.folder && session.files.entries.any { it.name == name }
-    val passwordValid = action != ArchiveAction.Create || !protected || (format == ArchiveFormat.Zip && password.length >= 12 && password == repeat)
+    val passwordValid = action != ArchiveAction.Create || !protected || (format == ArchiveFormat.Zip && PasswordRule.acceptable(password) && password == repeat)
     val valid = session.core.connected && !session.writing && passwordValid &&
         (!output || to != null && session.files.spaces.spaceOf(to)?.writable == true && plausibleName(name) && !collision) &&
         session.directWrite?.phase != DirectWritePhase.Unknown && session.uncertain == null && session.uncertainAttention == null
@@ -67,13 +66,13 @@ fun ArchiveDialog(session: AppSession, sources: List<FileItem>, action: ArchiveA
             if (action != ArchiveAction.Create || protected) {
                 OutlinedTextField(password, { if (it.length <= 4096) password = it }, singleLine = true,
                     label = { Text(if (action == ArchiveAction.Create) tr("Пароль", "Password") else tr("Пароль (если нужен)", "Password (if required)")) },
-                    visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false))
+                    visualTransformation = peek("ArchiveDialog:4"), trailingIcon = { PeekToggle("ArchiveDialog:4") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false))
                 if (action == ArchiveAction.Create) {
                     OutlinedTextField(repeat, { if (it.length <= 4096) repeat = it }, singleLine = true, label = { Text(tr("Повторите пароль", "Repeat password")) },
                         modifier = Modifier.fieldError(passwordMismatchText(), repeat.isNotEmpty() && repeat != password),
-                        visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
+                        visualTransformation = peek("ArchiveDialog:5"), trailingIcon = { PeekToggle("ArchiveDialog:5") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
                         isError = repeat.isNotEmpty() && repeat != password, supportingText = { if (repeat.isNotEmpty() && repeat != password) Text(passwordMismatchText()) })
-                    Text(tr("Минимум 12 символов.", "At least 12 characters."))
+                    Text(tr("Минимум 8 символов: строчные и заглавные буквы, цифра и символ.", "At least 8 characters: lower- and uppercase letters, a digit and a symbol."))
                 }
             }
             if (format == ArchiveFormat.SevenZip && action != ArchiveAction.Create)

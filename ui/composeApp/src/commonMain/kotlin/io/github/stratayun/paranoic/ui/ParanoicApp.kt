@@ -165,7 +165,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
         }
     }
     LaunchedEffect(destination) { if (destination == Destination.Files) session.refresh() }
-    CompositionLocalProvider(LocalUiLanguage provides settings.language, LocalErrorCore provides core) {
+    val peekStates = remember { PeekStates() }
+    CompositionLocalProvider(LocalUiLanguage provides settings.language, LocalErrorCore provides core, LocalPeekStates provides peekStates) {
         ParanoicTheme(settings) {
             if (!loaded) {
                 Surface(Modifier.fillMaxSize()) {

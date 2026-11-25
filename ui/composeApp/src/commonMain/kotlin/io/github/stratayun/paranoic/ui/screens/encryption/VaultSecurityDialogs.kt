@@ -1,5 +1,8 @@
 package io.github.stratayun.paranoic.ui.screens.encryption
 
+import io.github.stratayun.paranoic.ui.components.PasswordRule
+import io.github.stratayun.paranoic.ui.components.PeekToggle
+import io.github.stratayun.paranoic.ui.components.peek
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -8,7 +11,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import io.github.stratayun.paranoic.ui.state.*
 import io.github.stratayun.paranoic.ui.components.LabeledCheckbox
@@ -40,9 +42,9 @@ internal fun VaultChangePasswordDialog(core: CoreGateway, name: String, cryptoma
                     "An interrupted Cryptomator password change is completed on the next open. Use the new password afterwards."))
             }
         },
-        confirmButton = { TextButton(enabled = old.isNotEmpty() && password.length >= 12 && password == repeat && password != old,
+        confirmButton = { TextButton(enabled = old.isNotEmpty() && PasswordRule.acceptable(password) && password == repeat && password != old,
             onClick = {
-                if (old.isNotEmpty() && password.length >= 12 && password == repeat && password != old) {
+                if (old.isNotEmpty() && PasswordRule.acceptable(password) && password == repeat && password != old) {
                     val o = old; val n = password; clear(); onConfirm(o, n)
                 }
             }) { Text(tr("Сменить", "Change")) } },
@@ -83,7 +85,7 @@ internal fun VaultRecoveryOpenDialog(core: CoreGateway, name: String, canReset: 
     DisposableEffect(Unit) { onDispose { clear() } }
     val compact = recovery.filterNot { it in "- \t\n\r" }.uppercase()
     val valid = compact.length == 52 && compact.all { it in 'A'..'Z' || it in '2'..'7' } &&
-        (!resetting || canReset && password.length >= 12 && password == repeated)
+        (!resetting || canReset && PasswordRule.acceptable(password) && password == repeated)
     AlertDialog(modifier = Modifier.trackSecretActivity(), onDismissRequest = { clear(); onClose() },
         title = { Text(if (resetting) tr("Новый пароль по ключу", "Reset password with a key") else tr("Открыть по ключу восстановления", "Open with recovery key")) },
         text = { Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -117,7 +119,7 @@ internal fun VaultRecoveryOpenDialog(core: CoreGateway, name: String, canReset: 
 @Composable
 private fun SecretField(value: String, onChange: (String) -> Unit, label: String, error: String? = null) {
     OutlinedTextField(value = value, onValueChange = onChange, modifier = Modifier.fillMaxWidth().fieldError(error.orEmpty(), error != null), singleLine = true,
-        label = { Text(label) }, visualTransformation = PasswordVisualTransformation(),
+        label = { Text(label) }, visualTransformation = peek("VaultSecurityDialogs:18"), trailingIcon = { PeekToggle("VaultSecurityDialogs:18") },
         keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password),
         isError = error != null, supportingText = { error?.let { Text(it) } })
 }

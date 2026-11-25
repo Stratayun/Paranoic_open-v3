@@ -18,8 +18,8 @@ import io.github.stratayun.paranoic.ui.state.*
 import io.github.stratayun.paranoic.ui.components.fileViewLabel
 import io.github.stratayun.paranoic.ui.theme.*
 
-private enum class SettingsSection { Appearance, Files, Language, Security, Diagnostics, Setup, Licenses }
-private enum class SettingId { Theme, Brightness, Density, Font, FileView, Language, Security, Diagnostics, Setup, Licenses }
+private enum class SettingsSection { Appearance, Files, Language, Security, Diagnostics, Setup }
+private enum class SettingId { Theme, Brightness, Density, Font, FileView, Language, Security, Diagnostics, Setup }
 private data class SettingEntry(val id: SettingId, val section: SettingsSection, val title: String, val search: String)
 
 @Composable
@@ -30,7 +30,6 @@ private fun SettingsSection.label() = when (this) {
     SettingsSection.Security -> tr("Защита", "Security")
     SettingsSection.Diagnostics -> tr("Диагностика", "Diagnostics")
     SettingsSection.Setup -> tr("Первый запуск", "Initial setup")
-    SettingsSection.Licenses -> tr("Лицензии", "Licenses")
 }
 @Composable
 private fun SettingsSection.summary() = when (this) {
@@ -40,7 +39,6 @@ private fun SettingsSection.summary() = when (this) {
     SettingsSection.Security -> tr("Вход в приложение и скриншоты на Android", "App entry and screenshots on Android")
     SettingsSection.Diagnostics -> tr("Журнал, сбои и отчёт", "Journal, crashes and report")
     SettingsSection.Setup -> tr("Повторить мастер настройки", "Run the setup wizard again")
-    SettingsSection.Licenses -> tr("Уведомления об используемых материалах", "Notices for included materials")
 }
 
 /** Settings hub over existing preferences. Search contains labels/values only, never user content. */
@@ -60,7 +58,6 @@ fun AppearanceScreen(settings: AppearanceSettings, saving: Boolean, saved: Boole
         SettingEntry(SettingId.Security, SettingsSection.Security, tr("Защита", "Security"), "защита безопасность системный вход биометрия скриншоты снимки запись экрана security authentication biometric screenshots capture recording"),
         SettingEntry(SettingId.Diagnostics, SettingsSection.Diagnostics, tr("Диагностика", "Diagnostics"), "ошибки сбой журнал отчёт отчет диагностика diagnostic diagnostics report crash journal errors"),
         SettingEntry(SettingId.Setup, SettingsSection.Setup, tr("Первый запуск", "Initial setup"), "мастер первый запуск язык защита заметки хранилище welcome setup onboarding first launch"),
-        SettingEntry(SettingId.Licenses, SettingsSection.Licenses, tr("Лицензии", "Licenses"), "лицензии словарь фразы eff copyright licenses attribution wordlist passphrase")
     )
     val search = query.trim().lowercase()
     val matches = entries.filter { entry ->
@@ -143,14 +140,6 @@ fun AppearanceScreen(settings: AppearanceSettings, saving: Boolean, saved: Boole
                         }
                         SettingId.Diagnostics -> diagnosticsSettings()
                         SettingId.Setup -> TextButton(enabled = !saving, onClick = onRestartWelcome) { Text(tr("Повторить мастер", "Run setup again")) }
-                        SettingId.Licenses -> {
-                            Text("EFF Large Wordlist", style = MaterialTheme.typography.titleMedium)
-                            Text(tr("Автор: Electronic Frontier Foundation. Используется для случайных парольных фраз в Rust. Числа бросков кубиков удалены, слова не изменены.",
-                                "By the Electronic Frontier Foundation. Used for random passphrases in Rust. Dice numbers removed; words unchanged."))
-                            Text("Creative Commons Attribution 3.0 United States (CC BY 3.0 US)")
-                            Text("https://www.eff.org/dice")
-                            Text("https://creativecommons.org/licenses/by/3.0/us/")
-                        }
                     }
                 }
             }
@@ -178,5 +167,5 @@ private fun <T> ChoiceRow(title: String, selected: T, values: List<T>, enabled: 
 private fun SettingsSection.symbol(): AppSymbol = when (this) {
     SettingsSection.Appearance -> AppSymbol.Edit; SettingsSection.Files -> AppSymbol.Folder; SettingsSection.Language -> AppSymbol.Info
     SettingsSection.Security -> AppSymbol.Security; SettingsSection.Diagnostics -> AppSymbol.Analytics
-    SettingsSection.Setup -> AppSymbol.Settings; SettingsSection.Licenses -> AppSymbol.Document
+    SettingsSection.Setup -> AppSymbol.Settings
 }

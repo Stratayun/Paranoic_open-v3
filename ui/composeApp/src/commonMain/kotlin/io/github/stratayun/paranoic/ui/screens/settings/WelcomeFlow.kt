@@ -1,5 +1,8 @@
 package io.github.stratayun.paranoic.ui.screens.settings
 
+import io.github.stratayun.paranoic.ui.components.PasswordRule
+import io.github.stratayun.paranoic.ui.components.PeekToggle
+import io.github.stratayun.paranoic.ui.components.peek
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -8,7 +11,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import io.github.stratayun.paranoic.bridge.*
 import io.github.stratayun.paranoic.ui.components.PasswordTools
@@ -98,12 +100,12 @@ private fun WelcomeNotesPassword(core: CoreGateway, onBusy: (Boolean) -> Unit) {
         if (status?.setUp == true) Text(tr("Пароль заметок уже настроен. Менять его здесь не требуется.", "A notes password is already configured. It does not need changing here."))
         if (status?.setUp == false) {
             OutlinedTextField(password, { if (it.length <= 4096) password = it }, enabled = !busy, singleLine = true,
-                label = { Text(tr("Новый пароль", "New password")) }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false))
+                label = { Text(tr("Новый пароль", "New password")) }, visualTransformation = peek("WelcomeFlow:14"), trailingIcon = { PeekToggle("WelcomeFlow:14") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false))
             OutlinedTextField(repeat, { if (it.length <= 4096) repeat = it }, enabled = !busy, singleLine = true,
-                label = { Text(tr("Повтор пароля", "Repeat password")) }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false))
+                label = { Text(tr("Повтор пароля", "Repeat password")) }, visualTransformation = peek("WelcomeFlow:15"), trailingIcon = { PeekToggle("WelcomeFlow:15") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false))
             PasswordTools(core, password, !busy) { password = it; repeat = "" }
             Text(tr("Не менее 12 символов. Пароль не сохраняется в настройках мастера.", "At least 12 characters. The wizard never saves the password in preferences."))
-            Button(enabled = !busy && password.length >= 12 && password == repeat && fault != CoreFault.OutcomeUnknown, onClick = {
+            Button(enabled = !busy && PasswordRule.acceptable(password) && password == repeat && fault != CoreFault.OutcomeUnknown, onClick = {
                 val secret = password; password = ""; repeat = ""; busy = true; onBusy(true)
                 scope.launch {
                     try {

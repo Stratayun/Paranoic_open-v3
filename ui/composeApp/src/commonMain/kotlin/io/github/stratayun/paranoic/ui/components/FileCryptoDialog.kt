@@ -7,7 +7,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.stratayun.paranoic.bridge.*
@@ -27,7 +26,7 @@ fun FileCryptoDialog(session: AppSession, source: FileItem, decrypt: Boolean, on
     val collision = if (destination == session.files.folder) session.files.entries.any { it.name == name } else false
     val valid = destination != null && plausibleName(name) && !source.isTarget(destination, name) && !collision &&
         session.files.spaces.spaceOf(destination)?.writable == true && password.isNotEmpty() &&
-        (decrypt || (password.length >= 12 && password == repeat)) && !session.writing &&
+        (decrypt || (PasswordRule.acceptable(password) && password == repeat)) && !session.writing &&
         session.directWrite?.phase != DirectWritePhase.Unknown && session.uncertain == null && session.uncertainAttention == null
     fun dismiss() { password = ""; repeat = ""; onDismiss() }
     AlertDialog(onDismissRequest = ::dismiss,
@@ -49,12 +48,12 @@ fun FileCryptoDialog(session: AppSession, source: FileItem, decrypt: Boolean, on
                 TextButton(onClick = { choosing = true }) { Text(tr("Выбрать другую папку…", "Choose another folder…")) }
                 if (collision) Text(tr("Это имя уже занято. Выберите другое.", "This name already exists. Choose another."), color = MaterialTheme.colorScheme.error)
                 OutlinedTextField(password, { password = it }, singleLine = true,
-                    label = { Text(tr("Пароль", "Password")) }, visualTransformation = PasswordVisualTransformation(),
+                    label = { Text(tr("Пароль", "Password")) }, visualTransformation = peek("FileCryptoDialog:2"), trailingIcon = { PeekToggle("FileCryptoDialog:2") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
                 if (!decrypt) {
                     OutlinedTextField(repeat, { repeat = it }, singleLine = true,
                         modifier = Modifier.fieldError(passwordMismatchText(), repeat.isNotEmpty() && password != repeat),
-                        label = { Text(tr("Повторите пароль", "Repeat password")) }, visualTransformation = PasswordVisualTransformation(),
+                        label = { Text(tr("Повторите пароль", "Repeat password")) }, visualTransformation = peek("FileCryptoDialog:3"), trailingIcon = { PeekToggle("FileCryptoDialog:3") },
                         isError = repeat.isNotEmpty() && password != repeat, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         supportingText = { if (repeat.isNotEmpty() && password != repeat) Text(passwordMismatchText()) })
                     Text(tr("Минимум 12 символов; лучше длинная фраза.", "At least 12 characters; a long passphrase is better."))

@@ -19,7 +19,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.stratayun.paranoic.bridge.*
@@ -556,7 +555,7 @@ private fun PasswordDialog(core: CoreGateway, create: Boolean, context: String, 
     var stage by remember { mutableIntStateOf(0) }
     val reviewing = stage == 2
     DisposableEffect(Unit) { onDispose { password = ""; repeat = "" } }
-    val valid = password.isNotEmpty() && (!create || plausibleName(name) && password == repeat && password.length >= 12)
+    val valid = password.isNotEmpty() && (!create || plausibleName(name) && password == repeat && PasswordRule.acceptable(password))
     AlertDialog(modifier = Modifier.trackSecretActivity(), onDismissRequest = { password = ""; repeat = ""; onDismiss() },
         title = { Text(if (create) tr("Новая зашифрованная папка", "New encrypted folder") else tr("Открыть зашифрованную папку", "Open encrypted folder")) },
         text = {
@@ -585,12 +584,12 @@ private fun PasswordDialog(core: CoreGateway, create: Boolean, context: String, 
                     label = { Text(tr("Имя папки", "Folder name")) }, isError = name.isNotEmpty() && !plausibleName(name),
                     supportingText = { if (name.isNotEmpty() && !plausibleName(name)) Text(nameErrorText()) })
                 OutlinedTextField(password, { if (it.length <= 4096) password = it }, singleLine = true, label = { Text(tr("Пароль", "Password")) },
-                    visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
+                    visualTransformation = peek("EncryptionScreen:16"), trailingIcon = { PeekToggle("EncryptionScreen:16") }, keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
                 if (create) {
                     PasswordTools(core, password) { password = it; repeat = "" }
                     OutlinedTextField(repeat, { if (it.length <= 4096) repeat = it }, singleLine = true, label = { Text(tr("Повторите пароль", "Repeat password")) },
                         modifier = Modifier.fieldError(passwordMismatchText(), repeat.isNotEmpty() && repeat != password),
-                        visualTransformation = PasswordVisualTransformation(), isError = repeat.isNotEmpty() && repeat != password,
+                        visualTransformation = peek("EncryptionScreen:17"), trailingIcon = { PeekToggle("EncryptionScreen:17") }, isError = repeat.isNotEmpty() && repeat != password,
                         supportingText = { if (repeat.isNotEmpty() && repeat != password) Text(passwordMismatchText()) },
                         keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
                     Text(tr("Не меньше 12 символов; лучше фраза из нескольких слов. Забытый пароль восстановить нельзя.",
