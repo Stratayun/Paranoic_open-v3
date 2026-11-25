@@ -94,17 +94,21 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
         state.fault?.let { FaultNotice(it) }
         if (state.hidden > 0) Text(tr("Скрыто объектов с недопустимыми или повторяющимися именами: ${state.hidden}",
             "Hidden entries with unsupported or duplicate names: ${state.hidden}"))
-        if (state.folder == null && session.core.connected) {
-            Text(if (state.spaces.isEmpty()) tr("Откройте меню ☰ и выберите место: память устройства или подключённую папку.", "Open the ☰ menu and pick a place: device storage or a connected folder.")
-                else tr("Откройте подключённую папку через «Места».", "Open a connected folder through Places."))
-            if (onOpenPlaces != null) TextButton(onClick = { inTab { onOpenPlaces() } }) { Text(tr("Открыть «Места»", "Open Places")) }
-            else Text(tr("Список мест находится в боковой панели.", "Places are listed in the side panel."))
+        if (state.folder == null && session.core.connected) Column(Modifier.fillMaxWidth().padding(top = 48.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ShapedIcon(AppSymbol.Folder, ExpressiveShapes.Cookie9, MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer, size = 104.dp)
+            Text(tr("Выберите место", "Choose a place"), style = MaterialTheme.typography.titleLarge)
+            Text(tr("Память устройства, SD-карта или подключённая папка — в меню ☰.", "Device storage, SD card or a connected folder — in the ☰ menu."),
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (onOpenPlaces != null) FilledTonalButton(onClick = { inTab { onOpenPlaces() } }) { AppIcon(AppSymbol.Menu); Spacer(Modifier.width(8.dp)); Text(tr("Открыть места", "Open places")) }
         }
-        if (state.loaded && visible.isEmpty() && !state.loading) {
-            Text(if (state.entries.isEmpty()) tr("Папка пустая. Создайте папку, текстовый файл или скопируйте сюда нужные данные.",
-                "This folder is empty. Create a folder or text file, or copy files here.") else tr("Текущий фильтр скрыл все загруженные объекты.", "The current filter hides all loaded entries."))
+        if (state.loaded && visible.isEmpty() && !state.loading) Column(Modifier.fillMaxWidth().padding(top = 48.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ShapedIcon(AppSymbol.Folder, ExpressiveShapes.Sunny, MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurfaceVariant, size = 104.dp)
+            Text(if (state.entries.isEmpty()) tr("Папка пуста", "Folder is empty") else tr("Фильтр скрыл все объекты", "The filter hides everything"),
+                style = MaterialTheme.typography.titleMedium)
             if (state.entries.isNotEmpty()) TextButton(onClick = { session.fileOptions(tabId, FileListOptions(showHidden = true)) }) {
-                Text(tr("Сбросить фильтр и показать скрытые", "Reset filter and show hidden"))
+                Text(tr("Сбросить фильтр", "Reset filter"))
             }
         }
         }
