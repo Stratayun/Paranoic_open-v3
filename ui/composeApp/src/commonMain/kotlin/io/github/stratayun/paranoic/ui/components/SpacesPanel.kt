@@ -35,12 +35,17 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
         space.androidTree -> AppSymbol.Folder
         else -> AppSymbol.Phone
     }
+    val kindPrivate = tr("На этом устройстве · данные Paranoic", "On this device · Paranoic data")
+    val kindCloud = tr("Облако или сервер", "Cloud or server")
+    val kindTree = tr("Папка через системный доступ", "Folder with system access")
+    val kindDevice = tr("Память устройства", "Device storage")
+    val readOnly = tr(" · только чтение", " · read-only")
     fun kind(space: Space) = when {
-        appPrivate(space) -> tr("На этом устройстве · данные Paranoic", "On this device · Paranoic data")
-        space.cloud -> tr("Облако или сервер", "Cloud or server")
-        space.androidTree -> tr("Папка через системный доступ", "Folder with system access")
-        else -> tr("Память устройства", "Device storage")
-    } + if (space.writable) "" else tr(" · только чтение", " · read-only")
+        appPrivate(space) -> kindPrivate
+        space.cloud -> kindCloud
+        space.androidTree -> kindTree
+        else -> kindDevice
+    } + if (space.writable) "" else readOnly
     Column(modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         SectionLabel(tr("Места", "Places"))
         if (catalog.busy) {

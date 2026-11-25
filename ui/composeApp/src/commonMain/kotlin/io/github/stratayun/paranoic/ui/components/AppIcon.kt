@@ -15,6 +15,7 @@ enum class AppSymbol {
     Home, Settings, Back, Folder, Document, Cloud, Security, Vault, Recovery, Search, Analytics, Trash, Sync, Passwords,
     Photo, Video, Audio, Archive, Favorite, Recent, More,
     Menu, Forward, Add, Download, Camera, Phone, SdCard, Tasks, Notes, Server, Sort, ViewList, ViewGrid, Up, Close, Info, Edit,
+    Copy, MoveTo, SelectAll, NewFolder, NewFile, Refresh,
 }
 
 /** Material Symbols (Rounded, Apache-2.0). Decorative: the labelled control owns accessibility. */
@@ -57,6 +58,12 @@ fun AppSymbol.vector(): ImageVector = when (this) {
     AppSymbol.Close -> Icons.Rounded.Close
     AppSymbol.Info -> Icons.Rounded.Info
     AppSymbol.Edit -> Icons.Rounded.Edit
+    AppSymbol.Copy -> Icons.Rounded.ContentCopy
+    AppSymbol.MoveTo -> Icons.Rounded.DriveFileMove
+    AppSymbol.SelectAll -> Icons.Rounded.SelectAll
+    AppSymbol.NewFolder -> Icons.Rounded.CreateNewFolder
+    AppSymbol.NewFile -> Icons.Rounded.NoteAdd
+    AppSymbol.Refresh -> Icons.Rounded.Refresh
 }
 
 @Composable

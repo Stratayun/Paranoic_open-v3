@@ -21,6 +21,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import io.github.stratayun.paranoic.ui.state.sectionHeading
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.min

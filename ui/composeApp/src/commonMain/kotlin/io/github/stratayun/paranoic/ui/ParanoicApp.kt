@@ -1,5 +1,6 @@
 package io.github.stratayun.paranoic.ui
 
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -195,40 +196,55 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                         textParent = openedParent, exitGuard = documentExit)
                     return@BoxWithConstraints
                 }
+                val drawerFooter: @Composable (Boolean) -> Unit = { closeAfter ->
+                    fun go(target: Destination) {
+                        if (closeAfter) scope.launch { placesDrawer.close() }
+                        if (destination != target) leaveDocument { destination = target }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    DrawerFooter(enabled = !documentExit.busy,
+                        runningTasks = session.jobs.count { it.phase == JobPhase.Queued || it.phase == JobPhase.Running },
+                        onSafe = { go(Destination.Notes) }, onVaults = { go(Destination.Encryption) },
+                        onSync = { go(Destination.Sync) }, onDiagnostics = { go(Destination.Diagnostics) },
+                        onTasks = { go(Destination.Operations) }, onSettings = { go(Destination.Settings) })
+                }
                 ModalNavigationDrawer(drawerState = placesDrawer, gesturesEnabled = !wide && !documentExit.busy,
                     drawerContent = {
-                        if (!wide) ModalDrawerSheet(Modifier.widthIn(max = 360.dp)) {
-                            Column(Modifier.fillMaxHeight().verticalScroll(rememberScrollState())) {
-                                TextButton(onClick = { scope.launch { placesDrawer.close() } }) { Text(tr("Закрыть меню", "Close menu")) }
+                        if (!wide) ModalDrawerSheet(Modifier.widthIn(max = 380.dp),
+                            drawerShape = RoundedCornerShape(topEnd = 32.dp, bottomEnd = 32.dp),
+                            drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+                            Column(Modifier.fillMaxHeight().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+                                DrawerHeader { scope.launch { placesDrawer.close() } }
                                 key(session.secretsEpoch) {
                                 SpacesPanel(session.files.spaces, session.places, core.connected, session.writing || documentExit.busy,
                                     onConnect = { scope.launch { placesDrawer.close() }; guardedPickFolder() },
                                     onOpen = { space -> openSpace(space); scope.launch { placesDrawer.close() } },
                                     onDetach = detachSpace, onConnectServer = connectServer)
                                 }
+                                drawerFooter(true)
                             }
                         }
                     }) {
                 Scaffold(
                     topBar = {
-                        TopAppBar(title = { Text("Paranoic · " + destination.label(), Modifier.sectionHeading(), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        TopAppBar(title = { Text(destination.label(), Modifier.sectionHeading(), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             navigationIcon = {
-                                if (destination !in mainDestinations) TextButton(onClick = { leaveDocument { destination = Destination.Encryption } }) {
-                                    Text(tr("Назад", "Back"))
-                                }
-                                else if (!wide) TextButton(onClick = { scope.launch { placesDrawer.open() } }) {
-                                    Text(tr("Места", "Places"))
-                                }
+                                if (destination !in mainDestinations) IconButton(onClick = { leaveDocument { destination = Destination.Encryption } },
+                                    modifier = Modifier.actionDescription(tr("Назад", "Back"))) { AppIcon(AppSymbol.Back) }
+                                else if (!wide) IconButton(onClick = { scope.launch { placesDrawer.open() } },
+                                    modifier = Modifier.actionDescription(tr("Меню и места", "Menu and places"))) { AppIcon(AppSymbol.Menu) }
                             },
                             actions = {
                                 if (incomingDocuments.documents.isNotEmpty()) TextButton(onClick = {
                                     leaveDocument { destination = Destination.Notes }
                                 }) { Text(tr("Входящие (${incomingDocuments.documents.size})", "Incoming (${incomingDocuments.documents.size})")) }
-                                TextButton(onClick = { leaveDocument { destination = Destination.Operations } }) {
-                                    Text(tr("Задачи", "Tasks") + " (${session.jobs.count { it.phase == JobPhase.Queued || it.phase == JobPhase.Running }})")
+                                val running = session.jobs.count { it.phase == JobPhase.Queued || it.phase == JobPhase.Running }
+                                IconButton(onClick = { leaveDocument { destination = Destination.Operations } },
+                                    modifier = Modifier.actionDescription(tr("Задачи: $running", "Tasks: $running"))) {
+                                    BadgedBox(badge = { if (running > 0) Badge { Text("$running") } }) { AppIcon(AppSymbol.Tasks) }
                                 }
                                 Box {
-                                    TextButton(onClick = { moreMenu = true }) { Text(tr("Ещё", "More")) }
+                                    IconButton(onClick = { moreMenu = true }, modifier = Modifier.actionDescription(tr("Ещё", "More"))) { AppIcon(AppSymbol.More) }
                                     DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
                                         DropdownMenuItem(text = { Text(tr("Синхронизация и бэкап", "Sync and backup")) },
                                             onClick = { moreMenu = false; leaveDocument { destination = Destination.Sync } })
@@ -321,6 +337,7 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                     SpacesPanel(session.files.spaces, session.places, core.connected, session.writing || documentExit.busy, guardedPickFolder, openSpace, detachSpace,
                                         onConnectServer = connectServer)
                                     }
+                                    drawerFooter(false)
                                 }
                             }
                             Box(Modifier.weight(1f).fillMaxHeight()) {

@@ -28,10 +28,11 @@ import io.github.stratayun.paranoic.bridge.CoreGateway
 import io.github.stratayun.paranoic.bridge.CoreResult
 import io.github.stratayun.paranoic.bridge.FolderProvider
 import io.github.stratayun.paranoic.bridge.PickedFolder
+import io.github.stratayun.paranoic.ui.components.AppSymbol
 import io.github.stratayun.paranoic.ui.components.ExpressiveShapes
 import io.github.stratayun.paranoic.ui.components.ShapedIcon
-import io.github.stratayun.paranoic.ui.components.ParanoicIcon
-import io.github.stratayun.paranoic.ui.components.ParanoicIcons
+import io.github.stratayun.paranoic.ui.state.AppearanceSettings
+import io.github.stratayun.paranoic.ui.theme.ParanoicTheme
 import java.io.File
 
 /** A mounted shared-storage volume: internal memory or a removable card. */
@@ -107,7 +108,7 @@ object AndroidStorageAccess {
  * until granted. "Later" continues with SAF folders only.
  */
 @Composable
-fun AndroidStorageAccessGate(core: CoreGateway, content: @Composable () -> Unit) {
+fun AndroidStorageAccessGate(core: CoreGateway, appearance: AppearanceSettings, content: @Composable () -> Unit) {
     val context = LocalContext.current
     var granted by remember { mutableStateOf(AndroidStorageAccess.granted(context)) }
     var skipped by remember { mutableStateOf(false) }
@@ -130,7 +131,7 @@ fun AndroidStorageAccessGate(core: CoreGateway, content: @Composable () -> Unit)
     when {
         ready || skipped -> content()
         granted -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        else -> StorageAccessRequest(
+        else -> ParanoicTheme(appearance) { StorageAccessRequest(
             onGrant = {
                 if (Build.VERSION.SDK_INT >= 30) {
                     try { context.startActivity(AndroidStorageAccess.settingsIntent(context)) }
@@ -140,7 +141,7 @@ fun AndroidStorageAccessGate(core: CoreGateway, content: @Composable () -> Unit)
                 } else legacy.launch(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE))
             },
             onLater = { skipped = true },
-        )
+        ) }
     }
 }
 
@@ -153,14 +154,14 @@ private fun StorageAccessRequest(onGrant: () -> Unit, onLater: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            ShapedIcon(ParanoicIcons.Folder, ExpressiveShapes.Cookie9, MaterialTheme.colorScheme.primaryContainer,
+            ShapedIcon(AppSymbol.Folder, ExpressiveShapes.Cookie9, MaterialTheme.colorScheme.primaryContainer,
                 MaterialTheme.colorScheme.onPrimaryContainer, size = 112.dp)
             Spacer(Modifier.height(28.dp))
             Text(if (ru) "Доступ к файлам" else "File access", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
             Spacer(Modifier.height(12.dp))
             Text(
-                if (ru) "Чтобы работать с внутренней памятью и SD-картой напрямую, как в обычном файловом менеджере, разрешите Paranoic доступ ко всем файлам. Приложение не имеет доступа в интернет без ваших облачных подключений."
-                else "To work with internal storage and SD cards directly, like a regular file manager, allow Paranoic to access all files. The app reaches the network only through cloud connections you add.",
+                if (ru) "Чтобы работать с внутренней памятью и SD-картой напрямую, как в обычном файловом менеджере, разрешите Paranoic доступ ко всем файлам. Без этого доступны только папки, выбранные через системный диалог."
+                else "To work with internal storage and SD cards directly, like a regular file manager, allow Paranoic to access all files. Without it, only folders picked in the system dialog are available.",
                 style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(32.dp))

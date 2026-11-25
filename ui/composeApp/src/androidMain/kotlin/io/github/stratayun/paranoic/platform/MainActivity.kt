@@ -72,7 +72,7 @@ class MainActivity : FragmentActivity() {
                     if (ready == null && failed != null) StartupFailure(failed.fault,
                         onRetry = { withoutCore = false; attempt++ }, onContinue = { withoutCore = true })
                     else if (ready == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                    else ParanoicApp(
+                    else AndroidStorageAccessGate(ready, preferences.read()) { ParanoicApp(
                         core = ready, store = preferences, vaultCatalogStore = vaultCatalogStore, placeCatalogStore = placeCatalogStore,
                         diagnosticEnvironment = app.diagnostics,
                         onLanguageChange = { language = it },
@@ -104,7 +104,7 @@ class MainActivity : FragmentActivity() {
                                 onDispose { lifecycle.removeObserver(observer); session.pause() }
                             }
                         },
-                    )
+                    ) }
                 }
             } }
         }

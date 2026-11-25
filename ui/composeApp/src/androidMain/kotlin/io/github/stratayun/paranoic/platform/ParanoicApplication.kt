@@ -50,6 +50,7 @@ class ParanoicApplication : Application() {
                 notesKey = AndroidNotesKey(),
                 notesQuickKey = if (Build.VERSION.SDK_INT >= 30) notesQuickKey else null,
                 documentWorkers = AndroidDocumentWorkers(this@ParanoicApplication),
+                spaceLabel = { reference -> AndroidStorageAccess.labelFor(this@ParanoicApplication, reference) },
             )
         }.also { started = it }
     }
