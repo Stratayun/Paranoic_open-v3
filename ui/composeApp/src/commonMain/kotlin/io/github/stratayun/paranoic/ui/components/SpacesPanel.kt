@@ -219,17 +219,22 @@ private fun QuickPlaces(enabled: Boolean, onCategory: (FileCategory) -> Unit, on
     data class Quick(val label: String, val path: String, val category: FileCategory?, val icon: DrawableResource)
     val items = listOf(
         Quick(tr("Загрузки", "Downloads"), "Download", null, Res.drawable.place_download),
-        Quick(tr("Изображения", "Pictures"), "Pictures", FileCategory.Images, Res.drawable.place_images),
-        Quick(tr("Камера", "Camera"), "DCIM", null, Res.drawable.place_camera),
-        Quick(tr("Фильмы", "Movies"), "Movies", FileCategory.Videos, Res.drawable.place_video),
-        Quick(tr("Музыка", "Music"), "Music", FileCategory.Music, Res.drawable.place_music),
-        Quick(tr("Документы", "Documents"), "Documents", FileCategory.Documents, Res.drawable.place_documents),
+        Quick(tr("Документы", "Documents"), "", FileCategory.Documents, Res.drawable.place_documents),
+        Quick(tr("Музыка", "Music"), "", FileCategory.Music, Res.drawable.place_music),
+        Quick(tr("Видео", "Videos"), "", FileCategory.Videos, Res.drawable.place_video),
+        Quick(tr("Картинки", "Pictures"), "", FileCategory.Images, Res.drawable.place_images),
+        Quick(tr("Корзина", "Trash"), TRASH, null, Res.drawable.trash_empty),
     )
+    var trashInfo by remember { mutableStateOf(false) }
+    if (trashInfo) AlertDialog(onDismissRequest = { trashInfo = false }, title = { Text(tr("Корзина", "Trash")) },
+        text = { Text(tr("Корзина появится вместе с доработкой удаления в ядре (после закрытия находок аудита). Сейчас «Удалить» удаляет сразу.",
+            "Trash arrives with the core delete rework (after the audit findings are closed). Delete currently removes immediately.")) },
+        confirmButton = { TextButton(onClick = { trashInfo = false }) { Text(tr("Понятно", "OK")) } })
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items.chunked(3).forEach { row ->
             Row(Modifier.fillMaxWidth()) {
                 row.forEach { q ->
-                    Column(Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).clickable(enabled = enabled, role = Role.Button) { q.category?.let(onCategory) ?: onOpen(q.path) }
+                    Column(Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).clickable(enabled = enabled, role = Role.Button) { if (q.path == TRASH) trashInfo = true else q.category?.let(onCategory) ?: onOpen(q.path) }
                         .padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         BrandIcon(q.icon, size = 76.dp)
                         Text(q.label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
@@ -239,3 +244,5 @@ private fun QuickPlaces(enabled: Boolean, onCategory: (FileCategory) -> Unit, on
         }
     }
 }
+
+private const val TRASH = "\u0000trash"

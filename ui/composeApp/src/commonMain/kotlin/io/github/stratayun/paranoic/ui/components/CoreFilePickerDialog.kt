@@ -1,6 +1,7 @@
 package io.github.stratayun.paranoic.ui.components
 
 import androidx.compose.foundation.clickable
+import io.github.stratayun.paranoic.resources.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -144,8 +145,9 @@ private fun PickerRow(title: String, symbol: AppSymbol, folder: Boolean, checked
     val scheme = MaterialTheme.colorScheme
     Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = if (checked == true) scheme.secondaryContainer else Color.Transparent) {
         Row(Modifier.clickable(onClick = onClick).heightIn(min = 56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            ShapedIcon(symbol, MaterialTheme.shapes.medium, if (folder) scheme.primaryContainer else scheme.surfaceContainerHighest,
-                if (folder) scheme.onPrimaryContainer else scheme.onSurfaceVariant, size = 40.dp)
+            if (symbol == AppSymbol.Phone || symbol == AppSymbol.Cloud) BrandIcon(if (symbol == AppSymbol.Cloud) Res.drawable.nav_cloud
+                else Res.drawable.ic_devices, size = 44.dp)
+            else FileTypeIcon(title, folder, size = 44.dp)
             Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, maxLines = 2)
             if (checked != null) Checkbox(checked = checked, onCheckedChange = { onCheck() })
             else if (folder) AppIcon(AppSymbol.Forward)

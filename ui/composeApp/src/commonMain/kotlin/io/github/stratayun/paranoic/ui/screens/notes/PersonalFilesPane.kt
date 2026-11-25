@@ -200,9 +200,7 @@ internal fun PersonalFilesPane(session: AppSession, enabled: Boolean, onBusy: (B
                         color = Color.Transparent) {
                         Row(Modifier.heightIn(min = 60.dp).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            ShapedIcon(if (entry.folder) AppSymbol.Folder else AppSymbol.Document, MaterialTheme.shapes.medium,
-                                if (entry.folder) scheme.primaryContainer else scheme.surfaceContainerHighest,
-                                if (entry.folder) scheme.onPrimaryContainer else scheme.onSurfaceVariant, size = 44.dp)
+                            FileTypeIcon(entry.name, entry.folder, size = 44.dp)
                             Column(Modifier.weight(1f)) {
                                 Text(displayName(entry.name), style = MaterialTheme.typography.titleMedium, maxLines = 2)
                                 if (!entry.folder) Text(tr("${entry.size} байт", "${entry.size} bytes"), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)

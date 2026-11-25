@@ -504,6 +504,28 @@ class AppSession(val core: CoreGateway, private val scope: CoroutineScope, priva
         }
         submit { id -> core.transfer(source.location, parent, name, mode, conflict, id) }
     }
+    /** Files found by a category walk or search: the same checks as [transfer]/[rename]/[delete], with the found list instead of the open folder. */
+    private fun foundSource(source: FileItem) = categories.state?.items?.any { it.location == source.location && it.name == source.name } == true
+    fun transferFound(source: FileItem, parent: Location, name: String, mode: TransferMode, conflict: NameConflict) {
+        if (writing || !core.connected || !foundSource(source)) return
+        if (!plausibleOperationName(name)) { writeFault = CoreFault.InvalidName; return }
+        if (!source.canTransferTo(parent, mode, files.spaces) || conflict == NameConflict.Replace ||
+            (mode == TransferMode.Move && (conflict != NameConflict.Fail || source.isTarget(parent, name)))) {
+            writeFault = CoreFault.Unsupported; return
+        }
+        submit { id -> core.transfer(source.location, parent, name, mode, conflict, id) }
+    }
+    fun renameFound(source: FileItem, name: String) {
+        if (writing || !core.connected || !foundSource(source)) return
+        if (!plausibleOperationName(name) || name == source.name) { writeFault = CoreFault.InvalidName; return }
+        if (!source.canRename(files.spaces)) { writeFault = CoreFault.Unsupported; return }
+        submit { id -> core.rename(source.location, name, id) }
+    }
+    fun deleteFound(source: FileItem) {
+        if (writing || !core.connected || !foundSource(source)) return
+        if (!source.canDelete(files.spaces) || source.kind != EntryKind.File) { writeFault = CoreFault.Unsupported; return }
+        submit { id -> core.delete(source.location, false, id) }
+    }
     fun rename(source: FileItem, name: String) {
         if (writing || !core.connected || !currentSource(source)) return
         if (!plausibleOperationName(name) || name == source.name) {

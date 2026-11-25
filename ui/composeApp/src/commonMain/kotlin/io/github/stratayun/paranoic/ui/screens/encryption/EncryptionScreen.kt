@@ -308,9 +308,7 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
                         color = Color.Transparent) {
                         Row(Modifier.heightIn(min = 64.dp).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            ShapedIcon(symbol, MaterialTheme.shapes.medium,
-                                if (e.folder) scheme.primaryContainer else scheme.surfaceContainerHighest,
-                                if (e.folder) scheme.onPrimaryContainer else scheme.onSurfaceVariant)
+                            FileTypeIcon(e.name, e.folder)
                             Column(Modifier.weight(1f)) {
                                 Text(displayName(e.name), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 if (!e.folder) Text((if (format == FolderFormat.Cryptomator) tr("≈ ", "≈ ") else "") + formatSize(e.size),

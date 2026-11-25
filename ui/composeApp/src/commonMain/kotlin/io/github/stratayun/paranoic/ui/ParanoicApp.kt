@@ -62,7 +62,7 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
     var loaded by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf<Boolean?>(null) }
-    var destination by remember { mutableStateOf(Destination.Encryption) }
+    var destination by remember { mutableStateOf(Destination.Files) }
     var pickerFailed by remember { mutableStateOf(false) }
     val vaultFolderPicker = remember(session) { VaultFolderPickerFlow() }
     var vaultFolderReturn by remember(session) { mutableStateOf<Pair<Long, VaultFolderReturn>?>(null) }
@@ -143,7 +143,7 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
     val connectServer: (String, String, String) -> Unit = { url, user, token ->
         leaveDocument { session.attachWebDav(url, user, token) }
     }
-    backHandler(placesDrawer.isOpen || openedFile != null || session.categories.state != null || destination != Destination.Encryption ||
+    backHandler(placesDrawer.isOpen || openedFile != null || session.categories.state != null || destination != Destination.Files ||
         (destination == Destination.Files && (session.archives.state.source != null || session.files.selected.isNotEmpty() || session.files.trail.size > 1))) {
         when {
             placesDrawer.isOpen -> scope.launch { placesDrawer.close() }
@@ -152,7 +152,7 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
             destination == Destination.Files && session.categories.state != null -> session.categories.close()
             destination == Destination.Files && session.files.selected.isNotEmpty() -> session.clearSelection()
             destination == Destination.Files && session.files.trail.size > 1 -> session.breadcrumb(session.files.trail.lastIndex - 1)
-            destination != Destination.Encryption -> leaveDocument { destination = Destination.Encryption }
+            destination != Destination.Files -> leaveDocument { destination = Destination.Files }
         }
     }
     val vaultContent: @Composable () -> Unit = {
@@ -180,7 +180,7 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                     onLanguage = { changeSettings(settings.copy(language = it)) }, onBusy = { documentExit.busy = it },
                     onFinish = {
                         if (!saving && !documentExit.busy && !session.writing) {
-                            session.pause(); session.resume(); destination = Destination.Encryption
+                            session.pause(); session.resume(); destination = Destination.Files
                             changeSettings(settings.copy(welcomeCompleted = true))
                         }
                     }, securitySettings = securitySettings, vaultContent = vaultContent, backHandler = backHandler)
@@ -206,7 +206,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                     Spacer(Modifier.height(8.dp))
                     DrawerFooter(enabled = !documentExit.busy,
                         runningTasks = session.jobs.count { it.phase == JobPhase.Queued || it.phase == JobPhase.Running },
-                        onSafe = { go(Destination.Notes) }, onVaults = { go(Destination.Encryption) },
+                        onSafe = { go(Destination.Notes) }, onVaults = { go(Destination.Encryption) }, onFiles = { go(Destination.Files) },
+                        current = destination,
                         onSync = { go(Destination.Sync) }, onDiagnostics = { go(Destination.Diagnostics) },
                         onTasks = { go(Destination.Operations) }, onSettings = { go(Destination.Settings) })
                 }
@@ -233,7 +234,7 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                     topBar = {
                         TopAppBar(title = { Text(destination.label(), Modifier.sectionHeading(), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             navigationIcon = {
-                                if (destination !in mainDestinations) IconButton(onClick = { leaveDocument { destination = Destination.Encryption } },
+                                if (destination !in mainDestinations) IconButton(onClick = { leaveDocument { destination = Destination.Files } },
                                     modifier = Modifier.actionDescription(tr("Назад", "Back"))) { AppIcon(AppSymbol.Back) }
                                 else if (!wide) IconButton(onClick = { scope.launch { placesDrawer.open() } },
                                     modifier = Modifier.actionDescription(tr("Меню и места", "Menu and places"))) { AppIcon(AppSymbol.Menu) }
@@ -253,14 +254,6 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                     BadgedBox(badge = { Badge { Text("$running") } }) { AppIcon(AppSymbol.Tasks) }
                                 }
                             })
-                    },
-                    bottomBar = {
-                        if (!wide) NavigationBar {
-                            mainDestinations.forEach { item ->
-                                NavigationBarItem(selected = destination == item, onClick = { if (destination != item) leaveDocument { destination = item } },
-                                    icon = { AppIcon(item.symbol()) }, label = { Text(item.label()) })
-                            }
-                        }
                     },
                 ) { insets ->
                     Column(Modifier.fillMaxSize().padding(insets)) {
@@ -336,12 +329,6 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                         Row(Modifier.weight(1f)) {
                             if (wide) {
                                 Column(Modifier.width(240.dp).fillMaxHeight().verticalScroll(rememberScrollState())) {
-                                    mainDestinations.forEach { item ->
-                                        TextButton(onClick = { if (destination != item) leaveDocument { destination = item } }, modifier = Modifier.fillMaxWidth()) {
-                                            AppIcon(item.symbol())
-                                            Text(item.label(), Modifier.padding(start = 8.dp))
-                                        }
-                                    }
                                     key(session.secretsEpoch) {
                                     SpacesPanel(session.files.spaces, session.places, core.connected, session.writing || documentExit.busy, guardedPickFolder, openSpace, detachSpace,
                                         onConnectServer = connectServer,
@@ -365,7 +352,7 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                     Destination.Settings -> AppearanceScreen(settings, saving, saved, changeSettings,
                                         securitySettings = { securitySettings(); VaultDefaultsSettings(session.vaultCatalog) }, backHandler = backHandler,
                                         diagnosticsSettings = { TextButton(onClick = { destination = Destination.Diagnostics }) { Text(tr("Открыть журнал и отчёт", "Open journal and report")) } },
-                                        onRestartWelcome = { destination = Destination.Encryption; changeSettings(settings.copy(welcomeCompleted = false)) })
+                                        onRestartWelcome = { destination = Destination.Files; changeSettings(settings.copy(welcomeCompleted = false)) })
                                     Destination.Diagnostics -> DiagnosticsScreen(session, diagnosticEnvironment) { destination = Destination.Files }
                                     Destination.Encryption -> vaultContent()
                                     Destination.Notes -> key(session.secretsEpoch) {

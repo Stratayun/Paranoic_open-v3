@@ -14,6 +14,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
@@ -156,36 +160,56 @@ fun AccentCard(title: String, subtitle: String, symbol: AppSymbol, onClick: () -
     }
 }
 
-/** Wavy determinate progress: a flowing purple→blue wave up to [progress] with a glowing tip, flat track after. */
+/**
+ * Storage bar (owner's reference): a thick glass capsule with a dark rim; the filled part is a
+ * purple→blue gradient with soft waves flowing inside it and a glowing orb at the fill edge.
+ */
 @Composable
 fun WavyProgress(progress: Float, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.primary,
-    track: Color = MaterialTheme.colorScheme.surfaceContainerHighest, thickness: Dp = 8.dp, wavelength: Dp = 40.dp, animated: Boolean = true) {
+    track: Color = MaterialTheme.colorScheme.surfaceContainerHighest, thickness: Dp = 22.dp, wavelength: Dp = 90.dp, animated: Boolean = true) {
     val value = progress.coerceIn(0f, 1f)
     val shift = if (animated) {
         val transition = rememberInfiniteTransition(label = "wave")
-        transition.animateFloat(0f, 1f, infiniteRepeatable(tween(2600, easing = LinearEasing)), label = "phase").value
+        transition.animateFloat(0f, 1f, infiniteRepeatable(tween(3200, easing = LinearEasing)), label = "phase").value
     } else 0f
-    val start = Color(0xFF8E7CF8)
-    val end = Color(0xFF4FC3F7)
-    Canvas(modifier.fillMaxWidth().height(thickness * 3.2f)) {
-        val stroke = thickness.toPx()
-        val cy = size.height / 2
-        val amplitude = (size.height - stroke) / 2 * 0.55f
-        val endX = size.width * value
-        drawLine(track, Offset(stroke / 2, cy), Offset(size.width - stroke / 2, cy), stroke, StrokeCap.Round)
-        if (endX > stroke) {
-            val path = Path()
-            val k = 2 * PI.toFloat() / wavelength.toPx()
-            val phase = shift * 2 * PI.toFloat()
-            var x = stroke / 2
-            // The wave flattens toward both ends so it meets the track smoothly.
-            fun y(at: Float) = cy + amplitude * sin(k * at - phase) * sin(PI.toFloat() * (at / endX).coerceIn(0f, 1f))
-            path.moveTo(x, y(x))
-            while (x <= endX) { path.lineTo(x, y(x)); x += 2f }
-            drawPath(path, Brush.horizontalGradient(listOf(start, end), 0f, endX), style = Stroke(stroke, cap = StrokeCap.Round))
-            val tip = Offset(endX, y(endX))
-            drawCircle(Brush.radialGradient(listOf(end.copy(alpha = 0.55f), Color.Transparent), tip, stroke * 2.4f), stroke * 2.4f, tip)
-            drawCircle(Color.White, stroke * 0.55f, tip)
+    val pulse = if (animated) {
+        val transition = rememberInfiniteTransition(label = "orb")
+        transition.animateFloat(0.75f, 1f, infiniteRepeatable(tween(1400), RepeatMode.Reverse), label = "glow").value
+    } else 1f
+    val purple = Color(0xFF8E6CF5)
+    val blue = Color(0xFF2F7BFF)
+    val cyan = Color(0xFF3FD5FF)
+    Canvas(modifier.fillMaxWidth().height(thickness + 12.dp)) {
+        val h = thickness.toPx()
+        val top = (size.height - h) / 2
+        val r = CornerRadius(h / 2)
+        val rim = 3.dp.toPx()
+        // Capsule with a dark rim and a dim glass track.
+        drawRoundRect(Color(0xFF0B1230), Offset(0f, top - rim), Size(size.width, h + 2 * rim), CornerRadius(h / 2 + rim))
+        drawRoundRect(Color(0xFF1A2342), Offset(rim, top), Size(size.width - 2 * rim, h), r)
+        val fillEnd = rim + (size.width - 2 * rim) * value
+        if (fillEnd > rim + h / 2) {
+            val fill = Path().apply { addRoundRect(RoundRect(rim, top, fillEnd, top + h, r)) }
+            clipPath(fill) {
+                drawRect(Brush.horizontalGradient(listOf(purple, blue, cyan), rim, fillEnd), Offset(rim, top), Size(fillEnd - rim, h))
+                // Two translucent waves drift inside the fill.
+                val k = 2 * PI.toFloat() / wavelength.toPx()
+                val phase = shift * 2 * PI.toFloat()
+                for ((alpha, offset, amp) in listOf(Triple(0.28f, 0f, 0.22f), Triple(0.18f, 1.7f, 0.3f))) {
+                    val wave = Path()
+                    var x = rim
+                    wave.moveTo(x, top + h)
+                    while (x <= fillEnd) { wave.lineTo(x, top + h * 0.55f + h * amp * sin(k * x - phase + offset)); x += 3f }
+                    wave.lineTo(fillEnd, top + h); wave.close()
+                    drawPath(wave, Color.White.copy(alpha = alpha))
+                }
+                // Gloss on the upper half.
+                drawRect(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.22f), Color.Transparent), top, top + h * 0.5f),
+                    Offset(rim, top), Size(fillEnd - rim, h * 0.5f))
+            }
+            val orb = Offset(fillEnd - h * 0.45f, top + h / 2)
+            drawCircle(Brush.radialGradient(listOf(cyan.copy(alpha = 0.65f * pulse), Color.Transparent), orb, h * 1.1f), h * 1.1f, orb)
+            drawCircle(Color.White, h * 0.32f, orb)
         }
     }
 }

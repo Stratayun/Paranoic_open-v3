@@ -35,10 +35,19 @@ fun FileCategory.label(): String = when (this) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileItem) -> Unit,
-    pngImage: @Composable (ByteArray, Modifier) -> Unit) {
+    pngImage: @Composable (ByteArray, Modifier) -> Unit, clipboard: FileClipboard? = null) {
     val scheme = MaterialTheme.colorScheme
     var sheet by remember(state.category) { mutableStateOf<FileItem?>(null) }
     var info by remember(state.category) { mutableStateOf<FileItem?>(null) }
+    var deleting by remember(state.category) { mutableStateOf<FileItem?>(null) }
+    var renaming by remember(state.category) { mutableStateOf<FileItem?>(null) }
+    var transferring by remember(state.category) { mutableStateOf<Pair<FileItem, TransferMode>?>(null) }
+    var rescan by remember(state.category) { mutableStateOf(false) }
+    // After a write finishes, walk again so the list shows the result (moved, renamed or deleted files).
+    LaunchedEffect(session.writing, rescan) {
+        if (rescan && !session.writing) { rescan = false; session.categories.open(state.space, state.category, state.query) }
+    }
+    val canWrite = !session.writing && session.core.connected && session.fileBatch == null
     fun showInFolder(item: FileItem) {
         val parent = item.location.path.substringBeforeLast('/', "")
         session.categories.close()
@@ -95,7 +104,7 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
                 Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).combinedClickable(onLongClick = { sheet = item }, onClick = { onOpenFile(item) })
                     .heightIn(min = 64.dp).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    ShapedIcon(fileSymbol(item), MaterialTheme.shapes.medium, scheme.surfaceContainerHighest, scheme.onSurfaceVariant)
+                    FileTypeIcon(item.name, false)
                     Column(Modifier.weight(1f)) {
                         Text(displayName(item.name), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text("/" + displayName(item.location.path.substringBeforeLast('/', "")) + " · " +
@@ -109,20 +118,50 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
     }
     sheet?.let { item ->
         FileActionSheet(item.name, "/" + displayName(item.location.path.substringBeforeLast('/', "")), fileSymbol(item), listOf(
-            SheetGroup(tr("Действия", "Actions"), listOf(
+            SheetGroup(tr("Открыть", "Open"), listOf(
                 SheetAction(tr("Открыть", "Open"), AppSymbol.Forward, run = { sheet = null; onOpenFile(item) }),
                 SheetAction(tr("Показать в папке", "Show in folder"), AppSymbol.Folder, run = { sheet = null; showInFolder(item) }),
                 SheetAction(tr("Свойства", "Properties"), AppSymbol.Info, run = { sheet = null; info = item }),
             )),
+            SheetGroup(tr("Упорядочить", "Organize"), listOfNotNull(
+                if (clipboard != null) SheetAction(tr("Копировать", "Copy"), AppSymbol.Copy, item.canCopy(session.files.spaces),
+                    run = { sheet = null; clipboard.put(listOf(item), cut = false) }) else null,
+                if (clipboard != null) SheetAction(tr("Вырезать", "Cut"), AppSymbol.Cut, item.canMove(session.files.spaces),
+                    run = { sheet = null; clipboard.put(listOf(item), cut = true) }) else null,
+                SheetAction(tr("Копировать в…", "Copy to…"), AppSymbol.Copy, canWrite && item.canCopy(session.files.spaces),
+                    run = { sheet = null; transferring = item to TransferMode.Copy }),
+                SheetAction(tr("Переместить в…", "Move to…"), AppSymbol.MoveTo, canWrite && item.canMove(session.files.spaces),
+                    run = { sheet = null; transferring = item to TransferMode.Move }),
+                SheetAction(tr("Переименовать", "Rename"), AppSymbol.Edit, canWrite && item.canRename(session.files.spaces),
+                    run = { sheet = null; renaming = item }),
+                SheetAction(tr("Удалить", "Delete"), AppSymbol.Trash, canWrite && item.canDelete(session.files.spaces), danger = true,
+                    run = { sheet = null; deleting = item }),
+            )),
         ), onDismiss = { sheet = null })
+    }
+    transferring?.let { (source, mode) ->
+        TransferDestinationDialog(session.core, source, session.files.spaces, mode, onDismiss = { transferring = null },
+            onTransfer = { parent, name, conflict, _ ->
+                transferring = null
+                session.transferFound(source, parent, name, mode, if (conflict == NameConflict.Replace) NameConflict.Fail else conflict)
+                rescan = true
+            })
+    }
+    renaming?.let { source ->
+        RenameEntryDialog(source, onDismiss = { renaming = null }) { name -> renaming = null; session.renameFound(source, name); rescan = true }
+    }
+    deleting?.let { source ->
+        AlertDialog(onDismissRequest = { deleting = null }, title = { Text(tr("Удалить «${displayName(source.name)}»?", "Delete \"${displayName(source.name)}\"?")) },
+            text = { Text(tr("Файл будет удалён без корзины. Отменить нельзя.", "The file is deleted without a trash. This cannot be undone.")) },
+            confirmButton = { TextButton(enabled = canWrite, onClick = { deleting = null; session.deleteFound(source); rescan = true }) {
+                Text(tr("Удалить", "Delete"), color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text(tr("Отмена", "Cancel")) } })
     }
     info?.let { item ->
         AlertDialog(onDismissRequest = { info = null }, title = { Text(displayName(item.name)) }, text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (item.sizeKnown) Text(tr("Размер: ", "Size: ") + humanSize(item.bytes))
             fileModifiedLabel(item.modifiedMs)?.let { Text(tr("Изменён: ", "Modified: ") + it) }
             Text(tr("Путь: /", "Path: /") + displayName(item.location.path))
-            Text(tr("Переместить, переименовать или удалить можно через «Показать в папке».", "Use Show in folder to move, rename or delete."),
-                style = MaterialTheme.typography.bodySmall)
         } }, confirmButton = { TextButton(onClick = { info = null }) { Text(tr("Закрыть", "Close")) } })
     }
 }

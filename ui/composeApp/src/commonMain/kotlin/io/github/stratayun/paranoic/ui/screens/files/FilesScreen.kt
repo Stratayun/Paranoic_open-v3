@@ -392,9 +392,7 @@ private fun FileRow(core: CoreGateway, pngImage: @Composable (ByteArray, Modifie
             if (drag != null) FileDragHandle(item, drag)
             val preview = thumbnail
             if (preview != null) pngImage(preview, Modifier.size(48.dp).clip(MaterialTheme.shapes.medium).clearAndSetSemantics { })
-            else ShapedIcon(symbol, MaterialTheme.shapes.medium,
-                if (item.kind == EntryKind.Directory) scheme.primaryContainer else scheme.surfaceContainerHighest,
-                if (item.kind == EntryKind.Directory) scheme.onPrimaryContainer else scheme.onSurfaceVariant)
+            else FileTypeIcon(item.name, item.kind == EntryKind.Directory)
             Column(Modifier.weight(1f)) {
                 Text(displayName(item.name), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val modified = fileModifiedLabel(item.modifiedMs)

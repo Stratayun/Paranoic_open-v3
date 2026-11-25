@@ -67,7 +67,7 @@ fun FileWorkspaceScreen(session: AppSession, defaultView: FileView, onOpenFile: 
     }, cancel = { dragged = null }, copyToOtherPane = { item -> prepareCopy(sourceTab, item) })
     val activeIndex = workspace.tabs.indexOfFirst { it.id == workspace.active }
     session.categories.state?.let { category ->
-        CategoryScreen(session, category, onOpenFile, pngImage)
+        CategoryScreen(session, category, onOpenFile, pngImage, clipboard)
         return
     }
     Column(Modifier.fillMaxSize()) {
