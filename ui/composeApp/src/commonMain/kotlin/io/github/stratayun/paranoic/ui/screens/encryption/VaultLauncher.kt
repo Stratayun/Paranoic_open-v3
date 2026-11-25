@@ -1,6 +1,14 @@
 package io.github.stratayun.paranoic.ui.screens.encryption
 
-import io.github.stratayun.paranoic.ui.components.FaultNotice
+import io.github.stratayun.paranoic.ui.components.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,7 +24,6 @@ import kotlinx.coroutines.ensureActive
 
 /** A vault is chosen independently of Files selection. No passwords are stored here.
  * Catalog browsing and probing never create data or open a secret session. */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun VaultLauncher(core: CoreGateway, spaces: List<Space>, catalog: VaultCatalog, enabled: Boolean,
     format: FolderFormat, onFormat: (FolderFormat) -> Unit,
@@ -159,186 +166,255 @@ internal fun VaultLauncher(core: CoreGateway, spaces: List<Space>, catalog: Vaul
                 onClick = { replacement = null; onRelocate(original, found) }) { Text(tr("Перейти к паролю", "Continue to password")) } },
             dismissButton = { TextButton(onClick = { replacement = null }) { Text(tr("Отмена", "Cancel")) } })
     } }
-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item {
-            Text(tr("Хранилища", "Vaults"), Modifier.sectionHeading(), style = MaterialTheme.typography.headlineMedium)
-            Text(tr("Выберите хранилище или создайте новое в подключённой папке.",
-                "Choose a vault or create one in a connected folder."), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        item {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(enabled = interactive, onClick = { creating = false; relocating = null; replacement = null; probe = null; fault = null }) { Text(tr("Открыть существующее", "Open existing")) }
-                OutlinedButton(enabled = interactive && catalog.loaded && !catalog.failed, onClick = { creating = true; createStep = 0; relocating = null; replacement = null; probe = null; fault = null }) { Text(tr("Создать новое", "Create new")) }
-            }
-        }
+    var addSheet by remember { mutableStateOf(false) }
+    val scheme = MaterialTheme.colorScheme
+    fun kindLabel(kind: VaultKind) = if (kind == VaultKind.Cryptomator) "Cryptomator" else "Paranoic"
+    fun startOpen() { creating = false; relocating = null; replacement = null; probe = null; fault = null }
+    fun startCreate() { creating = true; createStep = 0; relocating = null; replacement = null; probe = null; fault = null }
+    val canCreate = interactive && catalog.loaded && !catalog.failed
+    if (addSheet) VaultAddSheet(onDismiss = { addSheet = false },
+        onOpen = { addSheet = false; startOpen() }, onCreate = { addSheet = false; startCreate() }, canOpen = interactive, canCreate = canCreate)
+    Box(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(top = 8.dp, bottom = 112.dp)) {
         item {
             if (catalog.busy || checkingSaved) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text(if (checkingSaved) tr("Проверяем сохранённое хранилище…", "Checking saved vault…") else tr("Сохраняем список хранилищ…", "Updating vault list…"))
+                Text(if (checkingSaved) tr("Проверяем сохранённое хранилище…", "Checking saved vault…") else tr("Сохраняем список хранилищ…", "Updating vault list…"),
+                    style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
             }
             if (catalog.failed) {
                 Text(tr("Не удалось прочитать или сохранить список. Запись приостановлена, чтобы не затереть сохранённые карточки.",
-                    "Could not read or save the list. Changes are paused to preserve saved cards."), color = MaterialTheme.colorScheme.error)
+                    "Could not read or save the list. Changes are paused to preserve saved cards."), color = scheme.error)
                 Text(tr("Существующее хранилище можно найти и открыть только для чтения. Для создания и изменения настроек сначала перечитайте каталог.", "You can find and open an existing vault read-only. Reload the catalog before creating vaults or changing settings."))
                 TextButton(enabled = !catalog.busy, onClick = catalog::load) { Text(tr("Перечитать список", "Reload list")) }
             }
             if (creating == null) fault?.let { FaultNotice(it) }
-            if (missingSaved != null) Text(tr("Хранилище не найдено по сохранённому адресу. Оно могло быть перемещено или место недоступно. Нажмите «Найти».",
-                "The saved vault was not found. It may have moved or its location is unavailable. Choose Find."))
+            if (missingSaved != null) Text(tr("Хранилище не найдено по сохранённому адресу. Оно могло быть перемещено или место недоступно. Выберите «Найти» в меню карточки.",
+                "The saved vault was not found. It may have moved or its location is unavailable. Choose Find in the card menu."))
             catalog.removed?.let { removed ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(tr("Карточка убрана: ", "Card removed: ") + displayName(removed.title), Modifier.weight(1f))
                     TextButton(enabled = !catalog.busy && !catalog.failed, onClick = catalog::undo) { Text(tr("Отменить", "Undo")) }
                 }
             }
-            if (catalog.loaded && catalog.snapshot.entries.isEmpty() && creating == null) Text(tr(
-                "Пока нет сохранённых хранилищ. Откройте существующее или создайте новое — карточка появится после успешного открытия.",
-                "No saved vaults yet. Open or create a vault; its card will appear after a successful open."))
         }
-        if (creating == null) items(catalog.snapshot.entries, key = { "saved:" + it.location.storageId + ":" + it.location.path }) { saved ->
+        if (creating == null && catalog.loaded && catalog.snapshot.entries.isEmpty()) item {
+            Column(Modifier.fillMaxWidth().padding(top = 72.dp, start = 24.dp, end = 24.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Surface(Modifier.size(104.dp), shape = CircleShape, color = Color.Transparent, border = BorderStroke(1.dp, scheme.outlineVariant)) {
+                    Box(contentAlignment = Alignment.Center) { AppIcon(AppSymbol.Vault, Modifier.size(40.dp)) }
+                }
+                Text(tr("Хранилищ пока нет", "No vaults yet"), style = MaterialTheme.typography.titleLarge)
+                Text(tr("Подключите хранилище Cryptomator или Paranoic либо создайте новое. Карточка появится после первого успешного открытия.",
+                    "Add a Cryptomator or Paranoic vault or create a new one. Its card appears after the first successful unlock."),
+                    style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                FilledTonalButton(onClick = { addSheet = true }, enabled = interactive) { AppIcon(AppSymbol.Add); Spacer(Modifier.width(8.dp)); Text(tr("Добавить хранилище", "Add vault")) }
+            }
+        }
+        if (creating == null && catalog.snapshot.entries.isNotEmpty()) item { SectionLabel(tr("Мои хранилища", "My vaults")) }
+        if (creating == null) itemsIndexed(catalog.snapshot.entries, key = { _, it -> "saved:" + it.location.storageId + ":" + it.location.path }) { index, saved ->
             val connected = spaces.any { it.id == saved.location.storageId }
-            OutlinedCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(displayName(saved.title), style = MaterialTheme.typography.titleLarge)
-                    Text((if (saved.kind == VaultKind.Cryptomator) "Cryptomator" else "Paranoic 1.8") + " · " +
-                        if (connected) tr("Заблокировано", "Locked") else tr("Место не подключено", "Location disconnected"),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(displayName(spaces.firstOrNull { it.id == saved.location.storageId }?.name.orEmpty()) + " / " + displayName(saved.location.path),
-                        style = MaterialTheme.typography.bodySmall)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(enabled = interactive && connected, onClick = { savedToOpen = saved }) { Text(tr("Открыть", "Open")) }
-                        TextButton(enabled = interactive, onClick = {
-                            creating = false; relocating = saved; replacement = null; probe = null; fault = null; missingSaved = null
+            var menu by remember(saved.location) { mutableStateOf(false) }
+            GroupedRow(displayName(saved.title), groupPosition(index, catalog.snapshot.entries.size),
+                subtitle = kindLabel(saved.kind) + " · " + (if (connected) tr("заблокировано", "locked") else tr("место не подключено", "location disconnected")) +
+                    "\n" + displayName(spaces.firstOrNull { it.id == saved.location.storageId }?.name.orEmpty()) + " / " + displayName(saved.location.path),
+                enabled = interactive && connected,
+                leading = { ShapedIcon(AppSymbol.Vault, ExpressiveShapes.gallery[index % ExpressiveShapes.gallery.size],
+                    if (saved.kind == VaultKind.Cryptomator) scheme.tertiaryContainer else scheme.primaryContainer,
+                    if (saved.kind == VaultKind.Cryptomator) scheme.onTertiaryContainer else scheme.onPrimaryContainer) },
+                trailing = { Box {
+                    IconButton(onClick = { menu = true }, modifier = Modifier.actionDescription(tr("Действия: ", "Actions: ") + displayName(saved.title))) { AppIcon(AppSymbol.More) }
+                    DropdownMenu(menu, { menu = false }) {
+                        DropdownMenuItem(text = { Text(tr("Найти по новому адресу", "Find at a new location")) }, leadingIcon = { AppIcon(AppSymbol.Search) }, enabled = interactive, onClick = {
+                            menu = false; startOpen(); relocating = saved; missingSaved = null
                             val space = spaces.firstOrNull { it.id == saved.location.storageId }
                             if (space != null) trail = listOf(FolderNode(space.root, space.name)) else connectFolder(saved)
-                        }) { Text(tr("Найти", "Find")) }
-                        TextButton(enabled = interactive && !catalog.busy && !catalog.failed, onClick = { renaming = saved; renameText = saved.title }) { Text(tr("Название", "Name")) }
-                        TextButton(enabled = interactive && catalog.loaded && !catalog.failed, onClick = { configuring = saved }) { Text(tr("Настройки", "Settings")) }
-                        TextButton(enabled = interactive && !catalog.busy && !catalog.failed, onClick = { catalog.remove(saved.location) }) { Text(tr("Убрать", "Remove")) }
+                        })
+                        DropdownMenuItem(text = { Text(tr("Переименовать карточку", "Rename card")) }, leadingIcon = { AppIcon(AppSymbol.Edit) },
+                            enabled = interactive && !catalog.failed, onClick = { menu = false; renaming = saved; renameText = saved.title })
+                        DropdownMenuItem(text = { Text(tr("Настройки", "Settings")) }, leadingIcon = { AppIcon(AppSymbol.Settings) },
+                            enabled = interactive && catalog.loaded && !catalog.failed, onClick = { menu = false; configuring = saved })
+                        DropdownMenuItem(text = { Text(tr("Убрать из списка", "Remove from list"), color = scheme.error) }, leadingIcon = { AppIcon(AppSymbol.Close) },
+                            enabled = interactive && !catalog.failed, onClick = { menu = false; catalog.remove(saved.location) })
                     }
-                }
-            }
+                } },
+                onClick = { savedToOpen = saved })
         }
         if (creating != null) {
             item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(enabled = interactive, onClick = { creating = null; relocating = null; replacement = null; missingSaved = null },
+                        modifier = Modifier.actionDescription(tr("К списку хранилищ", "Back to vault list"))) { AppIcon(AppSymbol.Close) }
+                    Text(when {
+                        relocating != null -> tr("Новый адрес хранилища", "New vault location")
+                        creating == true -> tr("Создать хранилище", "Create vault")
+                        else -> tr("Подключить хранилище", "Add existing vault")
+                    }, Modifier.weight(1f).sectionHeading(), style = MaterialTheme.typography.titleLarge)
+                }
+                if (creating == true) {
+                    val step = createStep.coerceIn(0, 2) + 1
+                    LinearProgressIndicator(progress = { step / 6f }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+                    Text(when (createStep) {
+                        0 -> tr("Шаг 1 из 6 · Формат", "Step 1 of 6 · Format")
+                        1 -> tr("Шаг 2 из 6 · Место", "Step 2 of 6 · Location")
+                        else -> tr("Шаг 3 из 6 · Папка", "Step 3 of 6 · Folder")
+                    }, Modifier.padding(top = 6.dp), style = MaterialTheme.typography.labelLarge, color = scheme.onSurfaceVariant)
+                } else Text(tr("Выберите папку и найдите в ней хранилище. Пароль понадобится только на следующем шаге.",
+                    "Pick a folder and find a vault in it. The password is asked on the next step."),
+                    style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
                 attachmentFault?.let { error ->
                     FaultNotice(error)
                     if (error == CoreFault.OutcomeUnknown) Text(tr(
                         "Подключение не подтверждено. Проверьте список мест перед новой попыткой. Создание хранилища не запускалось.",
                         "Attachment was not confirmed. Check connected locations before trying again. Vault creation was not started."))
                 }
-            }
-            item {
-                TextButton(enabled = interactive, onClick = { creating = null; relocating = null; replacement = null; missingSaved = null }) {
-                    Text(tr("К списку хранилищ", "Back to vault list"))
-                }
-            }
-            item {
-                Text(if (creating == true) when (createStep) {
-                    0 -> tr("Шаг 1 из 6 · Формат", "Step 1 of 6 · Format")
-                    1 -> tr("Шаг 2 из 6 · Место", "Step 2 of 6 · Location")
-                    else -> tr("Шаг 3 из 6 · Папка", "Step 3 of 6 · Folder")
-                }
-                    else tr("Выберите папку и найдите хранилища до ввода пароля.", "Choose a folder and find vaults before entering a password."), style = MaterialTheme.typography.bodyMedium)
-                if (creating == true && createStep == 0) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FolderFormat.entries.forEach { candidate ->
-                            FilterChip(selected = candidate == format, enabled = interactive,
-                                onClick = { onFormat(candidate) }, label = { Text(if (candidate == FolderFormat.Paranoic) "Paranoic 1.8" else "Cryptomator") })
-                        }
-                    }
-                    TextButton(enabled = interactive, onClick = { details = !details }) {
-                        Text(if (details) tr("Скрыть пояснение", "Hide explanation")
-                            else tr("Подробнее о формате", "About the format"))
-                    }
-                    if (details) {
-                        Text(if (format == FolderFormat.Paranoic)
-                            tr("Экспериментальный формат Paranoic: внешний аудит ещё не пройден. Создаётся новая подпапка; существующее содержимое не заменяется.",
-                                "Experimental Paranoic format: external audit is pending. A new subfolder is created; existing content is not replaced.")
-                        else tr("Cryptomator: создание формата 8, открытие 7/8. Удаление целых последних блоков не обнаруживается форматом.",
-                            "Cryptomator: create format 8, open 7/8. Removal of whole trailing chunks cannot be detected by the format."))
-                    }
+                relocating?.let { original ->
+                    Text(tr("Ищем для карточки: ", "Finding a location for: ") + displayName(original.title), Modifier.padding(top = 4.dp))
                 }
             }
             if (creating == true && createStep == 0) {
-                item { Button(enabled = interactive, onClick = { createStep = 1; trail = emptyList() }) { Text(tr("Далее: место", "Next: location")) } }
-            } else {
-            item {
-                if (relocating != null) {
-                    Text(tr("Ищем для карточки: ", "Finding a location for: ") + displayName(relocating!!.title))
-                    TextButton(enabled = interactive, onClick = { relocating = null; replacement = null }) { Text(tr("Отменить поиск адреса", "Cancel relocation")) }
-                }
-                if (creating == true) TextButton(enabled = interactive, onClick = {
-                    if (createStep == 2) { createStep = 1; trail = emptyList() } else createStep = 0
-                }) { Text(tr("Назад", "Back")) }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(enabled = interactive, onClick = { trail = emptyList(); if (creating == true) createStep = 1 }) { Text(tr("Все места", "All locations")) }
-                    trail.forEachIndexed { index, node ->
-                        TextButton(enabled = interactive, onClick = { trail = trail.take(index + 1) }) { Text(displayName(node.name)) }
-                    }
-                }
-            }
-            if (current == null) {
-                items(spaces, key = { it.id }) { space ->
-                    OutlinedCard(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(displayName(space.name), style = MaterialTheme.typography.titleMedium)
-                            Text(if (space.cloud) tr("Подключённое облако или сервер", "Connected cloud or server") else tr("Подключённая папка", "Connected folder"), style = MaterialTheme.typography.bodySmall)
-                            TextButton(enabled = interactive, onClick = { trail = listOf(FolderNode(space.root, space.name)); if (creating == true) createStep = 2 }) { Text(tr("Выбрать место", "Choose location")) }
+                item { SectionLabel(tr("Формат", "Format")) }
+                itemsIndexed(FolderFormat.entries) { index, candidate ->
+                    val selected = candidate == format
+                    Surface(Modifier.fillMaxWidth(), shape = groupShape(groupPosition(index, FolderFormat.entries.size)),
+                        color = if (selected) scheme.secondaryContainer else scheme.surfaceContainerHigh,
+                        border = if (selected) BorderStroke(2.dp, scheme.primary) else null) {
+                        Row(Modifier.selectable(selected, enabled = interactive, role = Role.RadioButton, onClick = { onFormat(candidate) })
+                            .padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            ShapedIcon(if (candidate == FolderFormat.Paranoic) AppSymbol.Security else AppSymbol.Vault,
+                                if (candidate == FolderFormat.Paranoic) ExpressiveShapes.Cookie9 else ExpressiveShapes.Sunny,
+                                scheme.primaryContainer, scheme.onPrimaryContainer)
+                            Column(Modifier.weight(1f)) {
+                                Text(if (candidate == FolderFormat.Paranoic) "Paranoic 1.8" else "Cryptomator", style = MaterialTheme.typography.titleMedium)
+                                Text(if (candidate == FolderFormat.Paranoic)
+                                    tr("Собственный формат. Экспериментальный: внешний аудит ещё не пройден.", "Own format. Experimental: external audit is pending.")
+                                    else tr("Совместим с Cryptomator на ПК и телефоне. Создаётся формат 8, открываются 7 и 8.",
+                                        "Compatible with Cryptomator on desktop and mobile. Creates format 8, opens 7 and 8."),
+                                    style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+                            }
+                            RadioButton(selected = selected, onClick = null)
                         }
                     }
                 }
                 item {
-                    if (spaces.isEmpty()) Text(tr("Выберите папку через системное окно. Доступ ко всем файлам не требуется.", "Choose a folder using the system picker. All-files access is not required."))
-                    TextButton(enabled = interactive, onClick = { connectFolder() }) { Text(tr("Подключить папку", "Connect folder")) }
+                    TextButton(enabled = interactive, onClick = { details = !details }) {
+                        Text(if (details) tr("Скрыть подробности", "Hide details") else tr("Подробнее о формате", "About the format"))
+                    }
+                    if (details) Text(if (format == FolderFormat.Paranoic)
+                        tr("Создаётся новая подпапка; существующее содержимое не заменяется.", "A new subfolder is created; existing content is not replaced.")
+                        else tr("Удаление целых последних блоков файла форматом Cryptomator не обнаруживается.", "Removal of whole trailing chunks cannot be detected by the Cryptomator format."),
+                        style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                    Button(enabled = interactive, onClick = { createStep = 1; trail = emptyList() },
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(56.dp)) { Text(tr("Далее: место", "Next: location")) }
                 }
             } else {
-                item {
-                    Text(displayName(place?.name.orEmpty()) + " / " + displayName(current.location.path), style = MaterialTheme.typography.bodySmall)
-                    if (reading || probing) {
-                        LinearProgressIndicator(Modifier.fillMaxWidth())
-                        Text(if (probing) tr("Ищем хранилища в папке и её подпапках…", "Looking for vaults in this folder and its direct subfolders…") else tr("Читаем папку…", "Reading folder…"))
+                if (current == null) {
+                    item { SectionLabel(tr("Где находится хранилище", "Where the vault is")) }
+                    itemsIndexed(spaces, key = { _, it -> it.id }) { index, space ->
+                        GroupedRow(displayName(space.name), groupPosition(index, spaces.size),
+                            subtitle = when { space.cloud -> tr("Облако или сервер", "Cloud or server"); space.androidTree -> tr("Папка через системный доступ", "Folder with system access")
+                                else -> tr("Память устройства", "Device storage") } + if (space.writable) "" else tr(" · только чтение", " · read-only"),
+                            enabled = interactive,
+                            leading = { ShapedIcon(if (space.cloud) AppSymbol.Cloud else AppSymbol.Phone, ExpressiveShapes.gallery[index % ExpressiveShapes.gallery.size],
+                                scheme.secondaryContainer, scheme.onSecondaryContainer) },
+                            trailing = { AppIcon(AppSymbol.Forward) },
+                            onClick = { trail = listOf(FolderNode(space.root, space.name)); if (creating == true) createStep = 2 })
                     }
-                    fault?.let {
-                        FaultNotice(it)
-                        TextButton(enabled = interactive, onClick = { revision++ }) { Text(tr("Повторить чтение", "Read again")) }
+                    item {
+                        if (spaces.isEmpty()) Text(tr("Подключённых мест нет. Подключите папку.", "No connected places. Connect a folder."), color = scheme.onSurfaceVariant)
+                        Spacer(Modifier.height(4.dp))
+                        GroupedRow(tr("Подключить другую папку", "Connect another folder"), GroupPosition.Single, enabled = interactive,
+                            leading = { ShapedIcon(AppSymbol.Add, ExpressiveShapes.Circle, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 40.dp) },
+                            onClick = { connectFolder() })
+                        if (creating == true) TextButton(enabled = interactive, onClick = { createStep = 0 }) { Text(tr("← Назад к формату", "← Back to format")) }
                     }
-                    if (creating == true) {
-                        Button(enabled = interactive && catalog.loaded && !catalog.failed && loaded == location && place?.writable == true, onClick = { onCreate(current) }) { Text(tr("Создать в этой папке", "Create in this folder")) }
-                        if (place?.writable != true) Text(tr("Это место доступно только для чтения.", "This location is read-only."))
-                    } else {
-                        Button(enabled = interactive && loaded == location, onClick = { fault = null; probe = null; probing = true; probeRevision++ }) { Text(tr("Найти хранилища", "Find vaults")) }
-                    }
-                }
-                probe?.let { result ->
-                    if (result.vaults.isEmpty()) item { Text(tr("Хранилище не найдено. Выберите другую папку или проверьте доступ.", "No vault found. Choose another folder or check access.")) }
-                    if (result.unchecked > 0) item { Text(tr("Не удалось проверить объектов: ${result.unchecked}. Результат может быть неполным.", "Objects not checked: ${result.unchecked}. Results may be incomplete.")) }
-                    items(result.vaults, key = { it.location.storageId + ":" + it.location.path }) { found ->
-                        OutlinedCard(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(displayName(found.name.ifEmpty { current.name }), style = MaterialTheme.typography.titleMedium)
-                                Text(if (found.kind == VaultKind.Cryptomator) "Cryptomator" else "Paranoic 1.8")
-                                Text(tr("Заблокировано", "Locked"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                val original = relocating
-                                if (original == null) {
-                                    TextButton(enabled = interactive, onClick = { onOpen(found.copy(name = found.name.ifEmpty { current.name })) }) { Text(tr("Открыть", "Open")) }
-                                } else {
-                                    TextButton(enabled = interactive && found.kind == original.kind && catalog.loaded && !catalog.busy && !catalog.failed,
-                                        onClick = { replacement = found }) { Text(tr("Выбрать для карточки", "Use for this card")) }
-                                    if (found.kind != original.kind) Text(tr("Формат не совпадает с карточкой.", "The format differs from this card."))
-                                }
-                                if (relocating == null && found.kind == VaultKind.Paranoic) TextButton(enabled = interactive,
-                                    onClick = { onRecovery(found.copy(name = found.name.ifEmpty { current.name })) }) { Text(tr("Ключ / забыли пароль…", "Recovery key / forgot password…")) }
+                } else {
+                    item {
+                        FilesNavigation(trail) { index ->
+                            if (interactive) trail = trail.take(index + 1)
+                        }
+                        Row(Modifier.padding(top = 4.dp)) {
+                            TextButton(enabled = interactive, onClick = { trail = emptyList(); if (creating == true) createStep = 1 }) { Text(tr("← Все места", "← All places")) }
+                        }
+                        if (reading || probing) {
+                            LinearProgressIndicator(Modifier.fillMaxWidth())
+                            Text(if (probing) tr("Ищем хранилища в папке и её подпапках…", "Looking for vaults in this folder and its direct subfolders…") else tr("Читаем папку…", "Reading folder…"),
+                                style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                        }
+                        fault?.let {
+                            FaultNotice(it)
+                            TextButton(enabled = interactive, onClick = { revision++ }) { Text(tr("Повторить чтение", "Read again")) }
+                        }
+                        if (creating == true) {
+                            Button(enabled = interactive && catalog.loaded && !catalog.failed && loaded == location && place?.writable == true, onClick = { onCreate(current) },
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(56.dp)) {
+                                AppIcon(AppSymbol.Add); Spacer(Modifier.width(8.dp)); Text(tr("Создать здесь", "Create here"))
+                            }
+                            if (place?.writable != true) Text(tr("Это место доступно только для чтения.", "This location is read-only."), color = scheme.error)
+                        } else {
+                            Button(enabled = interactive && loaded == location, onClick = { fault = null; probe = null; probing = true; probeRevision++ },
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(56.dp)) {
+                                AppIcon(AppSymbol.Search); Spacer(Modifier.width(8.dp)); Text(tr("Найти хранилища в этой папке", "Find vaults in this folder"))
                             }
                         }
                     }
+                    probe?.let { result ->
+                        item { SectionLabel(tr("Найдено", "Found")) }
+                        if (result.vaults.isEmpty()) item { Text(tr("Хранилище не найдено. Выберите другую папку или проверьте доступ.", "No vault found. Choose another folder or check access."), color = scheme.onSurfaceVariant) }
+                        if (result.unchecked > 0) item { Text(tr("Не удалось проверить объектов: ${result.unchecked}. Результат может быть неполным.", "Objects not checked: ${result.unchecked}. Results may be incomplete.")) }
+                        itemsIndexed(result.vaults, key = { _, it -> "found:" + it.location.storageId + ":" + it.location.path }) { index, found ->
+                            val name = found.name.ifEmpty { current.name }
+                            val original = relocating
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                GroupedRow(displayName(name), if (original == null && found.kind == VaultKind.Paranoic) GroupPosition.First else GroupPosition.Single,
+                                    subtitle = kindLabel(found.kind) + " · " + tr("заблокировано", "locked") +
+                                        if (original != null && found.kind != original.kind) tr(" · формат не совпадает с карточкой", " · format differs from the card") else "",
+                                    enabled = interactive && (original == null || (found.kind == original.kind && catalog.loaded && !catalog.busy && !catalog.failed)),
+                                    container = scheme.secondaryContainer,
+                                    leading = { ShapedIcon(AppSymbol.Vault, ExpressiveShapes.Cookie9, scheme.primaryContainer, scheme.onPrimaryContainer) },
+                                    trailing = { Text(if (original == null) tr("Открыть", "Open") else tr("Выбрать", "Use"), color = scheme.primary, style = MaterialTheme.typography.labelLarge) },
+                                    onClick = { if (original == null) onOpen(found.copy(name = name)) else replacement = found })
+                                if (original == null && found.kind == VaultKind.Paranoic) GroupedRow(tr("Ключ восстановления / забыли пароль", "Recovery key / forgot password"),
+                                    GroupPosition.Last, enabled = interactive,
+                                    leading = { ShapedIcon(AppSymbol.Passwords, ExpressiveShapes.Circle, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 40.dp) },
+                                    onClick = { onRecovery(found.copy(name = name)) })
+                            }
+                        }
+                    }
+                    if (folders.isNotEmpty()) item { SectionLabel(tr("Папки", "Folders")) }
+                    itemsIndexed(folders, key = { _, it -> "dir:" + it.location.storageId + ":" + it.location.path }) { index, folder ->
+                        GroupedRow(displayName(folder.name), groupPosition(index, folders.size), enabled = interactive,
+                            leading = { ShapedIcon(AppSymbol.Folder, MaterialTheme.shapes.medium, scheme.primaryContainer, scheme.onPrimaryContainer, size = 40.dp) },
+                            trailing = { AppIcon(AppSymbol.Forward) },
+                            onClick = { trail = trail + FolderNode(folder.location, folder.name) })
+                    }
+                    if (!reading && loaded == location && folders.isEmpty()) item { Text(tr("Вложенных папок нет.", "No subfolders."), color = scheme.onSurfaceVariant) }
                 }
-                items(folders, key = { it.location.storageId + ":" + it.location.path }) { folder ->
-                    TextButton(enabled = interactive, onClick = { trail = trail + FolderNode(folder.location, folder.name) }) { Text(displayName(folder.name)) }
-                }
-                if (!reading && loaded == location && folders.isEmpty()) item { Text(tr("Вложенных папок нет.", "No subfolders."), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
-            }
+        }
+    }
+    if (creating == null) ExtendedFloatingActionButton(onClick = { addSheet = true }, expanded = catalog.snapshot.entries.isEmpty().not(),
+        icon = { AppIcon(AppSymbol.Add) }, text = { Text(tr("Добавить", "Add")) },
+        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp))
+    }
+}
+
+/** Reference: Vault Explorer "Добавить хранилище" sheet. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VaultAddSheet(onDismiss: () -> Unit, onOpen: () -> Unit, onCreate: () -> Unit, canOpen: Boolean, canCreate: Boolean) {
+    val scheme = MaterialTheme.colorScheme
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = scheme.surfaceContainerLow) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(tr("Добавить хранилище", "Add vault"), Modifier.padding(start = 8.dp, bottom = 16.dp), style = MaterialTheme.typography.titleLarge)
+            GroupedRow(tr("Подключить существующее", "Add existing"), GroupPosition.First,
+                subtitle = tr("Найти и разблокировать хранилище Cryptomator или Paranoic", "Find and unlock a Cryptomator or Paranoic vault"),
+                enabled = canOpen, leading = { ShapedIcon(AppSymbol.Vault, MaterialTheme.shapes.medium, scheme.primaryContainer, scheme.onPrimaryContainer) },
+                trailing = { AppIcon(AppSymbol.Forward) }, onClick = onOpen)
+            GroupedRow(tr("Создать новое", "Create new"), GroupPosition.Last,
+                subtitle = tr("Новое зашифрованное хранилище в выбранной папке", "A new encrypted vault in a folder you choose"),
+                enabled = canCreate, leading = { ShapedIcon(AppSymbol.Add, MaterialTheme.shapes.medium, scheme.tertiaryContainer, scheme.onTertiaryContainer) },
+                trailing = { AppIcon(AppSymbol.Forward) }, onClick = onCreate)
         }
     }
 }
