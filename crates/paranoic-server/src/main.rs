@@ -305,10 +305,14 @@ fn windows_private_tree(root: &Path, secure_root: bool) {
             Err(_) => fail(&format!("cannot read permissions of {}", folder.display())),
         }
         let entries = std::fs::read_dir(&folder).unwrap_or_else(|_| fail(&format!("cannot list {}", folder.display())));
-        for entry in entries.flatten() {
+        // Every listing or classification error stops the start (audit 19):
+        // an unchecked branch must not be served.
+        for entry in entries {
+            let entry = entry.unwrap_or_else(|_| fail(&format!("cannot list {}", folder.display())));
             seen += 1;
             if seen > 1_000_000 { fail("served tree too large to verify"); }
-            if entry.file_type().is_ok_and(|kind| kind.is_dir() && !kind.is_symlink()) { stack.push(entry.path()); }
+            let kind = entry.file_type().unwrap_or_else(|_| fail(&format!("cannot classify an entry in {}", folder.display())));
+            if kind.is_dir() && !kind.is_symlink() { stack.push(entry.path()); }
         }
     }
 }
@@ -317,9 +321,19 @@ fn windows_private_tree(root: &Path, secure_root: bool) {
 fn copy_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
     if !std::fs::symlink_metadata(from)?.is_file() { return Err(std::io::ErrorKind::Unsupported.into()); }
     let mut source = std::fs::File::open(from)?;
-    let mut target = std::fs::OpenOptions::new().write(true).create_new(true).open(to)?;
-    std::io::copy(&mut source, &mut target)?;
-    target.sync_all()
+    // Complete copy under a hidden temporary name, then a hard link to the
+    // final name (fails if it exists) — never a partial file there (audit 10).
+    let parent = to.parent().ok_or(std::io::ErrorKind::InvalidInput)?;
+    let temporary = parent.join(format!(".paranoic-copy-{}", uuid::Uuid::new_v4().simple()));
+    let result = (|| {
+        let mut target = std::fs::OpenOptions::new().write(true).create_new(true).open(&temporary)?;
+        std::io::copy(&mut source, &mut target)?;
+        target.sync_all()?;
+        drop(target);
+        std::fs::hard_link(&temporary, to)
+    })();
+    let _ = std::fs::remove_file(&temporary);
+    result
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "android")))]

@@ -218,11 +218,20 @@ impl DavFileSystem for BeneathFs {
             let source = File::from(rfs::openat(&a, an.as_os_str(), OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC, Mode::empty())
                 .map_err(|e| fs_error(io(e)))?);
             if !source.metadata().map_err(FsError::from)?.is_file() { return Err(FsError::Forbidden); }
-            let target = File::from(rfs::openat(&b, bn.as_os_str(), OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            // Copy into a hidden temporary beside the target and publish it
+            // without replacement only when complete (audit 10): a failed copy
+            // never leaves a partial file under the final name.
+            if rfs::statat(&b, bn.as_os_str(), rfs::AtFlags::SYMLINK_NOFOLLOW).is_ok() { return Err(FsError::Exists); }
+            let temporary = format!(".paranoic-copy-{}", uuid::Uuid::new_v4().simple());
+            let target = File::from(rfs::openat(&b, temporary.as_str(), OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
                 Mode::from_raw_mode(0o600)).map_err(|e| fs_error(io(e)))?);
             let (mut source, mut target) = (source, target);
-            std::io::copy(&mut source, &mut target).map_err(FsError::from)?;
-            target.sync_all().map_err(FsError::from)
+            let copied = std::io::copy(&mut source, &mut target).map_err(FsError::from)
+                .and_then(|_| target.sync_all().map_err(FsError::from))
+                .and_then(|_| rfs::renameat_with(&b, temporary.as_str(), &b, bn.as_os_str(), RenameFlags::NOREPLACE).map_err(|e| fs_error(io(e))))
+                .and_then(|_| rfs::fsync(&b).map_err(|e| fs_error(io(e))));
+            if copied.is_err() { let _ = rfs::unlinkat(&b, temporary.as_str(), rfs::AtFlags::empty()); }
+            copied
         }).boxed()
     }
     fn get_quota(&self) -> FsFuture<'_, (u64, Option<u64>)> { DavFileSystem::get_quota(&self.quota) }
