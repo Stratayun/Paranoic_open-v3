@@ -109,9 +109,9 @@ pub fn decode_image(bytes: &[u8], limits: ImageLimits) -> Result<DecodedImage> {
     Ok(DecodedImage { width, height, rgba: Zeroizing::new(image.into_raw()) })
 }
 
-/// PNG thumbnail fitting `max_side`, metadata stripped.
+/// PNG fitting `max_side` (16..=2048: thumbnails and the full-screen viewer), metadata stripped.
 pub fn thumbnail_image(bytes: &[u8], max_side: u32, limits: ImageLimits) -> Result<Zeroizing<Vec<u8>>> {
-    if !(16..=1024).contains(&max_side) { return Err(CoreError::new(ErrorCode::InvalidInput, "thumbnail size out of range")); }
+    if !(16..=2048).contains(&max_side) { return Err(CoreError::new(ErrorCode::InvalidInput, "thumbnail size out of range")); }
     encode_png(decode(bytes, limits)?.thumbnail(max_side, max_side))
 }
 
