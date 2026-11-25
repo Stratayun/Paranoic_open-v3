@@ -19,8 +19,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, windows-2022]
+        os: [windows-latest]
         unicode: [false, true]
+        unicode_temp: [false, true]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     steps:
@@ -33,10 +34,10 @@ jobs:
           path: portable-input
       - name: Launch the actual portable application
         shell: pwsh
-        run: ./tools/validation/windows_portable.ps1 -Archive portable-input/Paranoic-windows-portable.zip -UnicodePaths:([bool]::Parse('${{ matrix.unicode }}'))
+        run: ./tools/validation/windows_portable.ps1 -Archive portable-input/Paranoic-windows-portable.zip -UnicodePaths:([bool]::Parse('${{ matrix.unicode }}')) -UnicodeTemp:([bool]::Parse('${{ matrix.unicode_temp }}'))
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: windows-startup-${{ matrix.os }}-unicode-${{ matrix.unicode }}
+          name: windows-startup-path-${{ matrix.unicode }}-temp-${{ matrix.unicode_temp }}
           path: startup-results
           retention-days: 7

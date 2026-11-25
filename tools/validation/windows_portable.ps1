@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][string]$Archive, [switch]$UnicodePaths, [switch]$ConsoleDiagnostics)
+param([Parameter(Mandatory)][string]$Archive, [switch]$UnicodePaths, [switch]$UnicodeTemp, [switch]$ConsoleDiagnostics)
 $ErrorActionPreference = 'Stop'
 $report = Join-Path $PWD 'startup-results'
 New-Item -ItemType Directory -Force $report | Out-Null
@@ -45,8 +45,8 @@ public static class StartupWindow {
 '@
 $env:LOCALAPPDATA = Join-Path $unpacked 'user-data'
 $env:JPACKAGE_DEBUG = 'true'
-if ($UnicodePaths) {
-    $env:TEMP = Join-Path $unpacked 'Временные файлы'
+if ($UnicodeTemp) {
+    $env:TEMP = Join-Path $env:RUNNER_TEMP 'Временные файлы'
     $env:TMP = $env:TEMP
     New-Item -ItemType Directory -Force $env:TEMP | Out-Null
 }
