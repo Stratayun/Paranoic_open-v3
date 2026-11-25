@@ -17,7 +17,30 @@ import kotlinx.coroutines.launch
 import java.nio.file.Paths
 import com.sun.jna.Native
 
-fun main() = application {
+/**
+ * A failure before the window exists (missing runtime module, native library)
+ * would otherwise end the app silently: write it next to the app data and show it.
+ */
+fun main() {
+    try { runApp() } catch (error: Throwable) {
+        val text = buildString {
+            appendLine("Paranoic could not start (${System.getProperty("os.name")}, Java ${System.getProperty("java.version")}).")
+            appendLine(error.stackTraceToString().take(6000))
+        }
+        val file = try {
+            Paths.get(System.getenv("LOCALAPPDATA") ?: System.getProperty("user.home"), "Paranoic", "startup-error.txt").also {
+                java.nio.file.Files.createDirectories(it.parent); java.nio.file.Files.writeString(it, text)
+            }
+        } catch (_: Exception) { null }
+        try {
+            javax.swing.JOptionPane.showMessageDialog(null, (text.lineSequence().take(12).joinToString("\n")) +
+                (file?.let { "\n\nПолный текст / full text: $it" } ?: ""), "Paranoic", javax.swing.JOptionPane.ERROR_MESSAGE)
+        } catch (_: Throwable) {}
+        kotlin.system.exitProcess(1)
+    }
+}
+
+private fun runApp() = application {
     val scope = rememberCoroutineScope()
     var startup by remember { mutableStateOf<Startup>(Startup.Loading) }
     var attempt by remember { mutableIntStateOf(0) }

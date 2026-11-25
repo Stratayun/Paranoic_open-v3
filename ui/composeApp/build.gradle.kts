@@ -160,7 +160,9 @@ compose.desktop {
             targetFormats(TargetFormat.Msi)
             packageName = "Paranoic"
             packageVersion = "2.1.0"
-            modules("java.prefs", "jdk.httpserver", "java.desktop")
+            // From :composeApp:suggestRuntimeModules; jdk.unsupported is needed by Skiko and JNA,
+            // without it the packaged app exits before its window (first Windows run, 25.11).
+            modules("java.desktop", "java.instrument", "java.prefs", "jdk.httpserver", "jdk.jfr", "jdk.unsupported", "jdk.unsupported.desktop")
             // PDF worker executable (tools/build/native.py desktop); found only via compose.application.resources.dir.
             appResourcesRootDir.set(layout.buildDirectory.dir("native/app-resources"))
         }
