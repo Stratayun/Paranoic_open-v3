@@ -10,6 +10,26 @@ const UPPER: &str = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const DIGITS: &str = "23456789";
 const SYMBOLS: &str = "!#$%&*+-=?@_~";
 
+/// Well-known passwords: a password containing one is weak (shared by the
+/// generator and the notes policy, audit 15).
+pub const COMMON_PASSWORDS: &[&str] = &["password", "passw0rd", "qwerty", "123456", "111111", "letmein", "admin", "welcome",
+    "iloveyou", "monkey", "dragon", "пароль", "йцукен", "qwertyuiop", "abc123", "000000"];
+
+pub fn contains_common(password: &str) -> bool {
+    let lower = password.to_lowercase();
+    COMMON_PASSWORDS.iter().any(|c| lower.contains(c))
+}
+/// The same character three times in a row, or fewer than half distinct characters.
+pub fn has_repeats(chars: &[char]) -> bool {
+    let distinct = { let mut d = chars.to_vec(); d.sort_unstable(); d.dedup(); d.len() };
+    chars.windows(3).any(|w| w[0] == w[1] && w[1] == w[2]) || (chars.len() >= 4 && distinct * 2 < chars.len())
+}
+/// A run of four like "1234", "abcd" or "dcba".
+pub fn has_sequence(chars: &[char]) -> bool {
+    chars.windows(4).any(|w| (0..3).all(|i| (w[i + 1] as i64 - w[i] as i64) == 1)
+        || (0..3).all(|i| (w[i + 1] as i64 - w[i] as i64) == -1))
+}
+
 fn uniform(below: usize) -> Result<usize> {
     let limit = 256 - 256 % below;
     loop {
@@ -28,7 +48,11 @@ pub fn generate_password(length: usize) -> Result<Zeroizing<String>> {
     loop {
         let mut picked = Zeroizing::new(Vec::with_capacity(length));
         for _ in 0..length { picked.push(all[uniform(all.len())?]); }
-        if groups.iter().all(|g| picked.iter().any(|c| g.contains(*c))) {
+        // The same acceptance as the notes policy: every kind, nothing well
+        // known, no repeats or runs, so a generated password is always Strong.
+        let candidate: String = picked.iter().collect();
+        if groups.iter().all(|g| picked.iter().any(|c| g.contains(*c))) && !contains_common(&candidate)
+            && !has_repeats(&picked) && !has_sequence(&picked) {
             return Ok(Zeroizing::new(picked.iter().collect()));
         }
     }
@@ -40,7 +64,8 @@ pub fn generate_passphrase(words: usize, _separator: char) -> Result<Zeroizing<S
     generate_password((words * 3).max(12))
 }
 
-/// Entropy of a generated password of `length` characters, in bits.
+/// Upper bound of the entropy of a generated password of `length` characters,
+/// in bits: the full alphabet, before rejecting candidates (audit 15).
 pub fn passphrase_bits(length: usize) -> f64 {
     length as f64 * ((LOWER.len() + UPPER.len() + DIGITS.len() + SYMBOLS.len()) as f64).log2()
 }

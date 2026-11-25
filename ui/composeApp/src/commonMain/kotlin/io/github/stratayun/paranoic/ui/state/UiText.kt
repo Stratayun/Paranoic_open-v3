@@ -42,8 +42,8 @@ fun CoreFault.label(): String = when (this) {
     CoreFault.Busy -> tr("Папка используется незавершённым заданием. Дождитесь его окончания.", "The folder is used by an unfinished job. Wait until it ends.")
     CoreFault.PasswordRequired -> tr("Архив зашифрован. Введите пароль.", "The archive is encrypted. Enter its password.")
     CoreFault.WrongPassword -> tr("Неверный пароль.", "Wrong password.")
-    CoreFault.WeakPassword -> tr("Пароль слишком слабый. Нужна длинная фраза из нескольких слов или 12+ разных символов.",
-        "The password is too weak. Use a long phrase of several words or 12+ varied characters.")
+    CoreFault.WeakPassword -> tr("Пароль не подходит: нужно не меньше 8 символов, строчные и заглавные буквы, цифра и символ, без распространённых паролей.",
+        "The password is not acceptable: at least 8 characters with lowercase and uppercase letters, a digit and a symbol, and no common password.")
     CoreFault.RateLimited -> tr("Слишком много попыток. Подождите и попробуйте снова.", "Too many attempts. Wait and try again.")
     CoreFault.Wiped -> tr("Заметки стёрты после серии неверных паролей. Раздел можно создать заново.",
         "Notes were wiped after repeated wrong passwords. The section can be set up again.")

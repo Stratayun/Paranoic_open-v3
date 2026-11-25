@@ -19,22 +19,47 @@ import kotlinx.coroutines.launch
 /**
  * Owner's rule (25.11.2026), the same as Rust `password_strength`: at least 8
  * characters with a lowercase letter, an uppercase letter, a digit and a
- * symbol, and no well-known password inside. Strong from 12 characters.
+ * symbol, and no well-known password inside. Strong from 12 characters
+ * without repeats or runs. Length counts code points, as Rust `chars()` does
+ * (audit 13); Rust remains the authority and the form shows its refusal.
  */
 object PasswordRule {
     const val MIN = 8
     const val STRONG = 12
     private val common = listOf("password", "passw0rd", "qwerty", "123456", "111111", "letmein", "admin", "welcome",
         "iloveyou", "monkey", "dragon", "пароль", "йцукен", "qwertyuiop", "abc123", "000000")
-    fun long(p: String) = p.length >= MIN
+    /** Unicode code points (a surrogate pair is one character, as in Rust). */
+    fun length(p: String) = p.count { !it.isLowSurrogate() }
+    private fun points(p: String): List<Int> {
+        val out = ArrayList<Int>(p.length); var i = 0
+        while (i < p.length) {
+            val c = p[i]
+            if (c.isHighSurrogate() && i + 1 < p.length && p[i + 1].isLowSurrogate()) {
+                out += 0x10000 + ((c.code - 0xD800) shl 10) + (p[i + 1].code - 0xDC00); i += 2
+            } else { out += c.code; i++ }
+        }
+        return out
+    }
+    fun long(p: String) = length(p) >= MIN
     fun lower(p: String) = p.any { it.isLowerCase() }
     fun upper(p: String) = p.any { it.isUpperCase() }
     fun digit(p: String) = p.any { it in '0'..'9' }
-    fun symbol(p: String) = p.any { !it.isLetterOrDigit() }
+    /** Not alphanumeric in Rust's sense: letters and every kind of number are not symbols.
+     *  Characters outside the BMP (emoji…) count as symbols; Kotlin common cannot classify them. */
+    fun symbol(p: String) = points(p).any { cp ->
+        if (cp >= 0x10000) true else cp.toChar().let { !it.isLetterOrDigit() &&
+            it.category != CharCategory.LETTER_NUMBER && it.category != CharCategory.OTHER_NUMBER } }
+    /** Same as Rust `has_repeats` / `has_sequence` (audit 16). */
+    fun repeats(p: String): Boolean {
+        val c = points(p)
+        return c.windowed(3).any { it[0] == it[1] && it[1] == it[2] } || (c.size >= 4 && c.toSet().size * 2 < c.size)
+    }
+    fun sequence(p: String): Boolean = points(p).windowed(4).any { w ->
+        (0..2).all { w[it + 1] - w[it] == 1 } || (0..2).all { w[it + 1] - w[it] == -1 } }
     fun common(p: String) = p.lowercase().let { lower -> common.any { it in lower } }
     fun strength(p: String): PasswordStrength = when {
         !long(p) || common(p) || !lower(p) || !upper(p) || !digit(p) || !symbol(p) -> PasswordStrength.Weak
-        p.length >= STRONG -> PasswordStrength.Strong
+        length(p) >= STRONG && !repeats(p) && !sequence(p) -> PasswordStrength.Strong
         else -> PasswordStrength.Fair
     }
     fun acceptable(p: String) = strength(p) != PasswordStrength.Weak
@@ -64,7 +89,9 @@ fun PasswordTools(core: CoreGateway, password: String, enabled: Boolean = true,
                 style = MaterialTheme.typography.bodySmall, color = scheme.error)
         if (password.isNotEmpty()) Text(when (PasswordRule.strength(password)) {
             PasswordStrength.Weak -> tr("Пока не подходит", "Not acceptable yet")
-            PasswordStrength.Fair -> tr("Подходит. Длиннее ${PasswordRule.STRONG} символов — надёжнее.", "Acceptable. ${PasswordRule.STRONG}+ characters is stronger.")
+            PasswordStrength.Fair -> if (PasswordRule.repeats(password) || PasswordRule.sequence(password))
+                tr("Подходит, но есть повторы или ряд (1234, abcd) — их легче угадать.", "Acceptable, but it has repeats or a run (1234, abcd), which are easier to guess.")
+                else tr("Подходит. Длиннее ${PasswordRule.STRONG} символов — надёжнее.", "Acceptable. ${PasswordRule.STRONG}+ characters is stronger.")
             PasswordStrength.Strong -> tr("Надёжный пароль", "Strong password")
         }, style = MaterialTheme.typography.labelLarge,
             color = if (PasswordRule.acceptable(password)) scheme.primary else scheme.onSurfaceVariant)
