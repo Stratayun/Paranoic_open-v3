@@ -160,7 +160,6 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
             }
         }
         if (format == FolderFormat.Cryptomator) {
-            TextButton(onClick = { details = !details }) { Text(tr("Особенности формата", "Format details")) }
             if (details) Text(tr("Cryptomator не обнаруживает удаление целых последних блоков файла. Размер в списке — размер шифротекста, не точная длина исходника. Сбой изменения может потребовать ручного разбора в задачах.",
                 "Cryptomator cannot detect removal of whole trailing file blocks. Listed sizes are ciphertext sizes, not exact plaintext lengths. An interrupted change may require manual review in Tasks."))
         }
@@ -204,6 +203,8 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
             var sheetEntry by remember(open.handle) { mutableStateOf<VaultEntry?>(null) }
             var vaultMenu by remember(open.handle) { mutableStateOf(false) }
             var addMenu by remember(open.handle) { mutableStateOf(false) }
+            var pickingFiles by remember(open.handle) { mutableStateOf(false) }
+            var exportPick by remember(open.handle) { mutableStateOf<VaultEntry?>(null) }
             val scheme = MaterialTheme.colorScheme
             val canWrite = !busy && !reading && !uncertain && open.writable
             LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
@@ -248,6 +249,8 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
                         FilledTonalIconButton(enabled = canWrite, onClick = { addMenu = true },
                             modifier = Modifier.actionDescription(tr("Создать", "Create"))) { AppIcon(AppSymbol.Add) }
                         DropdownMenu(addMenu, { addMenu = false }) {
+                            DropdownMenuItem(text = { Text(tr("Добавить файлы с устройства…", "Add files from device…")) }, leadingIcon = { AppIcon(AppSymbol.Upload) },
+                                onClick = { addMenu = false; pickingFiles = true })
                             DropdownMenuItem(text = { Text(tr("Новая папка", "New folder")) }, leadingIcon = { AppIcon(AppSymbol.NewFolder) },
                                 onClick = { addMenu = false; dialog = Dialog.Mkdir })
                             DropdownMenuItem(text = { Text(tr("Текстовый файл / Markdown", "Text / Markdown file")) }, leadingIcon = { AppIcon(AppSymbol.NewFile) },
@@ -273,9 +276,9 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
                     }
                     Text(tr("«Зашифровать» оставляет исходники на месте.", "Encrypt keeps the originals."), style = MaterialTheme.typography.bodySmall)
                 }
-            } else Text(tr("Чтобы добавить файлы: в «Файлах» долгое нажатие → «Выбрать», затем вернитесь сюда.",
-                "To add files: in Files long-press → Select, then come back here."), Modifier.padding(horizontal = 8.dp),
-                style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+            } else FilledTonalButton(enabled = canWrite, onClick = { pickingFiles = true }, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                AppIcon(AppSymbol.Upload); Spacer(Modifier.width(8.dp)); Text(tr("Добавить файлы в хранилище", "Add files to the vault"))
+            }
             if (busy || reading) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
             }
@@ -324,13 +327,31 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
             }
             }
             sheetEntry?.let { entry -> VaultEntrySheet(entry, format, canWrite, !busy && !reading && !uncertain && here != null && files.writable,
+                !busy && !reading && !uncertain,
                 selectedFiles.size == 1, onDismiss = { sheetEntry = null },
                 onOpen = { e -> if (e.folder) reload(open, path + e.name) else viewing = e to path.toList() },
                 onDecrypt = { e -> here?.let { to -> dialog = Dialog.Export(e, to) } },
+                onExportTo = { e -> exportPick = e },
                 onMove = { e -> dialog = Dialog.Move(e, path.toList()) },
                 onReplace = { e -> selectedFiles.singleOrNull()?.let { source -> dialog = Dialog.Replace(e, path.toList(), source) } },
                 onRename = { e -> dialog = Dialog.Rename(e) },
                 onDelete = { e -> dialog = Dialog.Delete(e) }) }
+            if (pickingFiles) CoreFilePickerDialog(core, files.spaces, tr("Добавить в хранилище", "Add to vault"), CorePickKind.Files,
+                maxSelection = 32, onDismiss = { pickingFiles = false }) { picked ->
+                pickingFiles = false
+                val sources = picked.map { it.location }
+                // Encrypt copies; the originals stay where they are.
+                if (sources.isNotEmpty()) act {
+                    var last: CoreResult<Unit> = CoreResult.Value(Unit)
+                    for (source in sources) { last = gateway.add(open.handle, path, source); if (last is CoreResult.Failure) break }
+                    last
+                }
+            }
+            exportPick?.let { entry -> CoreFilePickerDialog(core, files.spaces, tr("Куда расшифровать «", "Decrypt \"") + displayName(entry.name) + tr("»", "\" to"),
+                CorePickKind.Directory, writable = true, onDismiss = { exportPick = null }) { picked ->
+                exportPick = null
+                picked.firstOrNull()?.let { folder -> dialog = Dialog.Export(entry, FolderNode(folder.location, folder.name)) }
+            } }
         }
     }
 
@@ -607,8 +628,8 @@ private fun vaultSymbol(name: String): AppSymbol = when (name.substringAfterLast
 }
 
 @Composable
-private fun VaultEntrySheet(entry: VaultEntry, format: FolderFormat, canWrite: Boolean, canDecrypt: Boolean, oneSelected: Boolean,
-    onDismiss: () -> Unit, onOpen: (VaultEntry) -> Unit, onDecrypt: (VaultEntry) -> Unit, onMove: (VaultEntry) -> Unit,
+private fun VaultEntrySheet(entry: VaultEntry, format: FolderFormat, canWrite: Boolean, canDecrypt: Boolean, canWriteOut: Boolean, oneSelected: Boolean,
+    onDismiss: () -> Unit, onOpen: (VaultEntry) -> Unit, onDecrypt: (VaultEntry) -> Unit, onExportTo: (VaultEntry) -> Unit, onMove: (VaultEntry) -> Unit,
     onReplace: (VaultEntry) -> Unit, onRename: (VaultEntry) -> Unit, onDelete: (VaultEntry) -> Unit) {
     fun run(action: (VaultEntry) -> Unit): () -> Unit = { onDismiss(); action(entry) }
     val paranoic = format == FolderFormat.Paranoic
@@ -616,7 +637,8 @@ private fun VaultEntrySheet(entry: VaultEntry, format: FolderFormat, canWrite: B
         if (entry.folder) AppSymbol.Folder else vaultSymbol(entry.name), listOf(
         SheetGroup(tr("Открыть", "Open"), listOfNotNull(
             SheetAction(if (entry.folder) tr("Открыть", "Open") else tr("Открыть внутри", "Open inside"), AppSymbol.Forward, run = run(onOpen)),
-            if (!entry.folder) SheetAction(tr("Расшифровать в «Файлы»", "Decrypt to Files"), AppSymbol.Download, canDecrypt, run = run(onDecrypt)) else null,
+            if (!entry.folder) SheetAction(tr("Расшифровать в текущую папку «Файлов»", "Decrypt to current Files folder"), AppSymbol.Download, canDecrypt, run = run(onDecrypt)) else null,
+            if (!entry.folder) SheetAction(tr("Выгрузить в…", "Export to…"), AppSymbol.MoveTo, canWriteOut, run = run(onExportTo)) else null,
         )),
         SheetGroup(tr("Упорядочить", "Organize"), listOfNotNull(
             if (paranoic) SheetAction(tr("Перенести…", "Move…"), AppSymbol.MoveTo, canWrite, run = run(onMove)) else null,

@@ -55,7 +55,8 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
         selectedItems.isNotEmpty() && selectedItems.size == state.selected.size
     val actionable = canAct && state.selected.size == 1
     val padding = LocalThemeTokens.current.pagePadding
-    if (showingArchive && session.archives.state.source != null) { ArchiveViewer(session) { showingArchive = false }; return }
+    var extractAfterOpen by remember(session.secretsEpoch) { mutableStateOf(false) }
+    if (showingArchive && session.archives.state.source != null) { ArchiveViewer(session, extractAfterOpen) { showingArchive = false; extractAfterOpen = false }; return }
     var sheetFor by remember(state.folder, session.secretsEpoch) { mutableStateOf<FileItem?>(null) }
     var selectHint by remember(state.folder) { mutableStateOf(false) }
     var properties by remember(state.folder, session.secretsEpoch) { mutableStateOf<FileItem?>(null) }
@@ -133,7 +134,7 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
                 items(visible, key = { it.location.storageId + ":" + it.location.path }) { item ->
                     FileRow(session.core, pngImage, item, item.location in state.selected, state.selected.isNotEmpty(), { inTab { session.select(item.location) } }, {
                         inTab { when { item.kind == EntryKind.Directory -> session.openFolder(item)
-                        isArchive(item) -> { archiveSources = listOf(item); archiveAction = ArchiveAction.Open }
+                        isArchive(item) -> { if (session.openArchive(item, archiveFormat(item), null)) showingArchive = true }
                         else -> onOpenFile(item) } }
                     }, drag = drag?.takeIf { item.canCopy(state.spaces) }, detailed = view == FileView.Detailed, onMenu = { sheetFor = item })
                 }
@@ -144,7 +145,7 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
                 items(visible, key = { it.location.storageId + ":" + it.location.path }) { item ->
                     FileRow(session.core, pngImage, item, item.location in state.selected, state.selected.isNotEmpty(), { inTab { session.select(item.location) } }, {
                         inTab { when { item.kind == EntryKind.Directory -> session.openFolder(item)
-                        isArchive(item) -> { archiveSources = listOf(item); archiveAction = ArchiveAction.Open }
+                        isArchive(item) -> { if (session.openArchive(item, archiveFormat(item), null)) showingArchive = true }
                         else -> onOpenFile(item) } }
                     }, drag = drag?.takeIf { item.canCopy(state.spaces) }, onMenu = { sheetFor = item })
                 }
@@ -272,8 +273,10 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
             SheetGroup(tr("Открыть", "Open"), listOfNotNull(
                 SheetAction(tr("Открыть", "Open"), AppSymbol.Forward, item.kind == EntryKind.Directory || isFile,
                     run = act { when { item.kind == EntryKind.Directory -> session.openFolder(item)
-                        isArchive(item) -> { archiveSources = listOf(item); archiveAction = ArchiveAction.Open }
+                        isArchive(item) -> { if (session.openArchive(item, archiveFormat(item), null)) showingArchive = true }
                         else -> onOpenFile(item) } }),
+                if (isArchive(item)) SheetAction(tr("Извлечь…", "Extract…"), AppSymbol.Download, single,
+                    run = act { extractAfterOpen = true; if (session.openArchive(item, archiveFormat(item), null)) showingArchive = true }) else null,
                 if (isFile && !isArchive(item)) SheetAction(tr("Как архив", "As archive"), AppSymbol.Archive, single,
                     run = act { archiveSources = listOf(item); archiveAction = ArchiveAction.Open }) else null,
                 SheetAction(tr("Выбрать", "Select"), AppSymbol.SelectAll, run = act { session.select(item.location) }),
@@ -418,8 +421,10 @@ private val audioExt = setOf("mp3", "flac", "ogg", "opus", "m4a", "wav", "aac")
 private val archiveExt = setOf("zip", "7z", "rar", "tar", "gz", "xz", "zst", "bz2")
 private val lockedExt = setOf("age", "aes", "c9r", "pnc")
 
+/** Archives Core can list and extract (ZIP/ZIP64, 7z). */
 internal fun isArchive(item: FileItem) = item.kind == EntryKind.File &&
-    item.name.substringAfterLast('.', "").lowercase() in archiveExt
+    item.name.substringAfterLast('.', "").lowercase() in setOf("zip", "7z")
+internal fun archiveFormat(item: FileItem) = if (item.name.endsWith(".7z", true)) ArchiveFormat.SevenZip else ArchiveFormat.Zip
 
 internal fun fileSymbol(item: FileItem): AppSymbol {
     if (item.kind == EntryKind.Directory) return AppSymbol.Folder
