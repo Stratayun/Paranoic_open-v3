@@ -723,6 +723,14 @@ class NativeCoreGateway private constructor(
     override suspend fun diagnostics() = call { runtime.diagnosticsRecent().map { Diagnostic(it.atMs.toLong(), it.code, it.message) } }
     override suspend fun diagnosticsReportText() = call { runtime.diagnosticsReportText() }
     override suspend fun clearDiagnostics() = call { runtime.diagnosticsClear() }
+    override suspend fun trashSupported(space: Space) = (call { runtime.trashSupported(space.root.storageId) } as? CoreResult.Value)?.value == true
+    override suspend fun trashPut(source: Location) = call { runtime.trashPut(source.native()) }
+    override suspend fun trashList(space: Space) = call {
+        runtime.trashList(space.root.storageId).map { TrashItem(it.bucket, it.name, it.originalFolder, it.deletedMs.toLong(), it.folder, it.bytes.toLong()) }
+    }
+    override suspend fun trashRestore(space: Space, bucket: String) = call { runtime.trashRestore(space.root.storageId, bucket) }
+    override suspend fun trashPurge(space: Space, bucket: String) = call { runtime.trashPurge(space.root.storageId, bucket) }
+    override suspend fun trashEmpty(space: Space) = call { runtime.trashEmpty(space.root.storageId).toInt() }
     override suspend fun renameProbe(space: Space) = call {
         when (runtime.renameProbe(space.id).toInt()) {
             0 -> RenameProbe.Supported; 1 -> RenameProbe.Unsupported; 2 -> RenameProbe.Ignored

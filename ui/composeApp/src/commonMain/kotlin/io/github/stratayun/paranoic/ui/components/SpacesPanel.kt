@@ -25,7 +25,7 @@ import io.github.stratayun.paranoic.ui.state.*
 fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, busy: Boolean, onConnect: () -> Unit,
     onOpen: (Space) -> Unit, onDetach: (Space) -> Unit, modifier: Modifier = Modifier,
     onConnectServer: ((String, String, String) -> Unit)? = null, onOpenPath: ((Space, String) -> Unit)? = null,
-    onOpenCategory: ((Space, FileCategory) -> Unit)? = null) {
+    onOpenCategory: ((Space, FileCategory) -> Unit)? = null, onOpenTrash: ((Space) -> Unit)? = null) {
     var serverDialog by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf<Space?>(null) }
     var renaming by remember { mutableStateOf<Space?>(null) }
@@ -89,7 +89,8 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
                 leading = { BrandIcon(Res.drawable.ic_search, size = 48.dp) },
                 onClick = { onOpenCategory?.invoke(device.copy(name = title(device)), FileCategory.All) })
             Spacer(Modifier.height(8.dp))
-            QuickPlaces(enabled = connected && !busy, onCategory = { c -> onOpenCategory?.invoke(device.copy(name = title(device)), c) }) { path -> onOpenPath(device.copy(name = title(device)), path) }
+            QuickPlaces(enabled = connected && !busy, onCategory = { c -> onOpenCategory?.invoke(device.copy(name = title(device)), c) },
+                onTrash = onOpenTrash?.let { open -> { open(device.copy(name = title(device))) } }) { path -> onOpenPath(device.copy(name = title(device)), path) }
             SectionLabel(tr("Хранилища устройства и папки", "Storage and folders"))
         }
         GroupedList(visible) { space, position ->
@@ -215,7 +216,7 @@ private fun gb(bytes: Long): String {
 
 /** Standard shared-storage folders as coloured shaped tiles (reference: Strata "Места"). */
 @Composable
-private fun QuickPlaces(enabled: Boolean, onCategory: (FileCategory) -> Unit, onOpen: (String) -> Unit) {
+private fun QuickPlaces(enabled: Boolean, onCategory: (FileCategory) -> Unit, onTrash: (() -> Unit)? = null, onOpen: (String) -> Unit) {
     data class Quick(val label: String, val path: String, val category: FileCategory?, val icon: DrawableResource)
     val items = listOf(
         Quick(tr("Загрузки", "Downloads"), "Download", null, Res.drawable.place_download),
@@ -227,14 +228,14 @@ private fun QuickPlaces(enabled: Boolean, onCategory: (FileCategory) -> Unit, on
     )
     var trashInfo by remember { mutableStateOf(false) }
     if (trashInfo) AlertDialog(onDismissRequest = { trashInfo = false }, title = { Text(tr("Корзина", "Trash")) },
-        text = { Text(tr("Корзина появится вместе с доработкой удаления в ядре (после закрытия находок аудита). Сейчас «Удалить» удаляет сразу.",
-            "Trash arrives with the core delete rework (after the audit findings are closed). Delete currently removes immediately.")) },
+        text = { Text(tr("Для этой памяти корзина недоступна: «Удалить» удаляет сразу.",
+            "Trash is not available for this storage: Delete removes immediately.")) },
         confirmButton = { TextButton(onClick = { trashInfo = false }) { Text(tr("Понятно", "OK")) } })
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items.chunked(3).forEach { row ->
             Row(Modifier.fillMaxWidth()) {
                 row.forEach { q ->
-                    Column(Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).clickable(enabled = enabled, role = Role.Button) { if (q.path == TRASH) trashInfo = true else q.category?.let(onCategory) ?: onOpen(q.path) }
+                    Column(Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).clickable(enabled = enabled, role = Role.Button) { if (q.path == TRASH) { if (onTrash != null) onTrash() else trashInfo = true } else q.category?.let(onCategory) ?: onOpen(q.path) }
                         .padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         BrandIcon(q.icon, size = 76.dp)
                         Text(q.label, style = MaterialTheme.typography.labelLarge, maxLines = 1)

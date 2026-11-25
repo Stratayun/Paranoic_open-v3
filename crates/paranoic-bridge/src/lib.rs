@@ -29,6 +29,8 @@ pub use vault_io::*;
 pub use document_workers::*;
 mod sync;
 pub use sync::*;
+mod trash;
+pub use trash::*;
 pub use documents::*;
 pub use attention::*;
 pub use features::*;

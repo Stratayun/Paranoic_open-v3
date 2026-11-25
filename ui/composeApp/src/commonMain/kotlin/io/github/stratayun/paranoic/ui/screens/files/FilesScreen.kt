@@ -43,6 +43,7 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
     var renaming by remember(state.folder) { mutableStateOf<FileItem?>(null) }
     var deleting by remember(state.folder) { mutableStateOf<FileItem?>(null) }
     var batchAction by remember(state.folder, session.secretsEpoch) { mutableStateOf<Pair<FileBatchKind, List<FileItem>>?>(null) }
+    var trashing by remember(state.folder, session.secretsEpoch) { mutableStateOf<List<FileItem>?>(null) }
     var cryptoSource by remember(state.folder, session.secretsEpoch) { mutableStateOf<FileItem?>(null) }
     var decrypting by remember { mutableStateOf(false) }
     var archiveSources by remember(state.folder, session.secretsEpoch) { mutableStateOf<List<FileItem>>(emptyList()) }
@@ -233,7 +234,8 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
                 // SAF folder deletion is deliberately absent: deleteDocument can remove new children in a race.
                 val deletable = selectedItems.none { it.kind == EntryKind.Directory && state.spaces.spaceOf(it.location)?.androidTree == true }
                 if (deletable) Action(AppSymbol.Trash, tr("Удалить…", "Delete…"), canAct && selectedItems.all { it.canDelete(state.spaces) }) {
-                    if (selectedItems.size > 1) batchAction = FileBatchKind.Delete to selectedItems.toList() else deleting = selected
+                    if (session.trashAvailable(selectedItems.toList())) trashing = selectedItems.toList()
+                    else if (selectedItems.size > 1) batchAction = FileBatchKind.Delete to selectedItems.toList() else deleting = selected
                 }
                 Box {
                     Action(AppSymbol.More, tr("Ещё действия", "More actions"), true) { moreMenu = true }
@@ -292,7 +294,7 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
                     run = act { renaming = item }),
                 if (!(item.kind == EntryKind.Directory && state.spaces.spaceOf(item.location)?.androidTree == true))
                     SheetAction(tr("Удалить", "Delete"), AppSymbol.Trash, single && item.canDelete(state.spaces), danger = true,
-                        run = act { deleting = item }) else null,
+                        run = act { if (session.trashAvailable(listOf(item))) trashing = listOf(item) else deleting = item }) else null,
             )),
             SheetGroup(tr("Инструменты", "Tools"), listOfNotNull(
                 if (!isArchive(item)) SheetAction(tr("Сжать…", "Compress…"), AppSymbol.Archive, single && item.canCopy(state.spaces),
@@ -341,6 +343,12 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
             renaming = null
             inTab { session.rename(source, name) }
         }
+    }
+    trashing?.let { sources ->
+        TrashConfirmDialog(sources.size, sources.singleOrNull()?.name,
+            onTrash = { trashing = null; inTab { session.moveToTrash(sources) } },
+            onPermanent = { trashing = null; if (sources.size > 1) batchAction = FileBatchKind.Delete to sources else deleting = sources.single() },
+            onDismiss = { trashing = null })
     }
     deleting?.let { source ->
         DeleteEntryDialog(source, onDismiss = { deleting = null }) { recursive ->

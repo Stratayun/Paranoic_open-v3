@@ -1,3 +1,6 @@
+import java.time.ZonedDateTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
@@ -12,6 +15,10 @@ plugins {
 val nativeScript = rootProject.projectDir.parentFile.resolve("tools/build/native.py")
 val pythonCommand = providers.gradleProperty("paranoic.python").orElse(if (System.getProperty("os.name").startsWith("Windows")) "python" else "python3")
 val generatedCoreBindings = layout.buildDirectory.dir("generated/uniffi")
+val gitCommit = providers.exec {
+    commandLine("git", "rev-parse", "--short=7", "HEAD")
+    isIgnoreExitValue = true
+}.standardOutput.asText.map { it.trim().ifEmpty { "nogit" } }.orElse("nogit")
 val androidAbis = providers.gradleProperty("paranoic.androidAbis").orElse("arm64-v8a,x86_64")
 // PDFium (B3): "fetch" = pinned, SHA-256-checked release (tools/build/native.py); "none" = offline build without PDF.
 val pdfiumMode = providers.gradleProperty("paranoic.pdfium").orElse("fetch")
@@ -100,8 +107,11 @@ android {
         applicationId = "io.github.stratayun.paranoic"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "2.1-ui-foundation"
+        // Every build is identifiable on the phone (Diagnostics → "App:"):
+        // commit and UTC build time; versionCode grows so installs never look like a downgrade.
+        val built = ZonedDateTime.now(ZoneOffset.UTC)
+        versionCode = ((built.toEpochSecond() - 1_767_225_600L) / 60).toInt().coerceAtLeast(1)
+        versionName = "2.1 · ${gitCommit.get()} · ${built.format(DateTimeFormatter.ofPattern("dd.MM HH:mm"))} UTC"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += androidAbis.get().split(",") }
     }

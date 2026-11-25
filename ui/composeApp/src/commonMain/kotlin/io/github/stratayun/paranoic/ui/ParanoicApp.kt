@@ -224,7 +224,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                     onOpen = { space -> openSpace(space); scope.launch { placesDrawer.close() } },
                                     onDetach = detachSpace, onConnectServer = connectServer,
                                     onOpenPath = { space, path -> leaveDocument { session.openPath(space, path); destination = Destination.Files }; scope.launch { placesDrawer.close() } },
-                                    onOpenCategory = { space, category -> leaveDocument { session.categories.open(space, category); destination = Destination.Files }; scope.launch { placesDrawer.close() } })
+                                    onOpenCategory = { space, category -> leaveDocument { session.categories.open(space, category); destination = Destination.Files }; scope.launch { placesDrawer.close() } },
+                                    onOpenTrash = { space -> session.trashView = space; scope.launch { placesDrawer.close() } })
                                 }
                                 drawerFooter(true)
                             }
@@ -333,7 +334,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                     SpacesPanel(session.files.spaces, session.places, core.connected, session.writing || documentExit.busy, guardedPickFolder, openSpace, detachSpace,
                                         onConnectServer = connectServer,
                                         onOpenPath = { space, path -> leaveDocument { session.openPath(space, path); destination = Destination.Files } },
-                                        onOpenCategory = { space, category -> leaveDocument { session.categories.open(space, category); destination = Destination.Files } })
+                                        onOpenCategory = { space, category -> leaveDocument { session.categories.open(space, category); destination = Destination.Files } },
+                                        onOpenTrash = { space -> session.trashView = space })
                                     }
                                     drawerFooter(false)
                                 }
@@ -379,6 +381,9 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                     else tr("Несохранённые правки будут потеряны.", "Unsaved edits will be lost.")) },
                 confirmButton = { TextButton(onClick = documentExit::discard) { Text(tr("Продолжить", "Continue")) } },
                 dismissButton = { TextButton(onClick = documentExit::cancel) { Text(tr("Остаться", "Stay")) } })
+            session.trashView?.let { space ->
+                io.github.stratayun.paranoic.ui.screens.files.TrashScreen(session, space, onClose = { session.trashView = null })
+            }
             if (pickerFailed) AlertDialog(onDismissRequest = { pickerFailed = false },
                 title = { Text(tr("Выбор папки недоступен", "Folder selection unavailable")) },
                 text = { Text(tr("Не удалось получить доступ к выбранной папке.", "Access to the selected folder could not be obtained.")) },

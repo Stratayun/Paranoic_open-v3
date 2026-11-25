@@ -118,3 +118,37 @@ fn at(space: &NativeSpace, path: &str) -> NativeLocation { NativeLocation { stor
     assert_eq!(first.id, again.id);
     rt.shutdown().unwrap();
 }
+
+/// Trash: delete moves into .Trash-Paranoic, restore puts it back without
+/// replacing, purge erases only that entry.
+#[test] fn trash_put_list_restore_purge() {
+    let fx = Fixture(std::env::temp_dir().join(format!("paranoic-trash-{}", Uuid::new_v4())));
+    for d in ["state", "workspace", "external"] { fs::create_dir_all(fx.0.join(d)).unwrap(); }
+    #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&fx.0, fs::Permissions::from_mode(0o700)).unwrap(); }
+    let rt = NativeRuntime::new(fx.0.join("state").to_str().unwrap().into(), fx.0.join("workspace").to_str().unwrap().into(),
+        String::new(), String::new(), vec![], Arc::new(NoDocs), Arc::new(NoSealer)).unwrap();
+    let ext = rt.attach(NativeGrant { id: id(), reference: fx.0.join("external").to_str().unwrap().into(), android_tree: false }).unwrap();
+    let ex = |p: &str| fx.0.join("external").join(p);
+    fs::create_dir_all(ex("docs/deep")).unwrap();
+    fs::write(ex("docs/deep/a.txt"), b"keep me").unwrap();
+    fs::write(ex("b.txt"), b"bee").unwrap();
+    assert!(rt.trash_supported(ext.root.storage_id.clone()));
+    rt.trash_put(at(&ext, "docs/deep/a.txt")).unwrap();
+    rt.trash_put(at(&ext, "b.txt")).unwrap();
+    assert!(!ex("docs/deep/a.txt").exists() && !ex("b.txt").exists());
+    let items = rt.trash_list(ext.root.storage_id.clone()).unwrap();
+    assert_eq!(items.len(), 2);
+    let a = items.iter().find(|i| i.name == "a.txt").unwrap().clone();
+    assert_eq!(a.original_folder, "docs/deep");
+    assert!(rt.trash_put(at(&ext, ".Trash-Paranoic")).is_err(), "the trash itself cannot be trashed");
+    // Restore refuses to replace a new file of the same name.
+    fs::write(ex("docs/deep/a.txt"), b"newer").unwrap();
+    assert!(rt.trash_restore(ext.root.storage_id.clone(), a.bucket.clone()).is_err());
+    assert_eq!(fs::read(ex("docs/deep/a.txt")).unwrap(), b"newer");
+    fs::remove_file(ex("docs/deep/a.txt")).unwrap();
+    rt.trash_restore(ext.root.storage_id.clone(), a.bucket.clone()).unwrap();
+    assert_eq!(fs::read(ex("docs/deep/a.txt")).unwrap(), b"keep me");
+    assert_eq!(rt.trash_empty(ext.root.storage_id.clone()).unwrap(), 1);
+    assert!(rt.trash_list(ext.root.storage_id.clone()).unwrap().is_empty());
+    assert!(ex("docs/deep/a.txt").exists(), "purge touched a restored file");
+}

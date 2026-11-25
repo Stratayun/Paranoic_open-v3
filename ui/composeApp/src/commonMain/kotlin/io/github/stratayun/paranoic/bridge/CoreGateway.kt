@@ -94,6 +94,13 @@ interface CoreGateway {
     suspend fun clearDiagnostics(): CoreResult<Unit> = unsupported()
     /** Does this place's filesystem honour atomic create-if-absent rename? See [RenameProbe]. */
     suspend fun renameProbe(space: Space): CoreResult<RenameProbe> = unsupported()
+    /** Trash of a device place (`.Trash-Paranoic`): delete moves there, nothing is erased until purged. */
+    suspend fun trashSupported(space: Space): Boolean = false
+    suspend fun trashPut(source: Location): CoreResult<Unit> = unsupported()
+    suspend fun trashList(space: Space): CoreResult<List<TrashItem>> = unsupported()
+    suspend fun trashRestore(space: Space, bucket: String): CoreResult<Unit> = unsupported()
+    suspend fun trashPurge(space: Space, bucket: String): CoreResult<Unit> = unsupported()
+    suspend fun trashEmpty(space: Space): CoreResult<Int> = unsupported()
 
     // ---- Own server (WebDAV). The token is sealed by the device key in Rust;
     // the connection is persisted only after it worked.
@@ -336,3 +343,6 @@ object DisconnectedCoreGateway : CoreGateway {
 
 /** Result of the diagnostics rename check (audit finding 1). */
 enum class RenameProbe { Supported, Unsupported, Ignored, Failed, NotLocal }
+
+/** One entry in a place's trash. [bucket] is opaque; [originalFolder] "" = root. */
+data class TrashItem(val bucket: String, val name: String, val originalFolder: String, val deletedMs: Long, val folder: Boolean, val bytes: Long)

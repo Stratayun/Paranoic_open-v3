@@ -40,6 +40,7 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
     var sheet by remember(state.category) { mutableStateOf<FileItem?>(null) }
     var info by remember(state.category) { mutableStateOf<FileItem?>(null) }
     var deleting by remember(state.category) { mutableStateOf<FileItem?>(null) }
+    var permanent by remember { mutableStateOf(false) }
     var renaming by remember(state.category) { mutableStateOf<FileItem?>(null) }
     var transferring by remember(state.category) { mutableStateOf<Pair<FileItem, TransferMode>?>(null) }
     var rescan by remember(state.category) { mutableStateOf(false) }
@@ -151,12 +152,17 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
     renaming?.let { source ->
         RenameEntryDialog(source, onDismiss = { renaming = null }) { name -> renaming = null; session.renameFound(source, name); rescan = true }
     }
-    deleting?.let { source ->
-        AlertDialog(onDismissRequest = { deleting = null }, title = { Text(tr("Удалить «${displayName(source.name)}»?", "Delete \"${displayName(source.name)}\"?")) },
+    deleting?.takeIf { session.trashAvailable(listOf(it)) && !permanent }?.let { source ->
+        io.github.stratayun.paranoic.ui.screens.files.TrashConfirmDialog(1, source.name,
+            onTrash = { deleting = null; session.moveToTrash(listOf(source)); rescan = true },
+            onPermanent = { permanent = true }, onDismiss = { deleting = null })
+    }
+    deleting?.takeIf { !session.trashAvailable(listOf(it)) || permanent }?.let { source ->
+        AlertDialog(onDismissRequest = { deleting = null; permanent = false }, title = { Text(tr("Удалить «${displayName(source.name)}»?", "Delete \"${displayName(source.name)}\"?")) },
             text = { Text(tr("Файл будет удалён без корзины. Отменить нельзя.", "The file is deleted without a trash. This cannot be undone.")) },
-            confirmButton = { TextButton(enabled = canWrite, onClick = { deleting = null; session.deleteFound(source); rescan = true }) {
+            confirmButton = { TextButton(enabled = canWrite, onClick = { deleting = null; permanent = false; session.deleteFound(source); rescan = true }) {
                 Text(tr("Удалить", "Delete"), color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { deleting = null }) { Text(tr("Отмена", "Cancel")) } })
+            dismissButton = { TextButton(onClick = { deleting = null; permanent = false }) { Text(tr("Отмена", "Cancel")) } })
     }
     info?.let { item ->
         AlertDialog(onDismissRequest = { info = null }, title = { Text(displayName(item.name)) }, text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

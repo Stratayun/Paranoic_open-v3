@@ -133,8 +133,39 @@ class AppSession(val core: CoreGateway, private val scope: CoroutineScope, priva
             val result = read { core.spaces() }
             if (request != spacesRevision) return@launch
             when (result) {
-                is CoreResult.Value -> files = files.copy(spaces = result.value)
+                is CoreResult.Value -> { files = files.copy(spaces = result.value); refreshTrashSpaces(result.value) }
                 is CoreResult.Failure -> files = files.copy(fault = result.fault)
+            }
+        }
+    }
+    /** Places whose delete goes to the trash (device folders with atomic no-replace move). */
+    var trashSpaces by mutableStateOf<Set<String>>(emptySet()); private set
+    /** The trash screen is open for this place. */
+    var trashView by mutableStateOf<Space?>(null)
+    private fun refreshTrashSpaces(spaces: List<Space>) {
+        workScope.launch {
+            trashSpaces = spaces.filter { it.writable && !it.cloud && !it.androidTree }
+                .filter { core.trashSupported(it) }.map { it.root.storageId }.toSet()
+        }
+    }
+    fun trashAvailable(items: List<FileItem>) = items.isNotEmpty() && items.all { it.location.storageId in trashSpaces }
+    /** Move entries into their place's trash; reversible from the trash screen. */
+    fun moveToTrash(items: List<FileItem>, onDone: () -> Unit = {}) {
+        if (writing || !core.connected || !trashAvailable(items)) { writeFault = CoreFault.Unsupported; return }
+        writing = true
+        workScope.launch {
+            var failure: CoreFault? = null
+            try {
+                for (item in items) {
+                    val result = core.trashPut(item.location)
+                    if (result is CoreResult.Failure) { failure = result.fault; break }
+                }
+            } finally {
+                writing = false
+                writeFault = failure
+                clearSelection()
+                refresh()
+                onDone()
             }
         }
     }
