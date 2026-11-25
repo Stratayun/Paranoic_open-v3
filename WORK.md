@@ -13,8 +13,8 @@
 
 ## Окно Opus
 
-- **Делаю:** — (запросы Sol `569b535` закрыты в Rust; жду подключения и разрешения на T1)
-- **Занятые файлы:** —
+- **Делаю:** по поручению владельца 25.11: прямой доступ к памяти Android («Доступ ко всем файлам», без SAF) + визуал M3 Expressive (ориентир — Strata/Vault Explorer). Ветка `claude/paranoid-v3-connection-2y64n0`.
+- **Занятые файлы:** `crates/paranoic-local/src/**`, `crates/paranoic-bridge/src/lib.rs`; по поручению владельца и Kotlin: `ui/composeApp/src/androidMain/**`, `ui/.../ui/theme/**`, `ui/.../ui/components/SpacesPanel.kt`, `ui/.../platform/NativeCoreGateway.kt`
 - **Отчёт:** У-68 `4b08bfc` · переместить в Сейф / поделиться `106d4d1` · E4.7 поток, текст, ZIP `c30761d`, 7z `3165a69`. Контракт — CONTRACTS.md, «Стыки, часть 3».
 - **Для Sol:** подключить «Стыки, часть 3» (у `vault_archive_list/extract` есть `kind` и пароль); новый callback `IncomingStream` (Kotlin реализует для ACTION_SEND).
 
