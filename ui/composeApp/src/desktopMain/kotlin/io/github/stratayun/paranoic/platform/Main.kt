@@ -27,11 +27,12 @@ fun main() {
             appendLine("Paranoic could not start (${System.getProperty("os.name")}, Java ${System.getProperty("java.version")}).")
             appendLine(error.stackTraceToString().take(6000))
         }
-        val file = try {
-            Paths.get(System.getenv("LOCALAPPDATA") ?: System.getProperty("user.home"), "Paranoic", "startup-error.txt").also {
-                java.nio.file.Files.createDirectories(it.parent); java.nio.file.Files.writeString(it, text)
-            }
-        } catch (_: Exception) { null }
+        // Next to Paranoic.exe first (easy to find), then the user's app data.
+        val besideExe = System.getProperty("jpackage.app-path")?.let { Paths.get(it).toAbsolutePath().parent?.resolve("startup-error.txt") }
+        val inAppData = Paths.get(System.getenv("LOCALAPPDATA") ?: System.getProperty("user.home"), "Paranoic", "startup-error.txt")
+        val file = listOfNotNull(besideExe, inAppData).firstNotNullOfOrNull { target ->
+            try { java.nio.file.Files.createDirectories(target.parent); java.nio.file.Files.writeString(target, text); target } catch (_: Exception) { null }
+        }
         try {
             javax.swing.JOptionPane.showMessageDialog(null, (text.lineSequence().take(12).joinToString("\n")) +
                 (file?.let { "\n\nПолный текст / full text: $it" } ?: ""), "Paranoic", javax.swing.JOptionPane.ERROR_MESSAGE)
