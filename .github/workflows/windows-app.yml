@@ -1,8 +1,14 @@
 name: Windows app (exe/msi)
 
-# Owner's request: a Windows build to try the app. Manual only.
+# Owner's request: a Windows build to try the app. Runs only when this file
+# changes on the working branch (a manual dispatch needs the file on main);
+# to rebuild, bump the build note below. Ordinary pushes do not start it.
+# Build note: 1
 on:
   workflow_dispatch:
+  push:
+    branches: [claude/paranoid-v3-connection-2y64n0]
+    paths: [.github/workflows/windows-app.yml]
 
 jobs:
   package:
