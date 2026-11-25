@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import io.github.stratayun.paranoic.resources.*
 import io.github.stratayun.paranoic.ui.state.actionDescription
 import io.github.stratayun.paranoic.ui.state.tr
 
@@ -39,12 +40,12 @@ fun DrawerFooter(
     Column(modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         SectionLabel(tr("Инструменты", "Tools"))
         val rows = listOf(
-            Triple(tr("Синхронизация и бэкап", "Sync and backup"), AppSymbol.Sync, onSync),
-            Triple(tr("Диагностика", "Diagnostics"), AppSymbol.Analytics, onDiagnostics),
+            Triple(tr("Синхронизация и бэкап", "Sync and backup"), Res.drawable.ic_sync, onSync),
+            Triple(tr("Диагностика", "Diagnostics"), Res.drawable.ic_stats, onDiagnostics),
         )
         GroupedList(rows) { (label, symbol, action), position ->
             GroupedRow(label, position, enabled = enabled,
-                leading = { ShapedIcon(symbol, ExpressiveShapes.Cookie9, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 44.dp) },
+                leading = { BrandIcon(symbol, size = 48.dp) },
                 onClick = action)
         }
         Spacer(Modifier.height(12.dp))

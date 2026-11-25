@@ -1,6 +1,8 @@
 package io.github.stratayun.paranoic.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -154,25 +156,42 @@ fun AccentCard(title: String, subtitle: String, symbol: AppSymbol, onClick: () -
     }
 }
 
-/** Wavy determinate progress (M3 Expressive): wave up to [progress], flat track after. */
+/** Wavy determinate progress: a flowing purple→blue wave up to [progress] with a glowing tip, flat track after. */
 @Composable
 fun WavyProgress(progress: Float, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.primary,
-    track: Color = MaterialTheme.colorScheme.surfaceContainerHighest, thickness: Dp = 6.dp, wavelength: Dp = 28.dp) {
+    track: Color = MaterialTheme.colorScheme.surfaceContainerHighest, thickness: Dp = 8.dp, wavelength: Dp = 40.dp, animated: Boolean = true) {
     val value = progress.coerceIn(0f, 1f)
-    Canvas(modifier.fillMaxWidth().height(thickness * 3)) {
+    val shift = if (animated) {
+        val transition = rememberInfiniteTransition(label = "wave")
+        transition.animateFloat(0f, 1f, infiniteRepeatable(tween(2600, easing = LinearEasing)), label = "phase").value
+    } else 0f
+    val start = Color(0xFF8E7CF8)
+    val end = Color(0xFF4FC3F7)
+    Canvas(modifier.fillMaxWidth().height(thickness * 3.2f)) {
         val stroke = thickness.toPx()
         val cy = size.height / 2
-        val amplitude = (size.height - stroke) / 2 * 0.6f
-        val end = size.width * value
-        val gap = stroke * 1.5f
-        if (end + gap < size.width) drawLine(track, Offset(end + gap, cy), Offset(size.width - stroke / 2, cy), stroke, StrokeCap.Round)
-        if (end > stroke) {
+        val amplitude = (size.height - stroke) / 2 * 0.55f
+        val endX = size.width * value
+        drawLine(track, Offset(stroke / 2, cy), Offset(size.width - stroke / 2, cy), stroke, StrokeCap.Round)
+        if (endX > stroke) {
             val path = Path()
             val k = 2 * PI.toFloat() / wavelength.toPx()
+            val phase = shift * 2 * PI.toFloat()
             var x = stroke / 2
-            path.moveTo(x, cy)
-            while (x <= end) { path.lineTo(x, cy + amplitude * sin(k * x)); x += 2f }
-            drawPath(path, color, style = Stroke(stroke, cap = StrokeCap.Round))
+            // The wave flattens toward both ends so it meets the track smoothly.
+            fun y(at: Float) = cy + amplitude * sin(k * at - phase) * sin(PI.toFloat() * (at / endX).coerceIn(0f, 1f))
+            path.moveTo(x, y(x))
+            while (x <= endX) { path.lineTo(x, y(x)); x += 2f }
+            drawPath(path, Brush.horizontalGradient(listOf(start, end), 0f, endX), style = Stroke(stroke, cap = StrokeCap.Round))
+            val tip = Offset(endX, y(endX))
+            drawCircle(Brush.radialGradient(listOf(end.copy(alpha = 0.55f), Color.Transparent), tip, stroke * 2.4f), stroke * 2.4f, tip)
+            drawCircle(Color.White, stroke * 0.55f, tip)
         }
     }
+}
+
+/** Icons from the Paranoic icon set (glass blobs). Decorative. */
+@Composable
+fun BrandIcon(icon: org.jetbrains.compose.resources.DrawableResource, modifier: Modifier = Modifier, size: Dp = 48.dp) {
+    androidx.compose.foundation.Image(org.jetbrains.compose.resources.painterResource(icon), contentDescription = null, modifier = modifier.size(size))
 }

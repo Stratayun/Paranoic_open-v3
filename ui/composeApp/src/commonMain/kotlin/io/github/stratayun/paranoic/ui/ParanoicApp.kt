@@ -242,6 +242,10 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                 if (incomingDocuments.documents.isNotEmpty()) TextButton(onClick = {
                                     leaveDocument { destination = Destination.Notes }
                                 }) { Text(tr("Входящие (${incomingDocuments.documents.size})", "Incoming (${incomingDocuments.documents.size})")) }
+                                val searchPlace = session.files.spaces.userPlaces().firstOrNull { it.detachable && !it.cloud && !it.androidTree }
+                                if (destination == Destination.Files && searchPlace != null && session.categories.state == null)
+                                    IconButton(onClick = { session.categories.open(searchPlace, FileCategory.All) },
+                                        modifier = Modifier.actionDescription(tr("Поиск по всем файлам", "Search all files"))) { AppIcon(AppSymbol.Search) }
                                 // Tasks appear here only while something runs; everything else lives in the ☰ menu.
                                 val running = session.jobs.count { it.phase == JobPhase.Queued || it.phase == JobPhase.Running }
                                 if (running > 0) IconButton(onClick = { leaveDocument { destination = Destination.Operations } },

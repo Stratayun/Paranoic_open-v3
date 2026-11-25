@@ -16,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.stratayun.paranoic.bridge.Space
+import io.github.stratayun.paranoic.resources.*
+import org.jetbrains.compose.resources.DrawableResource
 import io.github.stratayun.paranoic.ui.state.*
 
 /** Places are navigation entries. Hiding one does not revoke its grant or delete files. */
@@ -82,6 +84,11 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
             enabled = connected && !busy, onClick = { onOpen(device.copy(name = title(device))) })
         if (device != null && onOpenPath != null) {
             SectionLabel(tr("Места", "Places"))
+            GroupedRow(tr("Поиск по всем файлам", "Search all files"), GroupPosition.Single, enabled = connected && !busy,
+                subtitle = tr("По имени и типу на всём устройстве", "By name and kind across the device"),
+                leading = { BrandIcon(Res.drawable.ic_search, size = 48.dp) },
+                onClick = { onOpenCategory?.invoke(device.copy(name = title(device)), FileCategory.All) })
+            Spacer(Modifier.height(8.dp))
             QuickPlaces(enabled = connected && !busy, onCategory = { c -> onOpenCategory?.invoke(device.copy(name = title(device)), c) }) { path -> onOpenPath(device.copy(name = title(device)), path) }
             SectionLabel(tr("Хранилища устройства и папки", "Storage and folders"))
         }
@@ -89,8 +96,12 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
             val index = visible.indexOf(space)
             var menu by remember(space.id) { mutableStateOf(false) }
             GroupedRow(displayName(title(space)), position, subtitle = kind(space), enabled = connected && !busy,
-                leading = { ShapedIcon(symbol(space), ExpressiveShapes.gallery[index % ExpressiveShapes.gallery.size],
-                    scheme.secondaryContainer, scheme.onSecondaryContainer) },
+                leading = { BrandIcon(when {
+                    space.cloud -> Res.drawable.ic_cloud
+                    space.androidTree -> Res.drawable.ic_folder
+                    space.name.contains("SD", ignoreCase = true) -> Res.drawable.ic_sdcard
+                    else -> Res.drawable.ic_devices
+                }, size = 48.dp) },
                 trailing = {
                     Box {
                         IconButton(onClick = { menu = true },
@@ -180,7 +191,8 @@ private fun StorageCard(title: String, usage: VolumeUsage, enabled: Boolean, onC
     val used = 1f - usage.freeBytes.toFloat() / usage.totalBytes
     Surface(Modifier.fillMaxWidth().padding(top = 8.dp), shape = RoundedCornerShape(32.dp), color = scheme.surfaceContainerHigh) {
         Column(Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                BrandIcon(Res.drawable.ic_storage, size = 44.dp)
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.titleLarge)
                     Text(tr("Свободно ", "Free ") + gb(usage.freeBytes) + tr(" из ", " of ") + gb(usage.totalBytes),
@@ -204,14 +216,14 @@ private fun gb(bytes: Long): String {
 /** Standard shared-storage folders as coloured shaped tiles (reference: Strata "Места"). */
 @Composable
 private fun QuickPlaces(enabled: Boolean, onCategory: (FileCategory) -> Unit, onOpen: (String) -> Unit) {
-    data class Quick(val label: String, val path: String, val category: FileCategory?, val symbol: AppSymbol, val shape: androidx.compose.ui.graphics.Shape, val bg: Color, val fg: Color)
+    data class Quick(val label: String, val path: String, val category: FileCategory?, val icon: DrawableResource)
     val items = listOf(
-        Quick(tr("Загрузки", "Downloads"), "Download", null, AppSymbol.Download, ExpressiveShapes.Triangle, Color(0xFF2E5B34), Color(0xFFB6F2AF)),
-        Quick(tr("Изображения", "Pictures"), "Pictures", FileCategory.Images, AppSymbol.Photo, ExpressiveShapes.Flower, Color(0xFF1F4D47), Color(0xFFA6F0E3)),
-        Quick(tr("Камера", "Camera"), "DCIM", null, AppSymbol.Camera, ExpressiveShapes.Sunny, Color(0xFF2B3F7A), Color(0xFFDCE1FF)),
-        Quick(tr("Фильмы", "Movies"), "Movies", FileCategory.Videos, AppSymbol.Video, ExpressiveShapes.Cookie6, Color(0xFF51336E), Color(0xFFF0DBFF)),
-        Quick(tr("Музыка", "Music"), "Music", FileCategory.Music, AppSymbol.Audio, ExpressiveShapes.Cookie9, Color(0xFF6A2F52), Color(0xFFFFD8EC)),
-        Quick(tr("Документы", "Documents"), "Documents", FileCategory.Documents, AppSymbol.Document, ExpressiveShapes.Clover, Color(0xFF6E2E2E), Color(0xFFFFDAD6)),
+        Quick(tr("Загрузки", "Downloads"), "Download", null, Res.drawable.place_download),
+        Quick(tr("Изображения", "Pictures"), "Pictures", FileCategory.Images, Res.drawable.place_images),
+        Quick(tr("Камера", "Camera"), "DCIM", null, Res.drawable.place_camera),
+        Quick(tr("Фильмы", "Movies"), "Movies", FileCategory.Videos, Res.drawable.place_video),
+        Quick(tr("Музыка", "Music"), "Music", FileCategory.Music, Res.drawable.place_music),
+        Quick(tr("Документы", "Documents"), "Documents", FileCategory.Documents, Res.drawable.place_documents),
     )
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items.chunked(3).forEach { row ->
@@ -219,7 +231,7 @@ private fun QuickPlaces(enabled: Boolean, onCategory: (FileCategory) -> Unit, on
                 row.forEach { q ->
                     Column(Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).clickable(enabled = enabled, role = Role.Button) { q.category?.let(onCategory) ?: onOpen(q.path) }
                         .padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        ShapedIcon(q.symbol, q.shape, q.bg, q.fg, size = 64.dp)
+                        BrandIcon(q.icon, size = 76.dp)
                         Text(q.label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
                     }
                 }

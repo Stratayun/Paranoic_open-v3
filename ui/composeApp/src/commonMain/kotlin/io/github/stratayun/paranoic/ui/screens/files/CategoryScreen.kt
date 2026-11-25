@@ -27,6 +27,8 @@ fun FileCategory.label(): String = when (this) {
     FileCategory.Videos -> tr("Фильмы", "Movies")
     FileCategory.Music -> tr("Музыка", "Music")
     FileCategory.Documents -> tr("Документы", "Documents")
+    FileCategory.All -> tr("Поиск", "Search")
+    FileCategory.Archives -> tr("Архивы", "Archives")
 }
 
 /** All files of one kind in a place (drawer quick places). Tap opens; long press shows where it is. */
@@ -54,9 +56,28 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
                 }
             }
         }
+        // Smart search: name part across the whole place, narrowed by kind; re-runs 350 ms after typing stops.
+        var query by remember(state.space.id) { mutableStateOf(state.query) }
+        LaunchedEffect(query) {
+            if (query == state.query) return@LaunchedEffect
+            kotlinx.coroutines.delay(350)
+            session.categories.open(state.space, state.category, query)
+        }
+        OutlinedTextField(query, { if (it.length <= 128) query = it }, Modifier.fillMaxWidth(), singleLine = true,
+            shape = MaterialTheme.shapes.extraLarge, leadingIcon = { AppIcon(AppSymbol.Search) },
+            placeholder = { Text(tr("Искать по имени на всём устройстве", "Search names on the whole device")) },
+            trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { AppIcon(AppSymbol.Close) } })
+        androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(FileCategory.entries) { kind ->
+                FilterChip(selected = kind == state.category, onClick = { session.categories.open(state.space, kind, query) },
+                    label = { Text(kind.label()) }, leadingIcon = { AppIcon(fileSymbolFor(kind), Modifier.size(18.dp)) })
+            }
+        }
         if (state.running) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (state.category == FileCategory.All && query.isBlank()) Text(tr("Введите часть имени файла.", "Type part of a file name."),
+            Modifier.padding(16.dp), color = scheme.onSurfaceVariant)
         state.fault?.let { FaultNotice(it) }
-        if (!state.running && state.items.isEmpty() && state.fault == null) Column(Modifier.fillMaxWidth().padding(top = 48.dp),
+        if (!state.running && state.items.isEmpty() && state.fault == null && !(state.category == FileCategory.All && query.isBlank())) Column(Modifier.fillMaxWidth().padding(top = 48.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ShapedIcon(fileSymbolFor(state.category), ExpressiveShapes.Sunny, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 96.dp)
             Text(tr("Ничего не найдено", "Nothing found"), style = MaterialTheme.typography.titleMedium)
@@ -109,6 +130,7 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
 private fun fileSymbolFor(category: FileCategory) = when (category) {
     FileCategory.Images -> AppSymbol.Photo; FileCategory.Videos -> AppSymbol.Video
     FileCategory.Music -> AppSymbol.Audio; FileCategory.Documents -> AppSymbol.Document
+    FileCategory.All -> AppSymbol.Search; FileCategory.Archives -> AppSymbol.Archive
 }
 
 @Composable
