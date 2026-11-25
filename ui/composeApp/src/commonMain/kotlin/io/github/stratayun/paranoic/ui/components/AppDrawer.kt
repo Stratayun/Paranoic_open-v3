@@ -40,12 +40,14 @@ fun DrawerFooter(
     modifier: Modifier = Modifier,
     onFiles: () -> Unit = {},
     current: Destination? = null,
+    /** False when the internal-memory card above already opens Files (no duplicate entry). */
+    showFiles: Boolean = true,
 ) {
     val scheme = MaterialTheme.colorScheme
     Column(modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         SectionLabel(tr("Разделы", "Sections"))
-        val sections = listOf(
-            Triple(Destination.Files, Res.drawable.ic_tiles, onFiles),
+        val sections = listOfNotNull(
+            Triple(Destination.Files, Res.drawable.ic_tiles, onFiles).takeIf { showFiles },
             Triple(Destination.Encryption, Res.drawable.ic_crypto_folder, onVaults),
             Triple(Destination.Notes, Res.drawable.ic_safe, onSafe),
         )

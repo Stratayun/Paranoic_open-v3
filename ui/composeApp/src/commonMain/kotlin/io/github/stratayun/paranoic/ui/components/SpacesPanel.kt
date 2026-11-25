@@ -79,8 +79,10 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
             tr("Добавьте папку, чтобы начать работу с файлами.", "Add a folder to start browsing files.")
             else tr("Все подключённые места скрыты из меню.", "All connected places are hidden from the menu."),
             Modifier.padding(horizontal = 12.dp), color = scheme.onSurfaceVariant)
+        // Owner (25.11): internal memory, "Files" and the device row were three ways into the
+        // same place. One compact card at the top opens it; the list below keeps only the rest.
         val usage = device?.let { LocalVolumeUsage.current(title(it)) }
-        if (device != null && usage != null && usage.totalBytes > 0) StorageCard(displayName(title(device)), usage,
+        if (device != null) StorageCard(displayName(title(device)), usage?.takeIf { it.totalBytes > 0 },
             enabled = connected && !busy, onClick = { onOpen(device.copy(name = title(device))) })
         if (device != null && onOpenPath != null) {
             SectionLabel(tr("Места", "Places"))
@@ -91,9 +93,10 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
             Spacer(Modifier.height(8.dp))
             QuickPlaces(enabled = connected && !busy, onCategory = { c -> onOpenCategory?.invoke(device.copy(name = title(device)), c) },
                 onTrash = onOpenTrash?.let { open -> { open(device.copy(name = title(device))) } }, trashFull = device.root.storageId in trashFilled) { path -> onOpenPath(device.copy(name = title(device)), path) }
-            SectionLabel(tr("Хранилища устройства и папки", "Storage and folders"))
         }
-        GroupedList(visible) { space, position ->
+        val others = visible.filter { it != device }
+        if (others.isNotEmpty()) SectionLabel(if (device != null) tr("Другие места", "Other places") else tr("Подключённые места", "Connected places"))
+        GroupedList(others) { space, position ->
             val index = visible.indexOf(space)
             var menu by remember(space.id) { mutableStateOf(false) }
             GroupedRow(displayName(title(space)), position, subtitle = kind(space), enabled = connected && !busy,
@@ -186,25 +189,28 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
     }
 }
 
-/** Reference: Strata drawer storage card with a wavy usage bar. */
+/** Internal memory: one compact clickable card with the usage bar (owner's layout). */
 @Composable
-private fun StorageCard(title: String, usage: VolumeUsage, enabled: Boolean, onClick: () -> Unit) {
+private fun StorageCard(title: String, usage: VolumeUsage?, enabled: Boolean, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
-    val used = 1f - usage.freeBytes.toFloat() / usage.totalBytes
-    Surface(Modifier.fillMaxWidth().padding(top = 8.dp), shape = RoundedCornerShape(32.dp), color = scheme.surfaceContainerHigh) {
-        Column(Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Surface(Modifier.fillMaxWidth().padding(top = 8.dp), shape = RoundedCornerShape(28.dp), color = scheme.surfaceContainerHigh) {
+        Column(Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                BrandIcon(Res.drawable.ic_tiles, size = 48.dp)
+                BrandIcon(Res.drawable.ic_tiles, size = 44.dp)
                 Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.titleLarge)
-                    Text(tr("Свободно ", "Free ") + gb(usage.freeBytes) + tr(" из ", " of ") + gb(usage.totalBytes),
-                        style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+                    Text(title, style = MaterialTheme.typography.titleMedium)
+                    Text(usage?.let { tr("Свободно ", "Free ") + gb(it.freeBytes) + tr(" из ", " of ") + gb(it.totalBytes) }
+                        ?: tr("Память устройства", "Device storage"),
+                        style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                 }
-                Box(Modifier.size(56.dp).clip(ExpressiveShapes.Cookie9).background(scheme.secondaryContainer), contentAlignment = Alignment.Center) {
-                    Text("${(used * 100).toInt()}%", style = MaterialTheme.typography.labelLarge, color = scheme.onSecondaryContainer)
+                usage?.let {
+                    val used = 1f - it.freeBytes.toFloat() / it.totalBytes
+                    Text("${(used * 100).toInt()}%", style = MaterialTheme.typography.labelLarge, color = scheme.primary)
                 }
+                AppIcon(AppSymbol.Forward)
             }
-            WavyProgress(used)
+            usage?.let { WavyProgress(1f - it.freeBytes.toFloat() / it.totalBytes, thickness = 14.dp) }
         }
     }
 }

@@ -205,6 +205,7 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                     }
                     Spacer(Modifier.height(8.dp))
                     DrawerFooter(enabled = !documentExit.busy,
+                        showFiles = session.files.spaces.userPlaces().none { !it.cloud && !it.androidTree && !(it.localContainer && !it.detachable) },
                         runningTasks = session.jobs.count { it.phase == JobPhase.Queued || it.phase == JobPhase.Running },
                         onSafe = { go(Destination.Notes) }, onVaults = { go(Destination.Encryption) }, onFiles = { go(Destination.Files) },
                         current = destination,
