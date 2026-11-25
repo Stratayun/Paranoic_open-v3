@@ -144,6 +144,12 @@ impl PrivateDirectory {
 
     /// Reading is explicit; the private directory is never registered in the
     /// general file API. Caller controls the lifetime of plaintext it reads.
+    /// Stored length of a regular-file object (no symlinks), without reading it.
+    pub fn object_len(&self, object: ObjectId) -> Result<u64> {
+        let metadata = self.directory.symlink_metadata(object.name()).map_err(|_| CryptoError::Io)?;
+        if !metadata.is_file() { return Err(CryptoError::InvalidInput); }
+        Ok(metadata.len())
+    }
     pub fn open_object(&self, object: ObjectId) -> Result<impl Read> {
         let name = object.name();
         let metadata = self.directory.symlink_metadata(&name).map_err(|_| CryptoError::Io)?;

@@ -330,6 +330,10 @@ fn snapshot(dir: &std::path::Path) -> Vec<(PathBuf, Vec<u8>)> {
     let mut dangling = book.clone();
     dangling.tabs[0].notes[0].attachments.push(Attachment { id: "0123456789abcdef0123456789abcdef".into(), name: "x".into(), size: 1 });
     assert!(store.save_notebook(&session, &dangling).is_err(), "dangling attachment saved");
+    // Audit 14: a recorded size that differs from the stored object is refused.
+    let mut forged = book.clone();
+    forged.tabs[0].notes[0].attachments[0].size = 1;
+    assert!(matches!(store.save_notebook(&session, &forged), Err(NotesError::Corrupt)), "forged attachment size saved");
     // Per-note limit.
     let mut crowded = book.clone();
     for i in 0..2 { crowded.tabs[0].notes[0].attachments.push(store.add_attachment(&session, &format!("a{i}"), b"x").unwrap()); }

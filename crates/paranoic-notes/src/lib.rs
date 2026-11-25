@@ -524,10 +524,19 @@ impl NotesStore {
     pub fn save_notebook(&self, session: &NotesSession, notebook: &Notebook) -> Result<()> {
         self.check(session)?;
         self.validate(notebook)?;
-        // Every referenced attachment must exist (saved before, or added now).
+        // Every referenced attachment must exist (saved before, or added now),
+        // and its recorded size must be the stored object's (audit 14): the
+        // quota and the shown size come from the objects, not from the caller.
+        let overhead = session.key.seal(&[], CTX_ATTACHMENT).map_err(crypto)?.len() as u64;
+        let mut total = 0u64;
         for attachment in notebook.tabs.iter().flat_map(|t| &t.notes).flat_map(|n| &n.attachments) {
-            if !self.directory.contains(Self::attachment_id(&attachment.id)?).map_err(io)? { return Err(NotesError::Corrupt); }
+            let id = Self::attachment_id(&attachment.id)?;
+            if !self.directory.contains(id).map_err(io)? { return Err(NotesError::Corrupt); }
+            if self.directory.object_len(id).map_err(crypto)? != attachment.size.saturating_add(overhead) { return Err(NotesError::Corrupt); }
+            if attachment.size > self.limits.attachment_bytes { return Err(NotesError::Limit); }
+            total = total.saturating_add(attachment.size);
         }
+        if total > self.limits.attachments_total_bytes { return Err(NotesError::Limit); }
         self.write_notebook(&session.key, notebook)?;
         if let Ok(mut inner) = self.inner.lock() {
             for attachment in notebook.tabs.iter().flat_map(|t| &t.notes).flat_map(|n| &n.attachments) {
