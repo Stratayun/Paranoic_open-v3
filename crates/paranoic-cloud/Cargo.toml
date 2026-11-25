@@ -16,7 +16,7 @@ uuid.workspace = true
 sha2 = "0.10"
 base64 = "0.22"
 zeroize = "1.8"
-quick-xml = "=0.39.4"
+quick-xml = "=0.41.0"
 sha1 = "0.10"
 blake3.workspace = true
 

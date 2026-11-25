@@ -322,7 +322,7 @@ fn parse_multistatus(xml: &[u8]) -> Result<Vec<Props>> {
                 path.push(name); text.clear();
             }
             Event::Empty(e) => if e.local_name().as_ref() == b"collection" { pending.collection = true; },
-            Event::Text(t) => { text.push_str(&t.xml_content().map_err(|_| crate::protocol())?); if text.len() > 65_536 { return Err(crate::protocol()); } }
+            Event::Text(t) => { text.push_str(&t.xml10_content().map_err(|_| crate::protocol())?); if text.len() > 65_536 { return Err(crate::protocol()); } }
             Event::GeneralRef(r) => {
                 let resolved = match r.resolve_char_ref().map_err(|_| crate::protocol())? { Some(c) => c.to_string(), None => match r.decode().map_err(|_| crate::protocol())?.as_ref() {
                     "amp" => "&".into(), "lt" => "<".into(), "gt" => ">".into(), "quot" => "\"".into(), "apos" => "'".into(), _ => return Err(crate::protocol()) } };

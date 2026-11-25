@@ -264,7 +264,7 @@ impl<'a> Xml<'a> {
 /// Text of a Text/CData/GeneralRef event; unknown named entities are rejected.
 fn text<'b>(event: &'b Event<'_>) -> Result<Option<Cow<'b, str>>> {
     Ok(match event {
-        Event::Text(t) => Some(t.xml_content().map_err(|_| invalid())?),
+        Event::Text(t) => Some(t.xml10_content().map_err(|_| invalid())?),
         Event::CData(t) => Some(t.decode().map_err(|_| invalid())?),
         Event::GeneralRef(r) => {
             if let Some(c) = r.resolve_char_ref().map_err(|_| invalid())? { Some(Cow::Owned(c.to_string())) } else {
