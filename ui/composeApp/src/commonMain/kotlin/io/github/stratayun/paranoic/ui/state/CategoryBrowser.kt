@@ -22,7 +22,11 @@ enum class FileCategory(val extensions: Set<String>) {
 }
 
 data class CategoryState(val space: Space, val category: FileCategory, val query: String = "", val items: List<FileItem> = emptyList(),
-    val foldersScanned: Int = 0, val running: Boolean = true, val truncated: Boolean = false, val fault: CoreFault? = null)
+    val foldersScanned: Int = 0, val running: Boolean = true, val truncated: Boolean = false, val fault: CoreFault? = null,
+    /** Folders that could not be listed and entries a listing withheld: the result is incomplete (audit 12). */
+    val unreadable: Int = 0, val withheld: Long = 0) {
+    val incomplete: Boolean get() = truncated || unreadable > 0 || withheld > 0
+}
 
 /**
  * Read-only walk of one place through Core listings, collecting files of a
@@ -46,12 +50,20 @@ class CategoryBrowser(private val core: CoreGateway, private val scope: Coroutin
             val found = mutableListOf<FileItem>()
             var scanned = 0
             var truncated = false
-            while (queue.isNotEmpty() && isActive) {
-                if (scanned >= MAX_FOLDERS || found.size >= MAX_RESULTS) { truncated = true; break }
+            var unreadable = 0
+            var withheld = 0L
+            val optional = mutableSetOf<Location>() // may simply not exist
+            fun publish(running: Boolean) {
+                state = state?.copy(items = sorted(found), foldersScanned = scanned, running = running, truncated = truncated,
+                    unreadable = unreadable, withheld = withheld)
+            }
+            scan@ while (queue.isNotEmpty() && isActive) {
+                if (scanned >= MAX_FOLDERS) { truncated = true; break }
                 val folder = queue.removeFirst()
                 when (val listed = core.list(folder)) {
                     is CoreResult.Value -> {
                         val items = listed.value.items
+                        withheld += listed.value.hidden
                         // Book readers keep a cover image next to each PDF/EPUB ("Book.pdf" + "Book.jpg"):
                         // those are not the user's pictures.
                         val documentStems = if (category == FileCategory.Images) items.filter { it.kind == EntryKind.File &&
@@ -60,18 +72,28 @@ class CategoryBrowser(private val core: CoreGateway, private val scope: Coroutin
                         for (item in items) {
                             val name = item.name
                             when (item.kind) {
-                                EntryKind.Directory -> if (!skipFolder(name, folder == space.root)) queue.addLast(item.location)
-                                EntryKind.File -> if (matches(name) && name.substringBeforeLast('.').lowercase() !in documentStems) found += item
+                                EntryKind.Directory -> when {
+                                    // Android/ holds app data, but Android/media is the users' messenger media.
+                                    folder == space.root && name == "Android" -> Location(item.location.storageId, item.location.path.trimEnd('/') + "/media")
+                                        .also { optional += it; queue.addLast(it) }
+                                    !skipFolder(name, category) -> if (queue.size < MAX_QUEUE) queue.addLast(item.location) else truncated = true
+                                }
+                                EntryKind.File -> if (matches(name) && name.substringBeforeLast('.').lowercase() !in documentStems) {
+                                    // Limits apply as results are added, not only between folders.
+                                    if (found.size >= MAX_RESULTS) { truncated = true; break@scan }
+                                    found += item
+                                }
                                 else -> Unit
                             }
                         }
                     }
                     is CoreResult.Failure -> if (folder == space.root) { state = state?.copy(fault = listed.fault, running = false); return@launch }
+                        else if (folder !in optional) unreadable++
                 }
                 scanned++
-                if (scanned % 20 == 0) state = state?.copy(items = sorted(found), foldersScanned = scanned)
+                if (scanned % 20 == 0) publish(running = true)
             }
-            if (isActive) state = state?.copy(items = sorted(found), foldersScanned = scanned, running = false, truncated = truncated)
+            if (isActive) publish(running = false)
         }
     }
 
@@ -81,10 +103,9 @@ class CategoryBrowser(private val core: CoreGateway, private val scope: Coroutin
 
     private fun sorted(items: List<FileItem>) = items.sortedByDescending { it.modifiedMs ?: 0uL }
 
-    private fun skipFolder(name: String, atRoot: Boolean): Boolean {
-        val lower = name.lowercase()
-        return name.startsWith(".") || (atRoot && name == "Android") || lower in APP_FOLDERS
-    }
+    /** Dot folders always; app cache/cover folders only for media kinds, never in an all-files search (audit 12). */
+    private fun skipFolder(name: String, category: FileCategory): Boolean =
+        name.startsWith(".") || (category != FileCategory.All && name.lowercase() in APP_FOLDERS)
 
     private companion object {
         /** App caches, thumbnails and cover stores: never the user's own media. */
@@ -92,5 +113,6 @@ class CategoryBrowser(private val core: CoreGateway, private val scope: Coroutin
         val BOOKS = setOf("pdf", "epub", "fb2", "djvu", "mobi", "azw3", "cbz", "cbr")
         const val MAX_FOLDERS = 4000
         const val MAX_RESULTS = 5000
+        const val MAX_QUEUE = 20000
     }
 }

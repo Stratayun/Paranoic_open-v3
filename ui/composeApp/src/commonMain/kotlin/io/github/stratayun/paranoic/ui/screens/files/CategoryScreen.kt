@@ -60,7 +60,8 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
                 Column(Modifier.weight(1f)) {
                     Text(state.category.label(), style = MaterialTheme.typography.titleMedium)
                     Text(displayName(state.space.name) + " · " + tr("найдено ${state.items.size}", "${state.items.size} found") +
-                        if (state.running) tr(" · ищем…", " · searching…") else if (state.truncated) tr(" · показаны первые", " · partial") else "",
+                        if (state.running) tr(" · ищем…", " · searching…") else if (state.truncated) tr(" · показаны первые", " · partial")
+                            else if (state.incomplete) tr(" · неполный: ${state.unreadable} папок недоступно", " · incomplete: ${state.unreadable} folders unreadable") else "",
                         style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
                 }
             }
