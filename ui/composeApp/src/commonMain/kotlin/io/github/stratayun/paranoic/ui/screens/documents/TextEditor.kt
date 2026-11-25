@@ -8,6 +8,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import io.github.stratayun.paranoic.ui.components.AppSymbol
+import io.github.stratayun.paranoic.ui.components.AppIcon
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -133,17 +136,42 @@ private fun TextEditorContent(core: CoreGateway, file: FileItem, parent: Locatio
     BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
         val controlsHeight = maxHeight * 0.30f
         Column(Modifier.fillMaxSize().padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            var menu by remember { mutableStateOf(false) }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onClose, enabled = !guard.busy) { Text(tr("Назад", "Back")) }
-                Text(displayName(file.name), Modifier.weight(1f).sectionHeading(),
-                    style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                TextButton(onClick = { details = !details }) { Text(tr("Ещё", "More")) }
+                IconButton(onClick = onClose, enabled = !guard.busy, modifier = Modifier.actionDescription(
+                    if (guard.dirty) tr("Назад без сохранения", "Back without saving") else tr("Назад", "Back"))) { AppIcon(AppSymbol.Back) }
+                Column(Modifier.weight(1f)) {
+                    Text(displayName(file.name), Modifier.sectionHeading(),
+                        style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(when {
+                        guard.busy -> tr("Сохранение…", "Saving…")
+                        guard.dirty -> tr("Изменён · не сохранён", "Modified · not saved")
+                        saved -> tr("Сохранено", "Saved")
+                        else -> document?.let { when (it.encoding) {
+                            TextEncoding.Utf8 -> "UTF-8"; TextEncoding.Utf8Bom -> "UTF-8 BOM"
+                            TextEncoding.Utf16Le -> "UTF-16 LE"; TextEncoding.Utf16Be -> "UTF-16 BE" } }.orEmpty()
+                    }, style = MaterialTheme.typography.labelMedium,
+                        color = if (guard.dirty) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                FilledTonalIconButton(enabled = document != null && guard.dirty && !guard.busy && !guard.uncertain && !changed,
+                    onClick = { save(false) }, modifier = Modifier.actionDescription(tr("Сохранить", "Save"))) { AppIcon(AppSymbol.Save) }
+                Box {
+                    IconButton(onClick = { menu = true }, modifier = Modifier.actionDescription(tr("Ещё", "More"))) { AppIcon(AppSymbol.More) }
+                    DropdownMenu(menu, { menu = false }) {
+                        DropdownMenuItem(text = { Text(tr("Сохранить копию…", "Save a copy…")) }, leadingIcon = { AppIcon(AppSymbol.Copy) },
+                            enabled = document != null && parent != null && !guard.busy && !guard.uncertain, onClick = { menu = false; copyDialog = true })
+                        DropdownMenuItem(text = { Text(tr("Перечитать с диска", "Reload from disk")) }, leadingIcon = { AppIcon(AppSymbol.Refresh) },
+                            enabled = !loading && !guard.busy, onClick = { menu = false; guard.request { attempt++ } })
+                        DropdownMenuItem(text = { Text(tr("Крупнее шрифт", "Larger font")) }, leadingIcon = { AppIcon(AppSymbol.ZoomIn) },
+                            enabled = textScale < 3f, onClick = { textScale = (textScale * 1.25f).coerceAtMost(3f) })
+                        DropdownMenuItem(text = { Text(tr("Мельче шрифт", "Smaller font")) }, leadingIcon = { AppIcon(AppSymbol.ZoomOut) },
+                            enabled = textScale > 1f, onClick = { textScale = (textScale / 1.25f).coerceAtLeast(1f) })
+                    }
+                }
             }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            if (details || document != null || fault != null || changed || guard.uncertain || guard.busy || saved || copySaved != null) {
+            if (fault != null || changed || guard.uncertain || copySaved != null) {
                 Column(Modifier.fillMaxWidth().heightIn(max = controlsHeight).verticalScroll(rememberScrollState())) {
-                    if (document != null) Text(tr("При блокировке и уходе в фон несохранённые правки пропадут.",
-                        "Unsaved edits are lost on lock or when the app enters the background."), style = MaterialTheme.typography.bodySmall)
                     fault?.let { FaultNotice(it, message = if (it == CoreFault.Limit) tr(
                         "Редактирование доступно до 65 536 символов; большие файлы открываются постранично только для чтения.",
                         "Editing is available up to 65,536 characters; larger files open in a read-only paged viewer.")
@@ -153,33 +181,13 @@ private fun TextEditorContent(core: CoreGateway, file: FileItem, parent: Locatio
                     if (guard.uncertain) Text(tr("Результат записи неизвестен. Проверьте папку и журнал, затем перечитайте файл. Повтор отключён.",
                         "The write outcome is unknown. Inspect the folder and journal, then reload. Retry is disabled."),
                         color = MaterialTheme.colorScheme.error)
-                    if (guard.busy) Text(tr("Сохранение… Дождитесь результата.", "Saving… Wait for the result."))
-                    if (saved) Text(tr("Сохранено.", "Saved."))
                     copySaved?.let { Text(tr("Копия сохранена: ", "Copy saved: ") + displayName(it) +
                         tr(". Открыт исходный файл.", ". The original file remains open.")) }
-                    if (details) {
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            TextButton(enabled = document != null && parent != null && !guard.busy && !guard.uncertain,
-                                onClick = { copyDialog = true }) { Text(tr("Сохранить копию…", "Save a copy…")) }
-                            TextButton(enabled = !loading && !guard.busy,
-                                onClick = { guard.request { attempt++ } }) { Text(tr("Перечитать", "Reload")) }
-                            TextButton(enabled = textScale > 1f, onClick = { textScale = (textScale / 1.25f).coerceAtLeast(1f) }) { Text(tr("− Шрифт", "− Font")) }
-                            TextButton(enabled = textScale < 3f, onClick = { textScale = (textScale * 1.25f).coerceAtMost(3f) }) { Text(tr("+ Шрифт", "+ Font")) }
-                        }
-                        document?.let { opened ->
-                            val encoding = when (opened.encoding) {
-                                TextEncoding.Utf8 -> "UTF-8"; TextEncoding.Utf8Bom -> "UTF-8 BOM"
-                                TextEncoding.Utf16Le -> "UTF-16 LE"; TextEncoding.Utf16Be -> "UTF-16 BE"
-                            }
-                            Text(encoding + if (guard.dirty) tr(" · изменён", " · modified") else "",
-                                style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
                 }
             }
             Box(Modifier.weight(1f).fillMaxWidth().transformable(textTransform, canPan = { false })) {
                 document?.let { opened ->
-                    OutlinedTextField(value = text, onValueChange = { next ->
+                    TextField(value = text, onValueChange = { next ->
                         if (next.length <= MAX_EDITOR_CHARS) {
                             text = next
                             guard.dirty = text != baseline
@@ -188,19 +196,14 @@ private fun TextEditorContent(core: CoreGateway, file: FileItem, parent: Locatio
                             if (fault == CoreFault.Limit) fault = null
                         } else fault = CoreFault.Limit
                     }, readOnly = guard.busy || guard.uncertain, modifier = Modifier.fillMaxSize(),
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace,
-                            fontSize = MaterialTheme.typography.bodyMedium.fontSize * textScale),
-                        label = { Text(tr("Текст документа", "Document text")) })
-                }
-            }
-            // Outside all scroll containers; remains above the IME and system navigation.
-            Surface(Modifier.fillMaxWidth(), tonalElevation = 3.dp) {
-                Row(Modifier.padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(modifier = Modifier.weight(1f),
-                        enabled = document != null && guard.dirty && !guard.busy && !guard.uncertain && !changed,
-                        onClick = { save(false) }) { Text(tr("Сохранить", "Save")) }
-                    OutlinedButton(modifier = Modifier.weight(1f), enabled = !guard.busy,
-                        onClick = onClose) { Text(tr("Не сохранять", "Don't save")) }
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(
+                            fontSize = MaterialTheme.typography.bodyLarge.fontSize * textScale),
+                        placeholder = { Text(tr("Начните писать…", "Start typing…")) },
+                        shape = MaterialTheme.shapes.large,
+                        colors = TextFieldDefaults.colors(focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent,
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow))
                 }
             }
         }

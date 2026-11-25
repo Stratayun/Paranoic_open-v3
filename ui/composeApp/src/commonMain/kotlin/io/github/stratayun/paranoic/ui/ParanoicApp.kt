@@ -345,7 +345,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                             Box(Modifier.weight(1f).fillMaxHeight()) {
                                 when (destination) {
                                     Destination.Files -> FileWorkspaceScreen(session, settings.fileView, { openedFile = it }, pngImage,
-                                        onOpenPlaces = if (wide) null else ({ scope.launch { placesDrawer.open() }; Unit }))
+                                        onOpenPlaces = if (wide) null else ({ scope.launch { placesDrawer.open() }; Unit }),
+                                        onNewVault = { leaveDocument { destination = Destination.Encryption } })
                                     Destination.Operations -> OperationsScreen(session) { location ->
                                         if (session.openAttentionFolder(location)) {
                                             openedFile = null

@@ -27,7 +27,7 @@ private data class DroppedFile(val sourceTab: String, val source: FileItem, val 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FileWorkspaceScreen(session: AppSession, defaultView: FileView, onOpenFile: (FileItem) -> Unit,
-    pngImage: @Composable (ByteArray, Modifier) -> Unit, onOpenPlaces: (() -> Unit)? = null) {
+    pngImage: @Composable (ByteArray, Modifier) -> Unit, onOpenPlaces: (() -> Unit)? = null, onNewVault: (() -> Unit)? = null) {
     val workspace = session.fileWorkspace
     var menu by remember(session.secretsEpoch) { mutableStateOf(false) }
     var dragged by remember(session.secretsEpoch) { mutableStateOf<DraggedFile?>(null) }
@@ -81,14 +81,14 @@ fun FileWorkspaceScreen(session: AppSession, defaultView: FileView, onOpenFile: 
         BoxWithConstraints(Modifier.weight(1f)) {
             val two = workspace.right != null && maxWidth >= 720.dp
             if (workspace.right != null && !two) Column(Modifier.fillMaxSize()) {
-                Pane(session, workspace.active, defaultView, onOpenFile, pngImage, Modifier.weight(1f), onOpenPlaces = onOpenPlaces, clipboard = clipboard)
+                Pane(session, workspace.active, defaultView, onOpenFile, pngImage, Modifier.weight(1f), onOpenPlaces = onOpenPlaces, clipboard = clipboard, onNewVault = onNewVault)
             } else if (two) Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Pane(session, workspace.left, defaultView, onOpenFile, pngImage,
-                    Modifier.weight(1f).onGloballyPositioned { bounds[workspace.left] = it.boundsInRoot() }, dragHandler(workspace.left), onOpenPlaces, clipboard)
+                    Modifier.weight(1f).onGloballyPositioned { bounds[workspace.left] = it.boundsInRoot() }, dragHandler(workspace.left), onOpenPlaces, clipboard, onNewVault)
                 val right = requireNotNull(workspace.right)
                 Pane(session, right, defaultView, onOpenFile, pngImage,
-                    Modifier.weight(1f).onGloballyPositioned { bounds[right] = it.boundsInRoot() }, dragHandler(right), onOpenPlaces, clipboard)
-            } else Pane(session, workspace.active, defaultView, onOpenFile, pngImage, Modifier.fillMaxSize(), onOpenPlaces = onOpenPlaces, clipboard = clipboard)
+                    Modifier.weight(1f).onGloballyPositioned { bounds[right] = it.boundsInRoot() }, dragHandler(right), onOpenPlaces, clipboard, onNewVault)
+            } else Pane(session, workspace.active, defaultView, onOpenFile, pngImage, Modifier.fillMaxSize(), onOpenPlaces = onOpenPlaces, clipboard = clipboard, onNewVault = onNewVault)
         }
     }
     dropped?.let { request ->
@@ -114,7 +114,7 @@ fun FileWorkspaceScreen(session: AppSession, defaultView: FileView, onOpenFile: 
 @Composable
 private fun Pane(session: AppSession, tabId: String, defaultView: FileView, onOpenFile: (FileItem) -> Unit,
     pngImage: @Composable (ByteArray, Modifier) -> Unit, modifier: Modifier, drag: FileDragHandler? = null, onOpenPlaces: (() -> Unit)? = null,
-    clipboard: FileClipboard? = null) {
+    clipboard: FileClipboard? = null, onNewVault: (() -> Unit)? = null) {
     val tab = session.fileWorkspace.tab(tabId) ?: return
     Surface(modifier.fillMaxHeight().onFocusChanged { if (it.hasFocus) session.activateFileTab(tabId) }.focusGroup()
         .pointerInput(tabId) {
@@ -125,7 +125,7 @@ private fun Pane(session: AppSession, tabId: String, defaultView: FileView, onOp
         }, shape = MaterialTheme.shapes.large, border = if (session.fileWorkspace.right == null) null else BorderStroke(1.dp, if (session.fileWorkspace.active == tabId)
         MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)) {
         key(tabId, session.secretsEpoch) {
-            FilesScreen(session, tab.view ?: defaultView, {}, onOpenFile, pngImage, tabId, drag, onOpenPlaces, clipboard)
+            FilesScreen(session, tab.view ?: defaultView, {}, onOpenFile, pngImage, tabId, drag, onOpenPlaces, clipboard, onNewVault)
         }
     }
 }

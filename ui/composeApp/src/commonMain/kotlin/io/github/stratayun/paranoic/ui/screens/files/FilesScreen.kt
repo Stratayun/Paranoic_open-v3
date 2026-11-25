@@ -32,7 +32,7 @@ import io.github.stratayun.paranoic.ui.theme.LocalThemeTokens
 @Composable
 fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit, onOpenFile: (FileItem) -> Unit,
     pngImage: @Composable (ByteArray, Modifier) -> Unit, tabId: String = session.fileWorkspace.active,
-    drag: FileDragHandler? = null, onOpenPlaces: (() -> Unit)? = null, clipboard: FileClipboard? = null) {
+    drag: FileDragHandler? = null, onOpenPlaces: (() -> Unit)? = null, clipboard: FileClipboard? = null, onNewVault: (() -> Unit)? = null) {
     val tab = session.fileWorkspace.tab(tabId) ?: return
     val state = tab.files
     val options = tab.options
@@ -57,6 +57,7 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
     val padding = LocalThemeTokens.current.pagePadding
     if (showingArchive && session.archives.state.source != null) { ArchiveViewer(session) { showingArchive = false }; return }
     var sheetFor by remember(state.folder, session.secretsEpoch) { mutableStateOf<FileItem?>(null) }
+    var selectHint by remember(state.folder) { mutableStateOf(false) }
     var properties by remember(state.folder, session.secretsEpoch) { mutableStateOf<FileItem?>(null) }
     val canPaste = clipboard != null && !clipboard.isEmpty && state.folder?.let { clipboard.plan(it) } != null &&
         state.loaded && !state.loading && state.writable && !session.writing && session.fileBatch == null
@@ -77,6 +78,12 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
         Column(Modifier.fillMaxWidth().heightIn(max = controlsHeight).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (session.fileWorkspace.active == tabId) FileBatchCard(session)
         FilesNavigation(state.trail) { index -> inTab { session.breadcrumb(index) } }
+        if (selectHint && state.selected.isEmpty()) Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.secondaryContainer) {
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(tr("Отметьте файлы: долгое нажатие → «Выбрать», затем ⋮ → «Сжать…»", "Mark files: long-press → Select, then ⋮ → Compress…"), Modifier.weight(1f))
+                IconButton(onClick = { selectHint = false }) { AppIcon(AppSymbol.Close) }
+            }
+        }
         if (state.selected.isNotEmpty()) {
             val visibleLocations = visible.map { it.location }.toSet()
             val outsideFilter = state.selected.count { it !in visibleLocations }
@@ -125,7 +132,9 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
                 }
                 items(visible, key = { it.location.storageId + ":" + it.location.path }) { item ->
                     FileRow(session.core, pngImage, item, item.location in state.selected, state.selected.isNotEmpty(), { inTab { session.select(item.location) } }, {
-                        inTab { if (item.kind == EntryKind.Directory) session.openFolder(item) else onOpenFile(item) }
+                        inTab { when { item.kind == EntryKind.Directory -> session.openFolder(item)
+                        isArchive(item) -> { archiveSources = listOf(item); archiveAction = ArchiveAction.Open }
+                        else -> onOpenFile(item) } }
                     }, drag = drag?.takeIf { item.canCopy(state.spaces) }, detailed = view == FileView.Detailed, onMenu = { sheetFor = item })
                 }
             }
@@ -134,7 +143,9 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
                 horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(visible, key = { it.location.storageId + ":" + it.location.path }) { item ->
                     FileRow(session.core, pngImage, item, item.location in state.selected, state.selected.isNotEmpty(), { inTab { session.select(item.location) } }, {
-                        inTab { if (item.kind == EntryKind.Directory) session.openFolder(item) else onOpenFile(item) }
+                        inTab { when { item.kind == EntryKind.Directory -> session.openFolder(item)
+                        isArchive(item) -> { archiveSources = listOf(item); archiveAction = ArchiveAction.Open }
+                        else -> onOpenFile(item) } }
                     }, drag = drag?.takeIf { item.canCopy(state.spaces) }, onMenu = { sheetFor = item })
                 }
             }
@@ -164,8 +175,20 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
                     DropdownMenu(addMenu, { addMenu = false }) {
                         DropdownMenuItem(text = { Text(tr("Новая папка", "New folder")) }, leadingIcon = { AppIcon(AppSymbol.NewFolder) },
                             onClick = { addMenu = false; inTab { creating = true } })
-                        DropdownMenuItem(text = { Text(tr("Новый текстовый файл", "New text file")) }, leadingIcon = { AppIcon(AppSymbol.NewFile) },
+                        DropdownMenuItem(text = { Text(tr("Текстовый файл / Markdown", "Text / Markdown file")) }, leadingIcon = { AppIcon(AppSymbol.NewFile) },
                             enabled = canCreateText, onClick = { addMenu = false; inTab { creatingText = true } })
+                        if (clipboard != null && !clipboard.isEmpty) DropdownMenuItem(text = { Text(tr("Вставить из буфера (${clipboard.items.size})", "Paste (${clipboard.items.size})")) },
+                            leadingIcon = { AppIcon(AppSymbol.Copy) }, enabled = canPaste, onClick = {
+                                addMenu = false
+                                val parent = state.folder
+                                val plan = parent?.let { clipboard.plan(it) }
+                                if (plan != null) { inTab { session.pasteFileBatch(plan) }; if (clipboard.kind == FileBatchKind.Move) clipboard.clear() }
+                            })
+                        HorizontalDivider()
+                        DropdownMenuItem(text = { Text(tr("Архив из файлов…", "Archive from files…")) }, leadingIcon = { AppIcon(AppSymbol.Archive) },
+                            enabled = state.loaded && visible.isNotEmpty(), onClick = { addMenu = false; selectHint = true })
+                        DropdownMenuItem(text = { Text(tr("Зашифрованное хранилище…", "Encrypted vault…")) }, leadingIcon = { AppIcon(AppSymbol.Vault) },
+                            enabled = onNewVault != null, onClick = { addMenu = false; onNewVault?.invoke() })
                     }
                 }
                 Action(AppSymbol.Swap, if (session.fileWorkspace.right == null) tr("Две панели", "Two panes") else tr("Одна панель", "One pane"), true) {
@@ -248,8 +271,10 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
             fileSymbol(item), listOf(
             SheetGroup(tr("Открыть", "Open"), listOfNotNull(
                 SheetAction(tr("Открыть", "Open"), AppSymbol.Forward, item.kind == EntryKind.Directory || isFile,
-                    run = act { if (item.kind == EntryKind.Directory) session.openFolder(item) else onOpenFile(item) }),
-                if (isFile) SheetAction(tr("Как архив", "As archive"), AppSymbol.Archive, single,
+                    run = act { when { item.kind == EntryKind.Directory -> session.openFolder(item)
+                        isArchive(item) -> { archiveSources = listOf(item); archiveAction = ArchiveAction.Open }
+                        else -> onOpenFile(item) } }),
+                if (isFile && !isArchive(item)) SheetAction(tr("Как архив", "As archive"), AppSymbol.Archive, single,
                     run = act { archiveSources = listOf(item); archiveAction = ArchiveAction.Open }) else null,
                 SheetAction(tr("Выбрать", "Select"), AppSymbol.SelectAll, run = act { session.select(item.location) }),
             )),
@@ -392,6 +417,9 @@ private val videoExt = setOf("mp4", "mkv", "webm", "avi", "mov", "3gp")
 private val audioExt = setOf("mp3", "flac", "ogg", "opus", "m4a", "wav", "aac")
 private val archiveExt = setOf("zip", "7z", "rar", "tar", "gz", "xz", "zst", "bz2")
 private val lockedExt = setOf("age", "aes", "c9r", "pnc")
+
+internal fun isArchive(item: FileItem) = item.kind == EntryKind.File &&
+    item.name.substringAfterLast('.', "").lowercase() in archiveExt
 
 internal fun fileSymbol(item: FileItem): AppSymbol {
     if (item.kind == EntryKind.Directory) return AppSymbol.Folder

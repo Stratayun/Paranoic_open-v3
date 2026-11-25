@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -15,7 +16,7 @@ enum class AppSymbol {
     Home, Settings, Back, Folder, Document, Cloud, Security, Vault, Recovery, Search, Analytics, Trash, Sync, Passwords,
     Photo, Video, Audio, Archive, Favorite, Recent, More,
     Menu, Forward, Add, Download, Camera, Phone, SdCard, Tasks, Notes, Server, Sort, ViewList, ViewGrid, Up, Close, Info, Edit,
-    Copy, MoveTo, SelectAll, NewFolder, NewFile, Refresh, Cut, Swap,
+    Copy, MoveTo, SelectAll, NewFolder, NewFile, Refresh, Cut, Swap, ZoomIn, ZoomOut, Prev, Save, Fullscreen,
 }
 
 /** Material Symbols (Rounded, Apache-2.0). Decorative: the labelled control owns accessibility. */
@@ -66,6 +67,11 @@ fun AppSymbol.vector(): ImageVector = when (this) {
     AppSymbol.Refresh -> Icons.Rounded.Refresh
     AppSymbol.Cut -> Icons.Rounded.ContentCut
     AppSymbol.Swap -> Icons.Rounded.SwapHoriz
+    AppSymbol.ZoomIn -> Icons.Rounded.ZoomIn
+    AppSymbol.ZoomOut -> Icons.Rounded.ZoomOut
+    AppSymbol.Prev -> Icons.AutoMirrored.Rounded.KeyboardArrowLeft
+    AppSymbol.Save -> Icons.Rounded.Save
+    AppSymbol.Fullscreen -> Icons.Rounded.Fullscreen
 }
 
 @Composable

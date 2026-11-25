@@ -2,6 +2,11 @@ package io.github.stratayun.paranoic.ui.screens.documents
 
 import io.github.stratayun.paranoic.ui.components.FaultNotice
 import androidx.compose.foundation.layout.*
+import io.github.stratayun.paranoic.ui.components.AppSymbol
+import io.github.stratayun.paranoic.ui.components.AppIcon
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -149,40 +154,53 @@ private fun PdfViewer(core: CoreGateway, file: FileItem, onClose: () -> Unit,
         } finally { searching = false }
     }
     DocumentFrame(file.name, onClose, controls = {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            TextButton(enabled = index > 0 && !loading, onClick = { index-- }) { Text(tr("Предыдущая", "Previous")) }
-            Text(tr("Страница ${index + 1} / ${pageCount ?: "…"}", "Page ${index + 1} / ${pageCount ?: "…"}"), Modifier.padding(vertical = 12.dp))
-            TextButton(enabled = pageCount != null && index + 1 < (pageCount ?: 0) && !loading, onClick = { index++ }) { Text(tr("Следующая", "Next")) }
-            TextButton(onClick = { searchVisible = !searchVisible }) { Text(tr("Поиск", "Search")) }
+        Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(enabled = index > 0 && !loading, onClick = { index-- },
+                modifier = Modifier.actionDescription(tr("Предыдущая страница", "Previous page"))) { AppIcon(AppSymbol.Prev) }
+            Text("${index + 1} / ${pageCount ?: "…"}", style = MaterialTheme.typography.titleSmall)
+            IconButton(enabled = pageCount != null && index + 1 < (pageCount ?: 0) && !loading, onClick = { index++ },
+                modifier = Modifier.actionDescription(tr("Следующая страница", "Next page"))) { AppIcon(AppSymbol.Forward) }
+            IconButton(onClick = { searchVisible = !searchVisible }, modifier = Modifier.actionDescription(tr("Поиск", "Search"))) { AppIcon(AppSymbol.Search) }
+            ZoomControls(zoom)
         }
-        ZoomControls(zoom)
         if (searchVisible) {
             OutlinedTextField(value = query, onValueChange = {
                 if (it.length <= 256) { query = it; searchRequest = null; matches = emptyList(); next = null }
-            }, singleLine = true, label = { Text(tr("Поиск по тексту PDF", "Search PDF text")) }, modifier = Modifier.fillMaxWidth())
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(enabled = query.isNotBlank() && !searching,
-                    onClick = { searchRequest = query to 0 }) { Text(tr("Искать", "Find")) }
-                next?.let { start -> TextButton(enabled = !searching, onClick = { searchRequest = query to start }) {
-                    Text(tr("Искать дальше", "Continue search"))
-                } }
-                matches.take(32).forEach { found -> TextButton(enabled = !loading, onClick = { index = found }) { Text((found + 1).toString()) } }
+            }, singleLine = true, placeholder = { Text(tr("Поиск по тексту PDF", "Search PDF text")) }, modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.extraLarge, leadingIcon = { AppIcon(AppSymbol.Search) },
+                trailingIcon = { TextButton(enabled = query.isNotBlank() && !searching, onClick = { searchRequest = query to 0 }) { Text(tr("Найти", "Find")) } })
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                matches.take(32).forEach { found -> AssistChip(enabled = !loading, onClick = { index = found }, label = { Text((found + 1).toString()) }) }
+                next?.let { start -> TextButton(enabled = !searching, onClick = { searchRequest = query to start }) { Text(tr("Искать дальше", "Continue")) } }
                 TextButton(enabled = !loading, onClick = { width = if (width == 4096) 2048 else 4096 }) {
-                    Text(tr("Чёткость: $width", "Resolution: $width"))
+                    Text(if (width == 4096) tr("Чёткость: высокая", "Sharpness: high") else tr("Чёткость: обычная", "Sharpness: normal"))
                 }
             }
             if (searchRequest != null && !searching) Text(tr(
-                "Страниц с совпадением: ${matches.size}" + if (next != null) "; поиск не завершён" else "; поиск завершён",
-                "Matching pages: ${matches.size}" + if (next != null) "; search incomplete" else "; search complete"))
+                "Страниц с совпадением: ${matches.size}" + if (next != null) "; поиск не завершён" else "",
+                "Matching pages: ${matches.size}" + if (next != null) "; search incomplete" else ""), style = MaterialTheme.typography.bodySmall)
         }
         fault?.let { FaultNotice(it) }
     }) {
         ZoomableDocument(zoom) {
             page?.let { rendered ->
                 val pageLabel = tr("Страница PDF ${rendered.index + 1}", "PDF page ${rendered.index + 1}")
-                image(rendered.png, Modifier.fillMaxSize().clearAndSetSemantics { contentDescription = pageLabel })
+                val aspect = remember(rendered) { pngAspect(rendered.png) }
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                    image(rendered.png, (if (aspect != null) Modifier.fillMaxWidth().aspectRatio(aspect) else Modifier.fillMaxSize())
+                        .clearAndSetSemantics { contentDescription = pageLabel })
+                }
             }
         }
         if (loading || searching) LinearProgressIndicator(Modifier.align(Alignment.BottomCenter).fillMaxWidth())
+        // Page switch at the bottom, within thumb reach.
+        if (pageCount != null && pageCount!! > 1) Surface(Modifier.align(Alignment.BottomCenter).padding(16.dp),
+            shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerHighest, shadowElevation = 4.dp) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(enabled = index > 0 && !loading, onClick = { index-- }) { AppIcon(AppSymbol.Prev) }
+                Text("${index + 1} / $pageCount", style = MaterialTheme.typography.labelLarge)
+                IconButton(enabled = index + 1 < (pageCount ?: 0) && !loading, onClick = { index++ }) { AppIcon(AppSymbol.Forward) }
+            }
+        }
     }
 }
