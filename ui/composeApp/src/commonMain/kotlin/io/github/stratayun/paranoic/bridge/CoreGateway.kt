@@ -96,6 +96,9 @@ interface CoreGateway {
     suspend fun renameProbe(space: Space): CoreResult<RenameProbe> = unsupported()
     /** Trash of a device place (`.Trash-Paranoic`): delete moves there, nothing is erased until purged. */
     suspend fun trashSupported(space: Space): Boolean = false
+    /** U-74: format 1.8 rollback anchors are damaged; reset sets them aside after the owner agrees. */
+    suspend fun vaultAnchorsDamaged(): Boolean = false
+    suspend fun vaultAnchorsReset(): CoreResult<Unit> = unsupported()
     suspend fun trashPut(source: Location): CoreResult<Unit> = unsupported()
     suspend fun trashList(space: Space): CoreResult<List<TrashItem>> = unsupported()
     suspend fun trashRestore(space: Space, bucket: String): CoreResult<Unit> = unsupported()

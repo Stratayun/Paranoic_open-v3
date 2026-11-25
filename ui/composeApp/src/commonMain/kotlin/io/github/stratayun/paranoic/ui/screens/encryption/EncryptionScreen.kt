@@ -61,6 +61,7 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
     var vault by remember { mutableStateOf<OpenVault?>(null) }
     var path by remember { mutableStateOf<List<String>>(emptyList()) }
     var listing by remember { mutableStateOf<VaultListing?>(null) }
+    var anchorsDamaged by remember { mutableStateOf(false) }
     var fault by remember { mutableStateOf<CoreFault?>(null) }
     var uncertain by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -352,6 +353,13 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
         }
     }
 
+    if (anchorsDamaged) AlertDialog(onDismissRequest = { anchorsDamaged = false },
+        title = { Text(tr("Повреждена защита от отката", "Rollback protection damaged")) },
+        text = { Text(tr("Файл, где это устройство помнит последнюю версию каждой папки Paranoic 1.8, повреждён. Пока он такой, папки не открываются: нельзя проверить, не подсунули ли старую версию. Если вы доверяете текущему состоянию папок, начните запоминать заново (повреждённый файл сохранится рядом).",
+            "The file where this device remembers the latest version of each Paranoic 1.8 folder is damaged. Until then folders do not open: an older version could not be detected. If you trust the folders as they are now, start remembering anew (the damaged file is kept aside).")) },
+        confirmButton = { TextButton(onClick = { anchorsDamaged = false; scope.launch { fault = (session.core.vaultAnchorsReset() as? CoreResult.Failure)?.fault } }) {
+            Text(tr("Доверять и продолжить", "Trust and continue")) } },
+        dismissButton = { TextButton(onClick = { anchorsDamaged = false }) { Text(tr("Отмена", "Cancel")) } })
     when (val d = dialog) {
         null -> Unit
         is Dialog.ImportMove -> vault?.let { opened ->
@@ -407,7 +415,11 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
                             val v = OpenVault(r.value, if (d.create) name else node.name, writable, location)
                             vault = v; reload(v, emptyList())
                         }
-                        is CoreResult.Failure -> { fault = r.fault; uncertain = unknownOutcome(r.fault) }
+                        is CoreResult.Failure -> {
+                            fault = r.fault; uncertain = unknownOutcome(r.fault)
+                            // U-74: a damaged rollback anchor blocks every 1.8 folder; offer the way out.
+                            if (!d.create && format != FolderFormat.Cryptomator && session.core.vaultAnchorsDamaged()) { anchorsDamaged = true; fault = null }
+                        }
                     }
                     if (d.create) session.refresh()
                 } finally { setBusy(false) }

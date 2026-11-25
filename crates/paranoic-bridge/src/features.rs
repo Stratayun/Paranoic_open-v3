@@ -581,6 +581,31 @@ impl FileAnchor {
         Ok(out)
     }
 }
+#[uniffi::export]
+impl NativeRuntime {
+    /// U-74: the per-device rollback anchors cannot be read (damaged file).
+    /// Format 1.8 folders refuse to open until the owner decides.
+    pub fn vault_anchors_damaged(&self) -> bool {
+        let anchor = FileAnchor { path: self.state_root.join("vault-anchors") };
+        let _guard = ANCHORS.lock();
+        matches!(anchor.read(), Err(e) if e.code == paranoic_core::ErrorCode::Integrity)
+    }
+    /// The owner trusts the folders' current state: the damaged anchors are
+    /// set aside (renamed, kept as evidence, never deleted) and the next open
+    /// starts a new anchor, as on a first open. Only while they are damaged.
+    pub fn vault_anchors_reset(&self) -> Result<()> {
+        let path = self.state_root.join("vault-anchors");
+        let anchor = FileAnchor { path: path.clone() };
+        let _guard = ANCHORS.lock().map_err(crate::lock_error)?;
+        if !matches!(anchor.read(), Err(e) if e.code == paranoic_core::ErrorCode::Integrity) { return Err(BridgeError::Invalid); }
+        let aside = self.state_root.join(format!("vault-anchors.damaged-{}", now_ms()));
+        if aside.exists() { return Err(BridgeError::Conflict); }
+        std::fs::rename(&path, &aside).map_err(paranoic_core::CoreError::io)?;
+        #[cfg(unix)]
+        std::fs::File::open(&self.state_root).and_then(|d| d.sync_all()).map_err(paranoic_core::CoreError::io)?;
+        Ok(())
+    }
+}
 fn anchor_id(vault_id: &[u8; 16]) -> String { vault_id.iter().map(|b| format!("{b:02x}")).collect() }
 impl paranoic_formats::paranoic_vault::ManifestAnchor for FileAnchor {
     fn get(&self, vault_id: &[u8; 16]) -> paranoic_core::Result<Option<u64>> {

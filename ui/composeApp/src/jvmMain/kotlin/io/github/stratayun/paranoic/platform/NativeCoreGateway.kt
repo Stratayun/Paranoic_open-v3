@@ -723,6 +723,8 @@ class NativeCoreGateway private constructor(
     override suspend fun diagnostics() = call { runtime.diagnosticsRecent().map { Diagnostic(it.atMs.toLong(), it.code, it.message) } }
     override suspend fun diagnosticsReportText() = call { runtime.diagnosticsReportText() }
     override suspend fun clearDiagnostics() = call { runtime.diagnosticsClear() }
+    override suspend fun vaultAnchorsDamaged() = (call { runtime.vaultAnchorsDamaged() } as? CoreResult.Value)?.value == true
+    override suspend fun vaultAnchorsReset() = call { runtime.vaultAnchorsReset() }
     override suspend fun trashSupported(space: Space) = (call { runtime.trashSupported(space.root.storageId) } as? CoreResult.Value)?.value == true
     override suspend fun trashPut(source: Location) = call { runtime.trashPut(source.native()) }
     override suspend fun trashList(space: Space) = call {
