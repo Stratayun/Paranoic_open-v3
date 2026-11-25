@@ -2,7 +2,31 @@
 
 Новая реализация защищённого файлового менеджера с нуля: Android + Windows.
 
-**Кто что делает сейчас:** [WORK.md](WORK.md).
+## About (English)
+
+**Paranoic** is an open-source, privacy-first file manager for **Android and Windows** with a Rust core and a Kotlin/Compose interface.
+
+- Full file manager: storage, SD/USB, folders, categories (Downloads, Documents, Music, Videos, Pictures), search, trash, photo/video/audio and document viewer.
+- Encrypted folders: **Cryptomator**-compatible vaults and its own **Paranoic** format; single files with **age**.
+- **Safe**: notes and a personal folder behind one password, isolated from the file manager and the cloud, with biometrics, duress password and wipe.
+- Archives (ZIP/AES, 7z), WebDAV and a self-hosted server; Google Drive / OneDrive / pCloud in progress.
+- Decrypted data never leaves the app. About 70% complete; `main` is the working, not-yet-stable code.
+
+**Collaboration is welcome.** Anyone interested in privacy, Rust, Kotlin Multiplatform, cryptography or UI design — open an issue or a pull request, or just say hello. Always glad to meet people with the same interests.
+
+## Сотрудничество
+
+Приглашаю всех, кому интересен проект: приватность, Rust, Kotlin/Compose, криптография, дизайн. Пишите в issues, присылайте pull request'ы или просто знакомьтесь — всегда рад новым знакомым по интересам.
+
+## Поддержать проект / Support
+
+Донат в **BNB Smart Chain (BEP-20)**:
+
+```
+0x669dd60c8D6E45515600e5638563A2b6bBC7F998
+```
+
+Отправляйте только в сети BNB Smart Chain (BEP-20). / Send only on BNB Smart Chain (BEP-20).
 
 **Карта проекта:** [ROADMAP.md](ROADMAP.md) — что есть, что работает, что дальше; проблемы и тесты — в [docs/roadmap](docs/roadmap/).
 
@@ -38,3 +62,7 @@
 Совместимость с Cryptomator: `tools/interop/` (Java, Maven) создаёт хранилища и
 передаётся тестам через `PARANOIC_CRYPTOMATOR_FIXTURES` / `PARANOIC_CRYPTOMATOR_V7_FIXTURES`.
 
+## Лицензия / License
+
+© 2026 stratayun. Распространяется по лицензии **GNU AGPL-3.0-or-later** — см. [LICENSE](LICENSE).
+Copyright © 2026 stratayun. Licensed under the **GNU Affero General Public License v3.0 or later** — see [LICENSE](LICENSE).
