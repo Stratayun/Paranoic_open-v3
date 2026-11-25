@@ -1,0 +1,62 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: ru-RU
+tone_instructions: >-
+  Пиши кратко и предметно. Указывай сценарий сбоя, последствия и место в коде.
+  Разделяй подтверждённые дефекты и предположения. Приоритет — безопасность и целостность данных.
+early_access: false
+reviews:
+  profile: assertive
+  high_level_summary: true
+  poem: false
+  auto_approvals:
+    enabled: false
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: true
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        Follow AGENTS.md and docs/architecture/CONTRACTS.md.
+        Prioritize exploitable security flaws, data loss, incorrect behavior,
+        incomplete integrations and meaningful duplication. Give a concrete
+        failure scenario and distinguish evidence from hypotheses.
+        Trace changed interfaces through callers and both Rust/Kotlin sides.
+        Respect Android and Windows as supported platforms. Do not propose
+        a stack rewrite or unrelated broad refactoring. Do not claim tests
+        or real-device behavior have been verified without actual evidence.
+    - path: "crates/**"
+      instructions: |
+        Check cryptographic randomness, nonce uniqueness, authenticated
+        metadata, key/password lifetime and zeroization, secret leakage,
+        password policy consistency and bounded untrusted input.
+        Inspect traversal and symlink attacks, overwrite races, atomicity,
+        crash recovery, cancellation, error propagation, integer overflow,
+        resource limits and unsafe/FFI ownership.
+        Pay attention to Android shared/FUSE storage guarantees and Windows
+        path, rename, locking and filesystem identity behavior.
+    - path: "ui/**"
+      instructions: |
+        Check coroutine cancellation, Compose state/effect lifecycle, stale
+        validation results, blocking work on the UI thread, native error
+        handling, resource closure and secret lifetime.
+        Password creation must use the Rust assessment consistently in both
+        feedback and submit eligibility. Check JNI/UniFFI integration and
+        real platform adapters rather than treating fakes as implementation.
+    - path: "tools/build/**"
+      instructions: |
+        Inspect Windows Portable packaging and startup, bundled JVM/native
+        libraries, Unicode and space-containing paths, process exit codes,
+        launch diagnostics and consistency of generated artifacts.
+    - path: ".github/workflows/**"
+      instructions: |
+        Inspect command quoting, untrusted input interpolation, token
+        permissions, dependency integrity and artifact completeness.
+        Windows launch verification must exercise the actual packaged
+        launcher, including a Cyrillic installation path.
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "AGENTS.md"
+      - "docs/architecture/CONTRACTS.md"
