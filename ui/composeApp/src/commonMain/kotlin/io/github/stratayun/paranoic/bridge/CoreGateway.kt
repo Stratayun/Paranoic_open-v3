@@ -92,6 +92,8 @@ interface CoreGateway {
      * any password (marker files only). Empty: "no vault here". */
     suspend fun vaultProbe(folder: Location): CoreResult<VaultProbe> = unsupported()
     suspend fun clearDiagnostics(): CoreResult<Unit> = unsupported()
+    /** Does this place's filesystem honour atomic create-if-absent rename? See [RenameProbe]. */
+    suspend fun renameProbe(space: Space): CoreResult<RenameProbe> = unsupported()
 
     // ---- Own server (WebDAV). The token is sealed by the device key in Rust;
     // the connection is persisted only after it worked.
@@ -331,3 +333,6 @@ object DisconnectedCoreGateway : CoreGateway {
     override fun releasePdf() = Unit
     override suspend fun openMedia(location: Location) = unavailable()
 }
+
+/** Result of the diagnostics rename check (audit finding 1). */
+enum class RenameProbe { Supported, Unsupported, Ignored, Failed, NotLocal }

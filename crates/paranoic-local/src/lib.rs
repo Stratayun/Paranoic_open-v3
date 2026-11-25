@@ -13,6 +13,8 @@ mod directory_reshape;
 
 #[cfg(unix)]
 mod shared;
+#[cfg(any(target_os = "linux", target_os = "android"))]
+pub use shared::{probe_noreplace, NoReplaceProbe};
 #[cfg(windows)]
 mod windows;
 

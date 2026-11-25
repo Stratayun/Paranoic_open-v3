@@ -64,6 +64,52 @@ fn reserve_then_rename<A: AsFd, B: AsFd>(from: &A, from_name: &str, to: &B, to_n
     rustix::fs::renameat(from, from_name, to, to_name).inspect_err(|_| release(to))
 }
 
+/// Result of [`probe_noreplace`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NoReplaceProbe {
+    /// The kernel/FUSE honours RENAME_NOREPLACE: atomic create-if-absent works.
+    Supported,
+    /// The flag is rejected (EINVAL/ENOSYS): the reservation fallback is used.
+    Unsupported,
+    /// The flag was IGNORED and an existing file was replaced. Dangerous.
+    Ignored,
+    /// The probe itself could not run (no write access, I/O error).
+    Failed,
+}
+
+/// Owner's diagnostics (audit finding 1): checks, inside `root`, whether
+/// `renameat2(RENAME_NOREPLACE)` really refuses to replace. Works in a fresh
+/// hidden folder of its own and removes it afterwards; touches nothing else.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+pub fn probe_noreplace(root: &std::path::Path) -> NoReplaceProbe {
+    use std::fs;
+    let mut id = [0u8; 8];
+    if getrandom_fill(&mut id).is_err() { return NoReplaceProbe::Failed; }
+    let dir = root.join(format!(".paranoic-probe-{}", id.iter().map(|b| format!("{b:02x}")).collect::<String>()));
+    if fs::create_dir(&dir).is_err() { return NoReplaceProbe::Failed; }
+    let result = (|| -> std::io::Result<NoReplaceProbe> {
+        let (a, b) = (dir.join("a"), dir.join("b"));
+        fs::write(&a, b"A")?; fs::write(&b, b"B")?;
+        let cwd = rustix::fs::CWD;
+        let outcome = rustix::fs::renameat_with(cwd, &a, cwd, &b, RenameFlags::NOREPLACE);
+        let now = fs::read(&b)?;
+        Ok(match outcome {
+            Err(e) if e == Errno::EXIST && now == b"B" => NoReplaceProbe::Supported,
+            Err(e) if (e == Errno::INVAL || e == Errno::NOSYS) && now == b"B" => NoReplaceProbe::Unsupported,
+            Ok(()) if now == b"A" => NoReplaceProbe::Ignored,
+            _ => NoReplaceProbe::Failed,
+        })
+    })();
+    let _ = fs::remove_dir_all(&dir);
+    result.unwrap_or(NoReplaceProbe::Failed)
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn getrandom_fill(out: &mut [u8]) -> std::io::Result<()> {
+    use std::io::Read;
+    std::fs::File::open("/dev/urandom")?.read_exact(out)
+}
+
 /// Staging folders must be private to this user, except on shared storage
 /// whose ownership and mode bits are synthesised (see module docs).
 #[cfg(unix)]
@@ -112,5 +158,16 @@ mod tests {
         d.create_dir("full").unwrap();
         d.create_dir("empty").unwrap();
         assert_eq!(reserve_then_rename(&d, "full", &d, "empty"), Err(Errno::EXIST));
+    }
+}
+
+#[cfg(all(test, any(target_os = "linux", target_os = "android")))]
+mod probe_tests {
+    #[test] fn probe_reports_supported_on_a_normal_linux_filesystem_and_cleans_up() {
+        let root = std::env::temp_dir().join(format!("paranoic-probe-test-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        assert_eq!(super::probe_noreplace(&root), super::NoReplaceProbe::Supported);
+        assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0, "probe folder left behind");
+        std::fs::remove_dir(&root).unwrap();
     }
 }

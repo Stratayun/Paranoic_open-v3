@@ -57,6 +57,9 @@ fun DiagnosticsScreen(session: AppSession, environment: DiagnosticEnvironment, o
             Text(tr("Отчёт содержит технические сведения, общий журнал ядра и сохранённый сбой Kotlin/JVM. Пароли, содержимое документов, имена файлов и пути в него не включаются.",
                 "The report contains technical information, the shared Core journal and a saved Kotlin/JVM crash. It excludes passwords, document contents, file names and paths."))
             TextButton(enabled = !loading && !clearing, onClick = { revision++ }) { Text(tr("Обновить", "Refresh")) }
+        }
+        item { RenameProbeSection(session) }
+        item {
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             fault?.let { FaultNotice(it) }
             if (crashUnreadable) Text(tr("Сохранённый сбой прочитать не удалось; он не заменён пустой записью.", "The saved crash could not be read; it was not replaced with an empty record."), color = MaterialTheme.colorScheme.error)
@@ -110,4 +113,50 @@ fun DiagnosticsScreen(session: AppSession, environment: DiagnosticEnvironment, o
                 finally { clearing = false }
             }
         }) { Text(tr("Очистить", "Clear")) } }, dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(tr("Отмена", "Cancel")) } })
+}
+
+/** Diagnostics: atomic "rename without replacing" check per device place (audit finding 1). */
+@Composable
+private fun RenameProbeSection(session: AppSession) {
+    val scope = rememberCoroutineScope()
+    val places = session.files.spaces.userPlaces().filter { !it.cloud && !it.androidTree }
+    val results = remember { mutableStateMapOf<String, RenameProbe?>() }
+    var running by remember { mutableStateOf<String?>(null) }
+    val scheme = MaterialTheme.colorScheme
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(tr("Проверка атомарной записи", "Atomic write check"), Modifier.sectionHeading(), style = MaterialTheme.typography.titleMedium)
+        Text(tr("Проверяет, умеет ли память переименовывать файл, не заменяя существующий (RENAME_NOREPLACE). Создаёт и сразу удаляет два пробных файла в скрытой папке.",
+            "Checks whether the storage can rename a file without replacing an existing one (RENAME_NOREPLACE). Creates and removes two probe files in a hidden folder."),
+            style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+        if (places.isEmpty()) Text(tr("Нет подключённой памяти устройства.", "No device storage connected."))
+        places.forEach { space ->
+            Surface(shape = MaterialTheme.shapes.large, color = scheme.surfaceContainerHigh) {
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text(displayName(space.name), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                        FilledTonalButton(enabled = running == null && session.core.connected, onClick = {
+                            running = space.id
+                            scope.launch {
+                                results[space.id] = (session.core.renameProbe(space) as? CoreResult.Value)?.value ?: RenameProbe.Failed
+                                running = null
+                            }
+                        }) { Text(if (running == space.id) tr("Проверяем…", "Checking…") else tr("Проверить", "Check")) }
+                    }
+                    results[space.id]?.let { result ->
+                        val (text, color) = when (result) {
+                            RenameProbe.Supported -> tr("✓ Поддерживается: запись атомарна и никогда не заменяет чужой файл.",
+                                "✓ Supported: writes are atomic and never replace another file.") to scheme.primary
+                            RenameProbe.Unsupported -> tr("⚠ Не поддерживается: используется обходной путь; в редкой гонке с другим приложением возможна замена файла (находка аудита №1).",
+                                "⚠ Not supported: a fallback is used; a rare race with another app could replace a file (audit finding 1).") to scheme.tertiary
+                            RenameProbe.Ignored -> tr("✕ Опасно: флаг игнорируется и существующий файл ЗАМЕНЯЕТСЯ. Сообщите разработчику.",
+                                "✕ Dangerous: the flag is ignored and an existing file IS REPLACED. Report this.") to scheme.error
+                            RenameProbe.Failed -> tr("Проверка не выполнилась (нет записи или ошибка ввода-вывода).", "The check could not run (no write access or I/O error).") to scheme.error
+                            RenameProbe.NotLocal -> tr("Не локальная папка — проверка неприменима.", "Not a local folder — not applicable.") to scheme.onSurfaceVariant
+                        }
+                        Text(text, style = MaterialTheme.typography.bodyMedium, color = color)
+                    }
+                }
+            }
+        }
+    }
 }

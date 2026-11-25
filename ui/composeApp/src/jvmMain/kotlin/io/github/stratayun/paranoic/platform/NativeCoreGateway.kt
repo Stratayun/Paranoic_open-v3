@@ -723,6 +723,12 @@ class NativeCoreGateway private constructor(
     override suspend fun diagnostics() = call { runtime.diagnosticsRecent().map { Diagnostic(it.atMs.toLong(), it.code, it.message) } }
     override suspend fun diagnosticsReportText() = call { runtime.diagnosticsReportText() }
     override suspend fun clearDiagnostics() = call { runtime.diagnosticsClear() }
+    override suspend fun renameProbe(space: Space) = call {
+        when (runtime.renameProbe(space.id).toInt()) {
+            0 -> RenameProbe.Supported; 1 -> RenameProbe.Unsupported; 2 -> RenameProbe.Ignored
+            3 -> RenameProbe.Failed; else -> RenameProbe.NotLocal
+        }
+    }
     override suspend fun vaultProbe(folder: Location) = call {
         val probe = runtime.vaultProbe(folder.native())
         VaultProbe(probe.vaults.mapNotNull { found ->

@@ -273,6 +273,22 @@ impl NativeRuntime {
     }
     pub fn spaces(&self) -> Result<Vec<NativeSpace>> { Ok(self.spaces.lock().map_err(lock_error)?.clone()) }
     pub fn grants(&self) -> Result<Vec<NativeGrant>> { Ok(self.grants.lock().map_err(lock_error)?.clone()) }
+    /// Diagnostics: does this place's filesystem honour RENAME_NOREPLACE?
+    /// 0 supported, 1 rejected (fallback in use), 2 IGNORED (replaces!), 3 probe failed,
+    /// 4 not a local folder (SAF tree, cloud) or unknown place.
+    pub fn rename_probe(&self, storage_id: String) -> Result<u8> {
+        let grant = self.grants.lock().map_err(lock_error)?.iter().find(|g| g.id == storage_id).cloned();
+        let Some(grant) = grant else { return Ok(4) };
+        if grant.android_tree || features::is_cloud(&grant) { return Ok(4); }
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        {
+            use paranoic_local::NoReplaceProbe as P;
+            let path = std::fs::canonicalize(&grant.reference).map_err(|_| BridgeError::Denied)?;
+            return Ok(match paranoic_local::probe_noreplace(&path) { P::Supported => 0, P::Unsupported => 1, P::Ignored => 2, P::Failed => 3 });
+        }
+        #[allow(unreachable_code)]
+        Ok(4)
+    }
     pub fn attach(&self, grant: NativeGrant) -> Result<NativeSpace> {
         let mut grants = self.grants.lock().map_err(lock_error)?;
         // An already connected folder is returned before the limit applies.
