@@ -261,9 +261,12 @@ pub fn cached_thumbnail(core: &Core, cache: &ThumbnailCache, location: &Location
     if bytes.len() as u64 != metadata.bytes || input.metadata()? != metadata { return Err(changed()); }
     check()?;
     let png = thumbnail_image(&bytes, max_side, limits)?;
-    // The cache is best-effort: an entry over its size bound (or a locked or
-    // failing cache) never hides an image that was decoded successfully.
-    let _ = cache.put(&key, &png);
+    // An entry over the cache's size bound is simply not cached: it must not hide
+    // an image that decoded fine. Every other failure (locked cache) still fails.
+    match cache.put(&key, &png) {
+        Err(error) if error.code == ErrorCode::LimitExceeded => {}
+        other => other?,
+    }
     Ok(png)
 }
 

@@ -261,6 +261,10 @@ impl<W: Seek> Seek for LimitedOutput<'_, W> {
 }
 
 /// Never more than the declared size from an entry stream.
+/// Exactly `left` bytes of an archive entry. Before handing out the LAST bytes it
+/// reads the codec to its end, so the CRC/authentication check runs first: a
+/// consumer that stops at the declared size (and publishes) never receives a
+/// complete-looking file whose check fails afterwards.
 pub(crate) struct ExactRead<'a, R: Read> { pub(crate) inner: &'a mut R, pub(crate) left: u64 }
 impl<R: Read> Read for ExactRead<'_, R> {
     fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
@@ -268,6 +272,13 @@ impl<R: Read> Read for ExactRead<'_, R> {
         let want = out.len().min(self.left.min(usize::MAX as u64) as usize);
         let n = self.inner.read(&mut out[..want])?;
         self.left -= n as u64;
+        if n == 0 { return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "archive entry shorter than declared")); }
+        if self.left == 0 {
+            let mut probe = [0u8; 1];
+            if self.inner.read(&mut probe)? != 0 {
+                return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "archive entry longer than declared"));
+            }
+        }
         Ok(n)
     }
 }
