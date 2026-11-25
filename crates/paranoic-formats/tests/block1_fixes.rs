@@ -252,6 +252,21 @@ fn state_files_contain(dir: &std::path::Path, needle: &[u8]) -> bool {
     // Without the key the journal does not open (no silent empty history).
     let refused = Core::open(temp.0.join("state"), CoreConfig::default(), registry());
     assert!(matches!(refused, Err(CoreError { code: ErrorCode::PermissionDenied, .. })), "{:?}", refused.err());
+    // Audit 17: after migration a plaintext row is foreign, and a sealed record
+    // moved under another job id is refused.
+    let db = rusqlite::Connection::open(temp.0.join("state/operations.sqlite3"))?;
+    let (a, b): (String, String) = (done.id.0.to_string(), next.id.0.to_string());
+    let sealed_a: Vec<u8> = db.query_row("SELECT record FROM jobs WHERE id=?1", [&a], |r| r.get(0))?;
+    db.execute("UPDATE jobs SET record=?1 WHERE id=?2", rusqlite::params![sealed_a, &b])?;
+    drop(db);
+    let core = Core::open_sealed(temp.0.join("state"), CoreConfig::default(), registry(), Some(Arc::new(TestSealer)))?;
+    assert!(matches!(core.job(next.id), Err(CoreError { code: ErrorCode::Integrity, .. })), "record accepted under another id");
+    core.close()?;
+    let db = rusqlite::Connection::open(temp.0.join("state/operations.sqlite3"))?;
+    db.execute("UPDATE jobs SET record='{}' WHERE id=?1", [&b])?;
+    drop(db);
+    let reopened = Core::open_sealed(temp.0.join("state"), CoreConfig::default(), registry(), Some(Arc::new(TestSealer)));
+    assert!(matches!(reopened, Err(CoreError { code: ErrorCode::Integrity, .. })), "plaintext accepted after migration: {:?}", reopened.err());
     Ok(())
 }
 

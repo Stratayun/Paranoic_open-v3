@@ -124,20 +124,44 @@ impl Journal {
             if sealed != 0 { return Err(CoreError::new(ErrorCode::PermissionDenied, "journal is sealed; its key is unavailable")); }
             return Ok(());
         }
+        // Audit 17: once migration finished, a sealed marker records it; from
+        // then on plaintext rows are foreign and refused, never re-sealed.
+        connection.execute_batch("CREATE TABLE IF NOT EXISTS journal_meta (key TEXT PRIMARY KEY, value BLOB NOT NULL);").map_err(CoreError::journal)?;
+        let migrated = self.sealed_marker_valid(&connection)?;
+        let plain_count: i64 = connection.query_row("SELECT COUNT(*) FROM jobs WHERE typeof(record)='text'", [], |r| r.get(0)).map_err(CoreError::journal)?;
+        if migrated && plain_count != 0 {
+            return Err(CoreError::new(ErrorCode::Integrity, "unexpected plaintext record in a sealed journal"));
+        }
+        if migrated { return Ok(()); }
         let plain: Vec<(i64, String)> = {
             let mut statement = connection.prepare("SELECT sequence, record FROM jobs WHERE typeof(record)='text'").map_err(CoreError::journal)?;
             let rows = statement.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(CoreError::journal)?;
             rows.collect::<std::result::Result<_, _>>().map_err(CoreError::journal)?
         };
-        if plain.is_empty() { return Ok(()); }
         let tx = connection.transaction().map_err(CoreError::journal)?;
-        for (sequence, text) in plain {
-            let record = decode_json(&text)?;
+        for (sequence, text) in &plain {
+            let record = decode_json(text)?;
             tx.execute("UPDATE jobs SET record=?1 WHERE sequence=?2", params![self.codec.encode(&record)?, sequence]).map_err(CoreError::journal)?;
         }
+        let marker = self.codec.sealer.as_ref().ok_or_else(CoreError::internal)?.seal(SEALED_MARKER)?;
+        tx.execute("INSERT OR REPLACE INTO journal_meta(key, value) VALUES ('sealed', ?1)", params![marker]).map_err(CoreError::journal)?;
         tx.commit().map_err(CoreError::journal)?;
+        if plain.is_empty() { return Ok(()); }
         connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE); VACUUM; PRAGMA wal_checkpoint(TRUNCATE);").map_err(CoreError::journal)?;
         Ok(())
+    }
+
+    fn sealed_marker_valid(&self, connection: &Connection) -> Result<bool> {
+        let Some(sealer) = &self.codec.sealer else { return Ok(false) };
+        let value: Option<Vec<u8>> = connection.query_row("SELECT value FROM journal_meta WHERE key='sealed'", [], |r| r.get(0))
+            .optional().map_err(CoreError::journal)?;
+        match value {
+            None => Ok(false),
+            Some(blob) => match sealer.open(&blob) {
+                Ok(plain) if plain == SEALED_MARKER => Ok(true),
+                _ => Err(CoreError::new(ErrorCode::Integrity, "journal seal marker failed authentication")),
+            },
+        }
     }
 
     /// Remove finished history older than `days`. Unacknowledged NeedsAttention
@@ -279,10 +303,13 @@ impl Journal {
             return Err(CoreError::new(ErrorCode::InvalidInput, "history limit must be between 1 and 1000"));
         }
         self.transaction(|tx| {
-            let mut statement = tx.prepare("SELECT record FROM jobs ORDER BY sequence DESC LIMIT ?1").map_err(CoreError::journal)?;
+            let mut statement = tx.prepare("SELECT id, record FROM jobs ORDER BY sequence DESC LIMIT ?1").map_err(CoreError::journal)?;
             let mut rows = statement.query([limit as i64]).map_err(CoreError::journal)?;
             let mut out = Vec::new();
-            while let Some(row) = rows.next().map_err(CoreError::journal)? { out.push(self.codec.decode(row.get_ref(0).map_err(CoreError::journal)?)?); }
+            while let Some(row) = rows.next().map_err(CoreError::journal)? {
+                let id: String = row.get(0).map_err(CoreError::journal)?;
+                out.push(self.codec.decode_bound(&id, row.get_ref(1).map_err(CoreError::journal)?)?);
+            }
             Ok(out)
         })
     }
@@ -301,7 +328,7 @@ impl Journal {
         }
         self.transaction(|tx| {
             let mut statement = tx.prepare(
-                "SELECT sequence,record FROM jobs WHERE sequence>?1 AND (?2 IS NULL OR state=?2)
+                "SELECT sequence,record,id FROM jobs WHERE sequence>?1 AND (?2 IS NULL OR state=?2)
                  AND (?4=0 OR acknowledged=0)
                  ORDER BY sequence LIMIT ?3",
             ).map_err(CoreError::journal)?;
@@ -313,7 +340,8 @@ impl Journal {
                 let sequence: i64 = row.get(0).map_err(CoreError::journal)?;
                 if jobs.len() == limit { has_more = true; break; }
                 last = u64::try_from(sequence).map_err(|_| CoreError::new(ErrorCode::Journal, "invalid journal sequence"))?;
-                jobs.push(self.codec.decode(row.get_ref(1).map_err(CoreError::journal)?)?);
+                let id: String = row.get(2).map_err(CoreError::journal)?;
+                jobs.push(self.codec.decode_bound(&id, row.get_ref(1).map_err(CoreError::journal)?)?);
             }
             Ok(JobPage { jobs, next_cursor: has_more.then_some(last) })
         })
@@ -604,7 +632,7 @@ fn find(tx: &Transaction<'_>, codec: &Codec, id: JobId) -> Result<Option<JobReco
     let mut statement = tx.prepare("SELECT record FROM jobs WHERE id=?1").map_err(CoreError::journal)?;
     let mut rows = statement.query([id.0.to_string()]).map_err(CoreError::journal)?;
     match rows.next().map_err(CoreError::journal)? {
-        Some(row) => codec.decode(row.get_ref(0).map_err(CoreError::journal)?).map(Some),
+        Some(row) => codec.decode_bound(&id.0.to_string(), row.get_ref(0).map_err(CoreError::journal)?).map(Some),
         None => Ok(None),
     }
 }
@@ -622,10 +650,13 @@ fn require_running(tx: &Transaction<'_>, codec: &Codec, id: JobId) -> Result<Job
 }
 
 fn select_state(tx: &Transaction<'_>, codec: &Codec, state: &str) -> Result<Vec<JobRecord>> {
-    let mut statement = tx.prepare("SELECT record FROM jobs WHERE state=?1 ORDER BY sequence").map_err(CoreError::journal)?;
+    let mut statement = tx.prepare("SELECT id, record FROM jobs WHERE state=?1 ORDER BY sequence").map_err(CoreError::journal)?;
     let mut rows = statement.query([state]).map_err(CoreError::journal)?;
     let mut out = Vec::new();
-    while let Some(row) = rows.next().map_err(CoreError::journal)? { out.push(codec.decode(row.get_ref(0).map_err(CoreError::journal)?)?); }
+    while let Some(row) = rows.next().map_err(CoreError::journal)? {
+        let id: String = row.get(0).map_err(CoreError::journal)?;
+        out.push(codec.decode_bound(&id, row.get_ref(1).map_err(CoreError::journal)?)?);
+    }
     Ok(out)
 }
 
@@ -651,9 +682,18 @@ impl Codec {
             Some(sealer) => rusqlite::types::Value::Blob(sealer.seal(json.as_bytes())?),
         })
     }
+    /// Decode and check that the record belongs to the row's job id (audit 17):
+    /// a sealed record copied under another id is refused.
+    fn decode_bound(&self, id: &str, value: ValueRef<'_>) -> Result<JobRecord> {
+        let record = self.decode(value)?;
+        if record.id.0.to_string() != id { return Err(CoreError::new(ErrorCode::Integrity, "journal record bound to another job")); }
+        Ok(record)
+    }
     fn decode(&self, value: ValueRef<'_>) -> Result<JobRecord> {
         match (value, &self.sealer) {
-            (ValueRef::Text(text), _) => decode_json(std::str::from_utf8(text).map_err(|_| CoreError::new(ErrorCode::Journal, "invalid journal record"))?),
+            // With a sealer every row is sealed after migration (audit 17).
+            (ValueRef::Text(_), Some(_)) => Err(CoreError::new(ErrorCode::Integrity, "unexpected plaintext journal record")),
+            (ValueRef::Text(text), None) => decode_json(std::str::from_utf8(text).map_err(|_| CoreError::new(ErrorCode::Journal, "invalid journal record"))?),
             (ValueRef::Blob(blob), Some(sealer)) => {
                 let plain = sealer.open(blob).map_err(|_| CoreError::new(ErrorCode::Integrity, "journal record failed authentication"))?;
                 decode_json(std::str::from_utf8(&plain).map_err(|_| CoreError::new(ErrorCode::Journal, "invalid journal record"))?)
@@ -663,6 +703,8 @@ impl Codec {
         }
     }
 }
+
+const SEALED_MARKER: &[u8] = b"paranoic/journal/sealed-v1";
 
 fn state_name(state: JobState) -> &'static str {
     match state {
