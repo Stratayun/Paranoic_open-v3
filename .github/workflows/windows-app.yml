@@ -31,6 +31,11 @@ jobs:
         working-directory: ui
         shell: pwsh
         run: ./gradlew.bat --no-daemon :composeApp:createDistributable :composeApp:packageMsi
+      - name: Debug launcher (console stays open, shows the startup error)
+        shell: pwsh
+        run: |
+          $bat = "@echo off`r`ncd /d `"%~dp0`"`r`necho Paranoic debug start - this window shows errors`r`nruntime\bin\java.exe `"-Dcompose.application.resources.dir=%~dp0app\resources`" -cp `"app\*`" io.github.stratayun.paranoic.platform.MainKt`r`necho.`r`necho Exit code %ERRORLEVEL%`r`npause`r`n"
+          Set-Content -Path ui/composeApp/build/compose/binaries/main/app/Paranoic/Paranoic-debug.bat -Value $bat -NoNewline -Encoding ascii
       - name: Zip portable folder
         shell: pwsh
         run: Compress-Archive -Path ui/composeApp/build/compose/binaries/main/app/Paranoic -DestinationPath Paranoic-windows-portable.zip
