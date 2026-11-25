@@ -9,7 +9,8 @@ class AppearanceCompatibilityTest {
         val settings = AppearanceCodec.decode(saved::get)
         assertEquals(AppearanceSettings(ThemePack.Mono, Brightness.Amoled, ContentDensity.Compact,
             FontChoice.Theme, UiLanguage.English, FileView.Grid), settings)
-        assertEquals(saved, AppearanceCodec.encode(settings))
+        // v1.5 had no welcome flag; it decodes as not completed and is written from then on.
+        assertEquals(saved + ("welcome_completed" to "false"), AppearanceCodec.encode(settings))
     }
 
     @Test fun futureOrCorruptValuesFallBackIndependently() {
@@ -24,7 +25,7 @@ class AppearanceCompatibilityTest {
     @Test fun appearanceStoreReadsOnlyPublicPreferenceKeys() {
         val requested = mutableSetOf<String>()
         AppearanceCodec.decode { requested += it; null }
-        val allowed = setOf("theme", "brightness", "density", "font", "language", "view")
+        val allowed = setOf("theme", "brightness", "density", "font", "language", "view", "welcome_completed")
         assertEquals(allowed, requested)
         assertEquals(allowed, AppearanceCodec.encode(AppearanceSettings()).keys)
     }
