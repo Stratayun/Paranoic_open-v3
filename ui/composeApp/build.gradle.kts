@@ -165,6 +165,9 @@ compose.desktop {
             modules("java.desktop", "java.instrument", "java.prefs", "jdk.httpserver", "jdk.jfr", "jdk.unsupported", "jdk.unsupported.desktop")
             // PDF worker executable (tools/build/native.py desktop); found only via compose.application.resources.dir.
             appResourcesRootDir.set(layout.buildDirectory.dir("native/app-resources"))
+            // -Pparanoic.winConsole: a console launcher that prints any startup failure,
+            // including one before the app's own code (diagnostic build only).
+            windows { console = providers.gradleProperty("paranoic.winConsole").isPresent }
         }
     }
 }
