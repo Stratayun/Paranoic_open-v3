@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.stratayun.paranoic.bridge.*
+import kotlinx.coroutines.launch
 import io.github.stratayun.paranoic.ui.components.FaultNotice
 import io.github.stratayun.paranoic.ui.state.*
 import kotlinx.coroutines.CancellationException
@@ -31,6 +32,10 @@ import kotlinx.coroutines.ensureActive
 private const val PAGE_ROWS = 128
 
 @OptIn(ExperimentalLayoutApi::class)
+
+/** Outlives the viewer: a cancel request must reach the core after the screen is gone. */
+private val cancelScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+
 @Composable
 fun PagedTextViewer(core: CoreGateway, file: FileItem, onClose: () -> Unit) {
     var pager by remember { mutableStateOf<TextPager?>(null) }
@@ -47,6 +52,10 @@ fun PagedTextViewer(core: CoreGateway, file: FileItem, onClose: () -> Unit) {
     val transform = rememberTransformableState { factor, _, _ -> scale = (scale * factor).coerceIn(1f, 3f) }
     val list = rememberLazyListState()
 
+    // Leaving while the one-pass index still runs stops it in the core (audit 8).
+    DisposableEffect(core, file.location, attempt) {
+        onDispose { if (opening) { val location = file.location; cancelScope.launch { core.textPagerCancel(location) } } }
+    }
     LaunchedEffect(core, file.location, attempt) {
         pager = null; lines = emptyList(); first = 0; jump = ""
         readRevision++

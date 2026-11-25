@@ -11,7 +11,7 @@ use windows_sys::Win32::{
         PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, SECURITY_MAX_SID_SIZE, SID_AND_ATTRIBUTES,
         SUB_CONTAINERS_AND_OBJECTS_INHERIT, TOKEN_ADJUST_DEFAULT, TOKEN_MANDATORY_LABEL, TOKEN_QUERY, WELL_KNOWN_SID_TYPE,
     },
-    Storage::FileSystem::{FileIdInfo, GetFileInformationByHandleEx, MoveFileExW, FILE_ID_INFO, MOVEFILE_WRITE_THROUGH},
+    Storage::FileSystem::{FileIdInfo, GetFileInformationByHandleEx, MoveFileExW, FILE_ID_INFO, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH},
     System::{
         JobObjects::{AssignProcessToJobObject, CreateJobObjectW, JobObjectBasicUIRestrictions, JobObjectExtendedLimitInformation,
             SetInformationJobObject, JOBOBJECT_BASIC_UI_RESTRICTIONS, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
@@ -177,6 +177,14 @@ pub(crate) fn rename_no_replace(from: &Path, to: &Path) -> io::Result<()> {
     let (from, to) = (wide(from), wide(to));
     // SAFETY: both names are NUL-terminated; without MOVEFILE_REPLACE_EXISTING the call fails if `to` exists.
     if unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), MOVEFILE_WRITE_THROUGH) } == 0 { return Err(last_error()); }
+    Ok(())
+}
+
+/// Replace `to` with `from`, returning only after the move is on disk.
+pub(crate) fn replace_durable(from: &Path, to: &Path) -> io::Result<()> {
+    let (from, to) = (wide(from), wide(to));
+    // SAFETY: both names are NUL-terminated; WRITE_THROUGH returns after the rename is flushed.
+    if unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) } == 0 { return Err(last_error()); }
     Ok(())
 }
 

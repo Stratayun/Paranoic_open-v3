@@ -50,6 +50,13 @@ pub fn rename_no_replace(from: &std::path::Path, to: &std::path::Path) -> io::Re
     #[cfg(not(windows))] { let _ = (from, to); Err(unsupported()) }
 }
 
+/// Replace `to` with `from` durably (MoveFileEx with write-through): the
+/// Windows counterpart of rename + parent directory sync (audit 21).
+pub fn replace_durable(from: &std::path::Path, to: &std::path::Path) -> io::Result<()> {
+    #[cfg(windows)] { imp::replace_durable(from, to) }
+    #[cfg(not(windows))] { let _ = (from, to); Err(unsupported()) }
+}
+
 /// Limits for `confine_current_process`.
 #[derive(Clone, Copy, Debug)]
 pub struct Confinement { pub memory_bytes: usize }

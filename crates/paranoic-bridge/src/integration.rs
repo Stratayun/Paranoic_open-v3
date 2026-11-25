@@ -8,6 +8,7 @@ use paranoic_formats::paranoic_vault::Spool;
 use zeroize::Zeroizing;
 
 const PAGERS: usize = 8;
+static TEXT_OPENING: std::sync::Mutex<Vec<(String, Arc<std::sync::atomic::AtomicBool>)>> = std::sync::Mutex::new(Vec::new());
 static TEXT_PAGERS: Mutex<Vec<(String, Location, Arc<TextPager>)>> = Mutex::new(Vec::new());
 
 /// E2.6: a large text opened read-only. `rows`: total rows (a row ends at a
@@ -45,7 +46,16 @@ impl NativeRuntime {
     /// At most 8 open at once; the oldest is closed when a ninth opens.
     pub fn text_pager_open(&self, location: NativeLocation) -> Result<NativeTextPager> {
         let location = location.core()?;
-        let pager = TextPager::index(self.core.open_read(&location)?, TextPagerLimits::default(), || Ok(()))?;
+        // Audit 8: closing the viewer cancels the one-pass index (text_pager_cancel).
+        let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let key = format!("{}/{}", location.storage.0, location.path.as_str());
+        TEXT_OPENING.lock().map_err(crate::lock_error)?.push((key.clone(), Arc::clone(&cancelled)));
+        let flag = Arc::clone(&cancelled);
+        let indexed = self.core.open_read(&location).and_then(|handle| TextPager::index(handle, TextPagerLimits::default(), || {
+            if flag.load(std::sync::atomic::Ordering::Relaxed) { Err(paranoic_core::CoreError::new(paranoic_core::ErrorCode::Cancelled, "text indexing cancelled")) } else { Ok(()) }
+        }));
+        if let Ok(mut opening) = TEXT_OPENING.lock() { opening.retain(|(_, f)| !Arc::ptr_eq(f, &cancelled)); }
+        let pager = indexed?;
         let handle = Uuid::new_v4().to_string();
         let info = NativeTextPager { handle: handle.clone(), rows: pager.rows(), bytes: pager.source().bytes,
             encoding: match pager.encoding() { paranoic_documents::TextEncoding::Utf8 => 0, paranoic_documents::TextEncoding::Utf8Bom => 1,
@@ -65,6 +75,13 @@ impl NativeRuntime {
         };
         let rows = pager.read(self.core.open_read(&location)?, first, count as usize, || Ok(()))?;
         Ok(rows.into_iter().map(|r| r.to_string()).collect())
+    }
+    /// Stop every index still being built for `location` (the viewer closed).
+    pub fn text_pager_cancel(&self, location: NativeLocation) {
+        let key = format!("{}/{}", location.storage_id, location.path);
+        if let Ok(opening) = TEXT_OPENING.lock() {
+            for (k, flag) in opening.iter() { if *k == key { flag.store(true, std::sync::atomic::Ordering::Relaxed); } }
+        }
     }
     pub fn text_pager_close(&self, handle: String) {
         if let Ok(mut pagers) = TEXT_PAGERS.lock() { pagers.retain(|(h, _, _)| *h != handle); }

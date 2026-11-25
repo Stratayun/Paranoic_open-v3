@@ -223,6 +223,7 @@ class NativeCoreGateway private constructor(
     override suspend fun textSaveCopy(parent: Location, name: String, text: String) = textCall(write = true) {
         runtime.textSaveAs(parent.native(), name, text).textUi()
     }
+    override suspend fun textPagerCancel(location: Location) { call { runtime.textPagerCancel(location.native()) } }
     override suspend fun textPagerOpen(location: Location): CoreResult<TextPager> {
         var acquired: String? = null
         var delivered = false

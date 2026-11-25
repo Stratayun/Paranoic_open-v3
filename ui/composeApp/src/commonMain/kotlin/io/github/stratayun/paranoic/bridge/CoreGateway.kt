@@ -42,6 +42,8 @@ interface CoreGateway {
     suspend fun textPagerOpen(location: Location): CoreResult<TextPager> = unsupported()
     suspend fun textPagerRead(handle: String, first: Long, count: Int): CoreResult<List<String>> = unsupported()
     suspend fun textPagerClose(handle: String): CoreResult<Unit> = unsupported()
+    /** Stop an index still being built for [location] (viewer closed; audit 8). */
+    suspend fun textPagerCancel(location: Location) {}
     /** Password analysis and entropy come from Rust; never log either argument or result. */
     suspend fun passwordFeedback(password: String): CoreResult<PasswordFeedback> = unsupported()
     suspend fun generatePassphrase(words: Int = 6): CoreResult<String> = unsupported()
