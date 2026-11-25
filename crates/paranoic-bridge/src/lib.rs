@@ -166,6 +166,9 @@ pub struct NativeRuntime {
     pdf_worker: PathBuf,
     /// One live out-of-process PDF session (document parsed once per view).
     pdf: Mutex<Option<(PdfKey, paranoic_documents::pdf_client::PdfSession)>>,
+    /// Plain PDF only: content digest of the open session and when it was last
+    /// confirmed (U-73: size and time alone do not identify the version).
+    pdf_digest: Mutex<Option<([u8; 32], Instant)>>,
     document_workers: Mutex<Option<Arc<dyn paranoic_documents::worker_process::WorkerHost>>>,
     host: Arc<dyn AndroidDocuments>,
     grants: Mutex<Vec<NativeGrant>>,
@@ -264,7 +267,7 @@ impl NativeRuntime {
         features::sweep_spools_at_start(app.as_ref(), &core);
         let thumbnails = thumbnail_cache(&state_root);
         Ok(Arc::new(Self { core, thumbnails, state_root, workspace_root, pdfium: PathBuf::from(pdfium_library),
-            pdf_worker: PathBuf::from(pdf_worker), pdf: Mutex::new(None), document_workers: Mutex::new(None),
+            pdf_worker: PathBuf::from(pdf_worker), pdf: Mutex::new(None), pdf_digest: Mutex::new(None), document_workers: Mutex::new(None),
             host: documents, grants: Mutex::new(saved_grants), spaces: Mutex::new(spaces), sealer, app,
             notes: Mutex::new(features::NotesSlot::default()), secrets_epoch: std::sync::atomic::AtomicU64::new(0),
             vaults: Mutex::new(Default::default()),
@@ -488,15 +491,47 @@ impl NativeRuntime {
         let current = self.core.metadata(&location)?;
         let mut slot = self.pdf.lock().map_err(lock_error)?;
         let key = PdfKey::Plain(location.clone());
-        let reusable = slot.as_ref().is_some_and(|(k, s)| *k == key && s.is_alive() && *s.source() == current);
+        let mut digest = self.pdf_digest.lock().map_err(lock_error)?;
+        let mut reusable = slot.as_ref().is_some_and(|(k, s)| *k == key && s.is_alive() && *s.source() == current);
+        // Within a scroll burst the session is reused as is; after a pause the
+        // content is hashed again, so a same-size, same-time replacement reopens.
+        if reusable && !digest.as_ref().is_some_and(|(_, at)| at.elapsed() < PDF_RECHECK) {
+            let now = self.content_digest(&location, &current)?;
+            reusable = digest.as_ref().is_some_and(|(d, _)| *d == now);
+            if reusable { *digest = Some((now, Instant::now())); }
+        }
         if !reusable {
             slot.take();
+            let before = self.content_digest(&location, &current)?;
             let session = paranoic_documents::pdf_client::PdfSession::open_with_host(&self.core, &location,
                 &self.pdf_worker, &self.pdfium, self.document_worker_host()?)?;
+            if *session.source() != current { return Err(BridgeError::Changed); }
+            *digest = Some((before, Instant::now()));
             *slot = Some((key, session));
         }
         let (_, session) = slot.as_mut().ok_or(BridgeError::Unavailable)?;
         Ok(f(session)?)
+    }
+}
+const PDF_RECHECK: Duration = Duration::from_secs(3);
+impl NativeRuntime {
+    /// BLAKE3 of a file's bytes, bound to the metadata seen before and after.
+    fn content_digest(&self, location: &paranoic_core::Location, expected: &Metadata) -> Result<[u8; 32]> {
+        use std::io::Read;
+        let mut input = self.core.open_read(location)?;
+        if input.metadata()? != *expected { return Err(BridgeError::Changed); }
+        let mut hash = blake3::Hasher::new();
+        let mut buffer = vec![0u8; 256 * 1024];
+        let mut total = 0u64;
+        loop {
+            let n = input.read(&mut buffer).map_err(paranoic_core::CoreError::io)?;
+            if n == 0 { break; }
+            total += n as u64;
+            if total > expected.bytes { return Err(BridgeError::Changed); }
+            hash.update(&buffer[..n]);
+        }
+        if total != expected.bytes || input.metadata()? != *expected { return Err(BridgeError::Changed); }
+        Ok(*hash.finalize().as_bytes())
     }
 }
 fn label(grant: &NativeGrant) -> String {

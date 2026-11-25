@@ -330,6 +330,17 @@ impl<R: Read + Seek> IsolatedSevenZip<R> {
                         seen[index] = true;
                         let entry = self.entries[index].clone();
                         let mut stream = EntryStream { session: &mut self.session, buffer: Vec::new(), at: 0, ended: false, failure: None };
+                        // The worker sends END only after the decoder verified the entry's
+                        // CRC/AES at its end. An empty entry waits for that END before the
+                        // callback can publish it (audit 6 for 7z, U-76).
+                        if !entry.directory && entry.bytes == 0 {
+                            let mut probe = [0u8; 1];
+                            match stream.read(&mut probe) {
+                                Ok(0) => {}
+                                Ok(_) => { self.session.kill(); return Err(invalid()); }
+                                Err(_) => return Err(stream.failure.take().unwrap_or_else(protocol)),
+                            }
+                        }
                         let given = if entry.directory { Ok(()) } else {
                             let mut exact = crate::archive::ExactRead { inner: &mut stream, left: entry.bytes };
                             let result = f(&entry, &mut exact);
