@@ -261,7 +261,9 @@ pub fn cached_thumbnail(core: &Core, cache: &ThumbnailCache, location: &Location
     if bytes.len() as u64 != metadata.bytes || input.metadata()? != metadata { return Err(changed()); }
     check()?;
     let png = thumbnail_image(&bytes, max_side, limits)?;
-    cache.put(&key, &png)?;
+    // The cache is best-effort: an entry over its size bound (or a locked or
+    // failing cache) never hides an image that was decoded successfully.
+    let _ = cache.put(&key, &png);
     Ok(png)
 }
 

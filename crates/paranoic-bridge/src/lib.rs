@@ -427,7 +427,9 @@ impl NativeRuntime {
         let limits = paranoic_documents::ImageLimits { input_bytes: 32 << 20, max_width: 16384, max_height: 16384, max_alloc: 256 << 20 };
         // Cache key includes length AND modification time: a replaced file of
         // the same size gets a new thumbnail.
-        if let Some(cache) = &self.thumbnails {
+        // Only list thumbnails use the encrypted cache. Full-screen previews (PNGs often over its
+        // 4 MiB entry bound) are decoded directly.
+        if let Some(cache) = self.thumbnails.as_ref().filter(|_| side <= 512) {
             return Ok(paranoic_documents::cached_thumbnail(&self.core, cache, &location.core()?, side, limits, || Ok(()))?.to_vec());
         }
         let reader = self.open_stream(location)?;
