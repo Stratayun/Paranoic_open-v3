@@ -33,10 +33,13 @@ fun CleanupScreen(session: AppSession, space: Space, onClose: () -> Unit) {
     var junkPicked by remember(state?.phase) { mutableStateOf(setOf<JunkKind>()) }
     var confirm by remember { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
+    // Large files and old downloads are never pre-selected: the owner picks each one.
+    var reviewPicked by remember(state?.phase) { mutableStateOf(setOf<String>()) }
     val selectedItems = buildList {
         state?.duplicates.orEmpty().forEach { g -> g.items.filter { key(it) in picked }.forEach(::add) }
         state?.junk.orEmpty().filter { it.kind in junkPicked }.forEach { addAll(it.items) }
-    }
+        (state?.large.orEmpty() + state?.oldDownloads.orEmpty()).filter { key(it) in reviewPicked }.forEach(::add)
+    }.distinctBy(::key)
     val selectedBytes = selectedItems.fold(0uL) { sum, it -> sum + if (it.kind == EntryKind.File && it.sizeKnown) it.bytes else 0uL }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize(), color = scheme.surface) {
@@ -61,7 +64,7 @@ fun CleanupScreen(session: AppSession, space: Space, onClose: () -> Unit) {
                 if (state != null && !state.running) {
                     if (state.truncated || state.unreadable > 0) Text(tr("Просмотрено не всё (ограничения или недоступные папки).", "Not everything was scanned (limits or unreadable folders)."),
                         style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-                    if (state.duplicates.isEmpty() && state.junk.isEmpty()) Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    if (state.duplicates.isEmpty() && state.junk.isEmpty() && state.large.isEmpty() && state.oldDownloads.isEmpty()) Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                         Text(tr("Ничего лишнего не найдено", "Nothing to clean up"), style = MaterialTheme.typography.titleMedium)
                     } else LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         if (state.junk.isNotEmpty()) item { SectionLabel(tr("Ненужное", "Junk")) }
@@ -71,6 +74,18 @@ fun CleanupScreen(session: AppSession, space: Space, onClose: () -> Unit) {
                                 subtitle = tr("${group.items.size} шт.", "${group.items.size} items") + if (group.bytes > 0uL) " · " + humanSize(group.bytes) else "",
                                 leading = { Checkbox(on, onCheckedChange = { junkPicked = if (on) junkPicked - group.kind else junkPicked + group.kind }) },
                                 onClick = { junkPicked = if (on) junkPicked - group.kind else junkPicked + group.kind })
+                        }
+                        if (state.large.isNotEmpty()) item {
+                            SectionLabel(tr("Крупные файлы (от 100 МБ): ${state.large.size}", "Large files (100 MB+): ${state.large.size}"))
+                        }
+                        items(state.large, key = { "large:" + key(it) }) { item ->
+                            ReviewRow(item, key(item) in reviewPicked) { reviewPicked = if (key(item) in reviewPicked) reviewPicked - key(item) else reviewPicked + key(item) }
+                        }
+                        if (state.oldDownloads.isNotEmpty()) item {
+                            SectionLabel(tr("Старые загрузки (больше полугода): ${state.oldDownloads.size}", "Old downloads (over six months): ${state.oldDownloads.size}"))
+                        }
+                        items(state.oldDownloads, key = { "old:" + key(it) }) { item ->
+                            ReviewRow(item, key(item) in reviewPicked) { reviewPicked = if (key(item) in reviewPicked) reviewPicked - key(item) else reviewPicked + key(item) }
                         }
                         if (state.duplicates.isNotEmpty()) item {
                             SectionLabel(tr("Дубли: ${state.duplicates.size} групп, можно освободить ", "Duplicates: ${state.duplicates.size} groups, can free ") +
@@ -111,6 +126,21 @@ fun CleanupScreen(session: AppSession, space: Space, onClose: () -> Unit) {
         text = { Text(tr("Файлы можно вернуть из корзины, пока она не очищена.", "Items can be restored from the trash until it is emptied.")) },
         confirmButton = { TextButton(onClick = { confirm = false; session.moveToTrash(selectedItems) { scanner.scan(space) } }) { Text(tr("В корзину", "Move to trash")) } },
         dismissButton = { TextButton(onClick = { confirm = false }) { Text(tr("Отмена", "Cancel")) } })
+}
+
+@Composable
+private fun ReviewRow(item: FileItem, on: Boolean, toggle: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(on, onCheckedChange = { toggle() })
+        FileTypeIcon(item.name, folder = false, size = 36.dp)
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Text(displayName(item.name), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(listOfNotNull(if (item.sizeKnown) humanSize(item.bytes) else null, fileModifiedLabel(item.modifiedMs)).joinToString(" · ") +
+                "  /" + displayName(item.location.path.substringBeforeLast('/', "")),
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
 }
 
 @Composable

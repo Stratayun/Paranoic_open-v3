@@ -22,6 +22,7 @@ import com.sun.jna.Native
  * would otherwise end the app silently: write it next to the app data and show it.
  */
 fun main() {
+    DesktopPrivateTemp.install(Paths.get(System.getenv("LOCALAPPDATA") ?: System.getProperty("user.home"), "Paranoic").toAbsolutePath())
     try { runApp() } catch (error: Throwable) {
         val text = buildString {
             appendLine("Paranoic could not start (${System.getProperty("os.name")}, Java ${System.getProperty("java.version")}).")
@@ -90,10 +91,11 @@ private fun runApp() = application {
             closing = true
             scope.launch {
                 try { (core as? NativeCoreGateway)?.shutdown() }
-                finally { exitApplication() }
+                finally { DesktopPrivateTemp.wipe(root.resolve("tmp")); exitApplication() }
             }
         }
     }, title = "Paranoic", state = rememberWindowState(width = 1100.dp, height = 760.dp)) {
+        LaunchedEffect(Unit) { DesktopClipboardHygiene.start(this) { window.isFocused } }
         val ready = core
         val failed = startup as? Startup.Failed
         // Saved language also for the startup screens outside ParanoicApp.

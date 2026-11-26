@@ -9,6 +9,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+@OptIn(kotlin.time.ExperimentalTime::class)
+private fun nowMs(): ULong = kotlin.time.Clock.System.now().toEpochMilliseconds().toULong()
+
 /** Exact duplicates: same size and same content hash. */
 data class DuplicateGroup(val hash: String, val bytes: ULong, val items: List<FileItem>) {
     /** Space freed by keeping one copy. */
@@ -30,6 +33,9 @@ data class CleanupState(
     val toHash: Int = 0,
     val duplicates: List<DuplicateGroup> = emptyList(),
     val junk: List<JunkGroup> = emptyList(),
+    /** Not junk, only candidates the owner reviews one by one (owner 26.11). */
+    val large: List<FileItem> = emptyList(),
+    val oldDownloads: List<FileItem> = emptyList(),
     val truncated: Boolean = false,
     val unreadable: Int = 0,
     val fault: CoreFault? = null,
@@ -53,6 +59,8 @@ class CleanupScanner(private val core: CoreGateway, private val scope: Coroutine
             val bySize = HashMap<ULong, MutableList<FileItem>>()
             val emptyFiles = mutableListOf<FileItem>(); val emptyFolders = mutableListOf<FileItem>()
             val temporary = mutableListOf<FileItem>(); val installers = mutableListOf<FileItem>(); val thumbnails = mutableListOf<FileItem>()
+            val large = mutableListOf<FileItem>(); val oldDownloads = mutableListOf<FileItem>()
+            val oldBefore = nowMs().let { if (it > OLD_AGE_MS) it - OLD_AGE_MS else 0uL }
             var scanned = 0; var unreadable = 0; var truncated = false; var files = 0
             val folderItems = HashMap<String, FileItem>()
             while (queue.isNotEmpty() && isActive) {
@@ -74,6 +82,8 @@ class CleanupScanner(private val core: CoreGateway, private val scope: Coroutine
                                 }
                                 EntryKind.File -> {
                                     files++
+                                    if (item.sizeKnown && item.bytes >= LARGE_BYTES) large += item
+                                    if (inDownloads && (item.modifiedMs ?: ULong.MAX_VALUE) < oldBefore) oldDownloads += item
                                     when {
                                         item.sizeKnown && item.bytes == 0uL -> emptyFiles += item
                                         TEMP.any { lower.endsWith(it) } -> temporary += item
@@ -97,7 +107,9 @@ class CleanupScanner(private val core: CoreGateway, private val scope: Coroutine
             val candidates = bySize.filterValues { it.size > 1 }.entries.sortedByDescending { it.key }
             var budget = HASH_BUDGET
             val toHash = candidates.sumOf { it.value.size }
-            state = state?.copy(phase = "hash", foldersScanned = scanned, toHash = toHash, junk = junk)
+            state = state?.copy(phase = "hash", foldersScanned = scanned, toHash = toHash, junk = junk,
+                large = large.sortedByDescending { it.bytes }.take(MAX_LIST),
+                oldDownloads = oldDownloads.sortedBy { it.modifiedMs ?: 0uL }.take(MAX_LIST))
             val groups = mutableListOf<DuplicateGroup>()
             var hashed = 0
             for ((size, list) in candidates) {
@@ -138,6 +150,11 @@ class CleanupScanner(private val core: CoreGateway, private val scope: Coroutine
         const val MAX_FILES = 60000
         const val MIN_DUPLICATE = 16_384uL
         const val HASH_BUDGET = 8_589_934_592uL
+        /** 100 MiB and more. */
+        const val LARGE_BYTES = 104_857_600uL
+        /** Downloads untouched for half a year. */
+        const val OLD_AGE_MS = 15_552_000_000uL
+        const val MAX_LIST = 100
         /** Files this small are read whole by the full hash anyway. */
         const val SAMPLE_COVERS_ALL = 131_072uL
     }

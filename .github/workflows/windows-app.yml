@@ -60,6 +60,26 @@ jobs:
           Compress-Archive -Path composeApp/build/compose/binaries/main/app/Paranoic -DestinationPath ../Paranoic-windows-console.zip
           ./gradlew.bat --no-daemon :composeApp:createDistributable
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      # The Compose MSI wraps an unpatched launcher, which fails under a non-ASCII user path.
+      # Rebuild the MSI from a copy of the app image whose launcher has the UTF-8 manifest.
+      - name: MSI with the UTF-8 launcher
+        if: ${{ !inputs.portable_only }}
+        shell: pwsh
+        run: |
+          $image = Join-Path $env:RUNNER_TEMP 'msi-image'
+          Remove-Item -Recurse -Force $image -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory $image | Out-Null
+          Copy-Item -Recurse ui/composeApp/build/compose/binaries/main/app/Paranoic (Join-Path $image 'Paranoic')
+          ./tools/build/windows_launcher.ps1 -Executable (Join-Path $image 'Paranoic/Paranoic.exe')
+          $candle = Get-ChildItem -Recurse -Filter candle.exe -Path ui -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($candle) { $env:PATH = "$($candle.DirectoryName);$env:PATH" }
+          $out = Join-Path $env:RUNNER_TEMP 'msi-utf8'
+          & "$env:JAVA_HOME/bin/jpackage.exe" --type msi --app-image (Join-Path $image 'Paranoic') --name Paranoic `
+            --app-version 2.1.0 --vendor stratayun --win-menu --win-shortcut --win-dir-chooser `
+            --win-upgrade-uuid 6c1f6f3e-2b8e-4f7a-9d55-3a0e2f6b9c41 --dest $out
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          Remove-Item ui/composeApp/build/compose/binaries/main/msi/*.msi
+          Copy-Item (Join-Path $out '*.msi') ui/composeApp/build/compose/binaries/main/msi/
       - name: Enable Unicode paths and add the portable diagnostic launcher
         shell: pwsh
         run: ./tools/build/windows_launcher.ps1 -Executable ui/composeApp/build/compose/binaries/main/app/Paranoic/Paranoic.exe -Diagnostics
