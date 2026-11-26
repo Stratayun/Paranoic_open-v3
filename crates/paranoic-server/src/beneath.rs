@@ -146,13 +146,26 @@ impl DavFileSystem for BeneathFs {
         let path = path.clone();
         Self::blocking(move || {
             let (parent, name) = this.parent(&path)?;
-            let mut flags = OFlags::NOFOLLOW | OFlags::CLOEXEC;
+            // NONBLOCK: a FIFO planted in the tree cannot hang the open (no effect on regular files).
+            let mut flags = OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK;
             flags |= match (options.read, options.write || options.append) {
                 (true, true) => OFlags::RDWR, (false, true) => OFlags::WRONLY, _ => OFlags::RDONLY,
             };
             if options.append { flags |= OFlags::APPEND; }
-            if options.truncate { flags |= OFlags::TRUNC; }
-            if options.create_new { flags |= OFlags::CREATE | OFlags::EXCL; } else if options.create { flags |= OFlags::CREATE; }
+            let mut create_new = options.create_new;
+            // Audit 26.11: a plain PUT over an existing file used to truncate it in place, past the
+            // trash. The old version now goes to the trash and the new one is created fresh.
+            if options.truncate && !options.create_new {
+                match rfs::statat(&parent, name.as_os_str(), rfs::AtFlags::SYMLINK_NOFOLLOW) {
+                    Ok(stat) if rfs::FileType::from_raw_mode(stat.st_mode) == rfs::FileType::RegularFile => {
+                        this.move_to_trash(&parent, &name)?;
+                        create_new = true;
+                    }
+                    Ok(_) => return Err(FsError::Forbidden),
+                    Err(_) => {}
+                }
+            }
+            if create_new { flags |= OFlags::CREATE | OFlags::EXCL; } else if options.create { flags |= OFlags::CREATE; }
             let fd = rfs::openat(&parent, name.as_os_str(), flags, Mode::from_raw_mode(0o600)).map_err(|e| fs_error(io(e)))?;
             let file = File::from(fd);
             if !file.metadata().map_err(FsError::from)?.is_file() { return Err(FsError::Forbidden); }
@@ -244,12 +257,16 @@ impl BeneathFs {
         let path = path.clone();
         Self::blocking(move || {
             let (parent, name) = this.parent(&path)?;
-            let trash = rfs::openat(&*this.root, TRASH, dir_flags(), Mode::empty()).map_err(|e| fs_error(io(e)))?;
-            let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
-            let bucket = format!("{stamp}-{}", uuid::Uuid::new_v4().simple());
-            rfs::mkdirat(&trash, bucket.as_str(), Mode::from_raw_mode(0o700)).map_err(|e| fs_error(io(e)))?;
-            let bucket = rfs::openat(&trash, bucket.as_str(), dir_flags(), Mode::empty()).map_err(|e| fs_error(io(e)))?;
-            no_replace_rename(&parent, &name, &bucket, &name)
+            this.move_to_trash(&parent, &name)
         }).boxed()
+    }
+    /// Move `name` in `parent` into a fresh bucket of the hidden trash (no replace).
+    fn move_to_trash(&self, parent: &OwnedFd, name: &OsStr) -> Result<(), FsError> {
+        let trash = rfs::openat(&*self.root, TRASH, dir_flags(), Mode::empty()).map_err(|e| fs_error(io(e)))?;
+        let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+        let bucket = format!("{stamp}-{}", uuid::Uuid::new_v4().simple());
+        rfs::mkdirat(&trash, bucket.as_str(), Mode::from_raw_mode(0o700)).map_err(|e| fs_error(io(e)))?;
+        let bucket = rfs::openat(&trash, bucket.as_str(), dir_flags(), Mode::empty()).map_err(|e| fs_error(io(e)))?;
+        no_replace_rename(parent, name, &bucket, name)
     }
 }

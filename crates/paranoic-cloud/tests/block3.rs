@@ -105,6 +105,13 @@ fn tree(dir: &Path) -> Vec<(String, Vec<u8>)> {
     let again = req("PUT", "a.txt").header("If-None-Match", "*").body("second").send().unwrap().status();
     assert_eq!(again, 412);
     assert_eq!(std::fs::read(server.root.join("a.txt")).unwrap(), b"first");
+    // Audit 26.11: a plain PUT over a file keeps the old version in the trash.
+    assert!(req("PUT", "c.txt").body("old version").send().unwrap().status().is_success());
+    assert!(req("PUT", "c.txt").body("new").send().unwrap().status().is_success());
+    assert_eq!(std::fs::read(server.root.join("c.txt")).unwrap(), b"new");
+    let kept = std::fs::read_dir(server.root.join(".paranoic-trash")).unwrap().filter_map(|b| b.ok())
+        .any(|b| std::fs::read(b.path().join("c.txt")).map(|d| d == b"old version").unwrap_or(false));
+    assert!(kept, "the overwritten version is not in the trash");
     // MOVE / COPY never replace, even with Overwrite: T.
     assert!(req("PUT", "b.txt").body("other").send().unwrap().status().is_success());
     for method in ["MOVE", "COPY"] {

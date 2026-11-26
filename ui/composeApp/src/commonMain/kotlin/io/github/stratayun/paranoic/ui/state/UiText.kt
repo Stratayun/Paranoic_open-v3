@@ -90,5 +90,6 @@ fun JobError.label(): String = when (this) {
 }
 /** Presentation only. Never use this value as a path or command argument. */
 fun displayName(value: String): String = value.map {
-    if (it.isISOControl() || it in '\u202A'..'\u202E' || it in '\u2066'..'\u2069') '\uFFFD' else it
+    // Direction controls (incl. LRM/RLM/ALM) could disguise "gpj.exe" as "exe.jpg".
+    if (it.isISOControl() || it in '\u202A'..'\u202E' || it in '\u2066'..'\u2069' || it == '\u200E' || it == '\u200F' || it == '\u061C') '\uFFFD' else it
 }.joinToString("")

@@ -235,7 +235,10 @@ impl CloudProvider for WebDav {
         let url = self.url(&id)?;
         let mut sha1 = Sha1::new();
         let request = self.request(Method::PUT, url).header(reqwest::header::IF_NONE_MATCH, "*")
-            .header(reqwest::header::CONTENT_TYPE, "application/octet-stream");
+            .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
+            // The blocking client's 300 s covers sending the whole body (downloads time out
+            // per read instead). Allow a slow 64 KiB/s link for large files (audit 26.11).
+            .timeout(crate::http::upload_timeout(bytes));
         let http = self.http.clone();
         let response = crate::transfer::streamed(bytes, source, progress, &mut |chunk| sha1.update(chunk),
             move |body| http.send(request.body(body), false))?;

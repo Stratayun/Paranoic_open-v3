@@ -6,6 +6,11 @@ use crate::{CoreError, ErrorCode, Result};
 #[derive(Clone)]
 pub struct Http { client: Client }
 
+/// Whole-request deadline for an upload of `bytes`: 300 s plus 64 KiB/s, at most a day.
+pub(crate) fn upload_timeout(bytes: u64) -> Duration {
+    Duration::from_secs((300 + bytes / 65_536).min(86_400))
+}
+
 impl Http {
     pub fn new() -> Result<Self> {
         let client = Client::builder()
