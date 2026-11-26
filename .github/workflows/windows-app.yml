@@ -1,14 +1,21 @@
 name: Windows app (exe/msi)
 
-# Owner's request: a Windows build to try the app. Runs only when this file
-# changes on the working branch (a manual dispatch needs the file on main);
-# to rebuild, bump the build note below. Ordinary pushes do not start it.
-# Build note: 4
+# Explicit builds only; the distributions workflow requests the portable bundle.
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/paranoid-v3-connection-2y64n0]
-    paths: [.github/workflows/windows-app.yml]
+    inputs:
+      portable_only:
+        description: Skip the MSI and separate console bundle
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      portable_only:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
 
 jobs:
   package:
@@ -27,11 +34,17 @@ jobs:
         run: |
           rustup toolchain install 1.89.0 --profile minimal
           rustup default 1.89.0
-      - name: Portable app and MSI
+      - name: Portable app
         working-directory: ui
         shell: pwsh
-        run: ./gradlew.bat --no-daemon :composeApp:createDistributable :composeApp:packageMsi
+        run: ./gradlew.bat --no-daemon :composeApp:createDistributable
+      - name: MSI
+        if: ${{ !inputs.portable_only }}
+        working-directory: ui
+        shell: pwsh
+        run: ./gradlew.bat --no-daemon :composeApp:packageMsi
       - name: Console variant (prints startup errors)
+        if: ${{ !inputs.portable_only }}
         working-directory: ui
         shell: pwsh
         run: |
@@ -67,11 +80,13 @@ jobs:
           path: Paranoic-windows-portable.zip
           retention-days: 14
       - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.portable_only }}
         with:
           name: Paranoic-windows-console
           path: Paranoic-windows-console.zip
           retention-days: 14
       - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.portable_only }}
         with:
           name: Paranoic-windows-msi
           path: ui/composeApp/build/compose/binaries/main/msi/*.msi

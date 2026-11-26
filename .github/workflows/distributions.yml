@@ -1,0 +1,127 @@
+name: Downloadable APK and Windows Portable
+run-name: APK and Portable · ${{ github.sha }}
+
+# The push marker starts only an explicitly requested distribution build.
+# Ordinary source changes do not build or publish application binaries.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/distributions.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-distributions
+  cancel-in-progress: false
+
+jobs:
+  android:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-distributions]')
+    uses: ./.github/workflows/phone-apk.yml
+  windows:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-distributions]')
+    uses: ./.github/workflows/windows-app.yml
+    with:
+      portable_only: true
+  publish:
+    needs: [android, windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Paranoic-*
+          path: dist
+      - name: Prepare downloads
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import os
+          import shutil
+
+          output = Path('publish')
+          output.mkdir()
+          for pattern, name in [
+              ('**/*.apk', 'Paranoic-android-arm64.apk'),
+              ('**/Paranoic-windows-portable.zip', 'Paranoic-windows-portable.zip'),
+          ]:
+              matches = list(Path('dist').glob(pattern))
+              if len(matches) != 1 or matches[0].stat().st_size == 0:
+                  raise SystemExit(f'Expected one nonempty {name}: {matches}')
+              shutil.copyfile(matches[0], output / name)
+          checksums = []
+          for path in sorted(output.iterdir()):
+              with path.open('rb') as source:
+                  digest = hashlib.file_digest(source, 'sha256').hexdigest()
+              checksums.append(f'{digest}  {path.name}\n')
+          (output / 'SHA256SUMS').write_text(''.join(checksums))
+          Path('release-notes.md').write_text(
+              f"Test build from main, commit `{os.environ['GITHUB_SHA']}`.\n\n"
+              '- Android: debug-signed arm64 APK, Rust Core, PDF worker and PDFium.\n'
+              '- Windows: extract the whole Portable ZIP and run Paranoic/Paranoic.exe; '
+              'the JVM, native libraries and diagnostic launcher are included.\n\n'
+              'This is a test build, not a stable release. Device verification is pending.\n'
+          )
+          PY
+          echo "RELEASE_TAG=test-${GITHUB_SHA:0:12}" >> "$GITHUB_ENV"
+      - name: Publish and verify both downloads
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" publish/* --clobber
+          else
+            gh release create "$RELEASE_TAG" publish/* --prerelease --target "$GITHUB_SHA" \
+              --title "Paranoic test ${GITHUB_SHA:0:12}" --notes-file release-notes.md
+          fi
+          gh release view "$RELEASE_TAG" --json assets,url > published.json
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          release = json.loads(Path('published.json').read_text())
+          assets = {asset['name']: asset for asset in release['assets']}
+          names = ['Paranoic-android-arm64.apk', 'Paranoic-windows-portable.zip', 'SHA256SUMS']
+          for name in names:
+              if name not in assets or assets[name]['size'] != (Path('publish') / name).stat().st_size:
+                  raise SystemExit(f'Published asset missing or wrong size: {name}')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              for name in names:
+                  summary.write(f"- [{name}]({assets[name]['url']})\n")
+          PY
+      - name: Remove older application downloads after successful publication
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const current = await github.rest.actions.getWorkflowRun({owner, repo, run_id: context.runId});
+            const cutoff = Date.parse(current.data.created_at);
+            const artifacts = await github.paginate(github.rest.actions.listArtifactsForRepo, {owner, repo, per_page: 100});
+            let deletedArtifacts = 0;
+            for (const artifact of artifacts) {
+              if (/^Paranoic[-_]/i.test(artifact.name) &&
+                  artifact.workflow_run?.id !== context.runId && Date.parse(artifact.created_at) < cutoff) {
+                await github.rest.actions.deleteArtifact({owner, repo, artifact_id: artifact.id});
+                deletedArtifacts++;
+              }
+            }
+            const releases = await github.paginate(github.rest.repos.listReleases, {owner, repo, per_page: 100});
+            let deletedReleases = 0;
+            for (const release of releases) {
+              if (release.prerelease && release.tag_name.startsWith('test-') &&
+                  release.tag_name !== process.env.RELEASE_TAG && Date.parse(release.created_at) < cutoff) {
+                await github.rest.repos.deleteRelease({owner, repo, release_id: release.id});
+                deletedReleases++;
+              }
+            }
+            await core.summary.addRaw(`Removed ${deletedArtifacts} older application artifacts and ${deletedReleases} older test releases. Source history and tags were preserved.\n`).write();

@@ -3,6 +3,7 @@ name: Phone APK (manual)
 run-name: Phone APK · ${{ github.ref_name }} · ${{ github.sha }}
 on:
   workflow_dispatch:
+  workflow_call:
 permissions:
   contents: read
 concurrency:
