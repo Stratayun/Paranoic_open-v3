@@ -1,8 +1,9 @@
 //! Trash for device storage (owner's request). Deleting moves the entry into
 //! `<root>/.Trash-Paranoic/<bucket>/<name>` with a no-replace move, so nothing
-//! is erased until the owner empties the trash. The bucket name carries the
-//! deletion time and the original folder (`<ms>-<rand>~<folder>`, folder
-//! percent-encoded), so no separate index of paths is kept anywhere.
+//! is erased until the owner empties the trash. The bucket is `<ms>-<rand>`;
+//! the original folder is in a small `.origin` file beside the entry (owner
+//! 26.11: deep paths no longer hit the name length limit). Buckets of the
+//! earlier `<ms>-<rand>~<folder>` form are still read.
 //! Only storages with an atomic no-replace move take part (local folders and
 //! Android shared storage where the kernel honours it); others delete as before.
 
@@ -12,7 +13,7 @@ use uuid::Uuid;
 use crate::{features::now_ms, BridgeError, NativeLocation, NativeRuntime, Result};
 
 pub(crate) const TRASH: &str = ".Trash-Paranoic";
-const MAX_FOLDER_SUFFIX: usize = 180;
+const ORIGIN: &str = ".origin";
 const MAX_ITEMS: usize = 10_000;
 
 /// One trashed entry.
@@ -28,9 +29,6 @@ pub struct NativeTrashItem {
     pub bytes: u64,
 }
 
-fn encode(folder: &str) -> String {
-    folder.replace('%', "%25").replace('/', "%2F").replace('~', "%7E")
-}
 fn decode(text: &str) -> Option<String> {
     let out = text.replace("%2F", "/").replace("%7E", "~").replace("%25", "%");
     (out.is_empty() || ResourcePath::parse(out.clone()).is_ok()).then_some(out)
@@ -61,15 +59,24 @@ impl NativeRuntime {
             Err(e) if e.code == paranoic_core::ErrorCode::AlreadyExists => {}
             Err(e) => return Err(e.into()),
         }
-        let folder = encode(parent.as_str());
+        if name == ORIGIN { return Err(BridgeError::Invalid); }
         let id = Uuid::new_v4().simple().to_string();
-        let bucket = if folder.is_empty() { format!("{}-{}", now_ms(), &id[..8]) }
-            else if folder.len() <= MAX_FOLDER_SUFFIX { format!("{}-{}~{folder}", now_ms(), &id[..8]) }
-            else { return Err(BridgeError::Limit) };
-        let bucket = trash.join(&bucket)?;
+        let bucket = trash.join(&format!("{}-{}", now_ms(), &id[..8]))?;
         storage.create_directory(&bucket)?;
+        // Where it came from, written first: an entry is never in the trash without it.
+        let origin = bucket.join(ORIGIN)?;
+        let written = (|| -> paranoic_core::Result<()> {
+            let mut sink = storage.stage(&origin, paranoic_core::JobId(Uuid::new_v4()))?;
+            if let Err(e) = std::io::Write::write_all(&mut sink, parent.as_str().as_bytes()) { let _ = sink.abort(); return Err(paranoic_core::CoreError::io(e)); }
+            sink.publish()
+        })();
+        if let Err(error) = written {
+            let _ = storage.delete_empty_directory(&bucket);
+            return Err(error.into());
+        }
         let target = bucket.join(name)?;
         if let Err(error) = storage.move_no_replace(&location.path, &target) {
+            let _ = storage.delete_file(&origin);
             let _ = storage.delete_empty_directory(&bucket);
             return Err(error.into());
         }
@@ -89,9 +96,11 @@ impl NativeRuntime {
         for bucket in buckets {
             if bucket.metadata.kind != EntryKind::Directory { continue; }
             let Ok((_, bucket_name)) = bucket.location.path.parent_and_name() else { continue };
-            let Some((deleted_ms, original_folder)) = parse_bucket(bucket_name) else { continue };
-            let Ok(inside) = storage.list(&bucket.location.path, 2) else { continue };
-            let [entry] = inside.as_slice() else { continue };
+            let Some((deleted_ms, mut original_folder)) = parse_bucket(bucket_name) else { continue };
+            let Ok(inside) = storage.list(&bucket.location.path, 3) else { continue };
+            let entries: Vec<_> = inside.iter().filter(|e| e.location.path.parent_and_name().map(|(_, n)| n != ORIGIN).unwrap_or(false)).collect();
+            let [entry] = entries.as_slice() else { continue };
+            if !bucket_name.contains('~') { original_folder = read_origin(storage.as_ref(), &bucket.location.path).unwrap_or_default(); }
             let Ok((_, name)) = entry.location.path.parent_and_name() else { continue };
             out.push(NativeTrashItem { bucket: bucket_name.to_owned(), name: name.to_owned(), original_folder, deleted_ms,
                 folder: entry.metadata.kind == EntryKind::Directory, bytes: entry.metadata.bytes });
@@ -105,9 +114,10 @@ impl NativeRuntime {
     pub fn trash_restore(&self, storage_id: String, bucket: String) -> Result<()> {
         let storage = self.trash_storage(&storage_id)?;
         let (bucket_path, item) = self.trash_item(&storage_id, &bucket)?;
-        let (_, original) = parse_bucket(&bucket).ok_or(BridgeError::Invalid)?;
+        let original = item.original_folder.clone();
         let folder = if original.is_empty() { ResourcePath::root() } else { ResourcePath::parse(original)? };
         storage.move_no_replace(&bucket_path.join(&item.name)?, &folder.join(&item.name)?)?;
+        let _ = storage.delete_file(&bucket_path.join(ORIGIN)?);
         let _ = storage.delete_empty_directory(&bucket_path);
         Ok(())
     }
@@ -161,6 +171,14 @@ impl NativeRuntime {
         let item = self.trash_list(storage_id.to_owned())?.into_iter().find(|i| i.bucket == bucket).ok_or(BridgeError::Changed)?;
         Ok((ResourcePath::parse(TRASH)?.join(bucket)?, item))
     }
+}
+
+/// The original folder recorded in a bucket's `.origin` (bounded, UTF-8, a valid path).
+fn read_origin(storage: &dyn paranoic_core::Storage, bucket: &ResourcePath) -> Option<String> {
+    use std::io::Read;
+    let mut text = String::new();
+    storage.open_read(&bucket.join(ORIGIN).ok()?).ok()?.take(4097).read_to_string(&mut text).ok()?;
+    (text.len() <= 4096 && (text.is_empty() || ResourcePath::parse(text.clone()).is_ok())).then_some(text)
 }
 
 /// Depth-first removal below the trash only; symlinks are removed, never followed.

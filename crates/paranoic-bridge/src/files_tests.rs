@@ -126,4 +126,14 @@ fn at(space: &NativeSpace, path: &str) -> NativeLocation { NativeLocation { stor
     assert_eq!(rt.trash_empty(ext.root.storage_id.clone()).unwrap(), 1);
     assert!(rt.trash_list(ext.root.storage_id.clone()).unwrap().is_empty());
     assert!(ex("docs/deep/a.txt").exists(), "purge touched a restored file");
+    // Owner 26.11: a deep Cyrillic path no longer exceeds the name limit of the bucket.
+    let deep: String = (0..12).map(|i| format!("Очень длинная папка номер {i}")).collect::<Vec<_>>().join("/");
+    fs::create_dir_all(ex(&deep)).unwrap();
+    fs::write(ex(&format!("{deep}/фото.jpg")), b"jpeg").unwrap();
+    rt.trash_put(at(&ext, &format!("{deep}/фото.jpg"))).unwrap();
+    let item = rt.trash_list(ext.root.storage_id.clone()).unwrap().into_iter().find(|i| i.name == "фото.jpg").unwrap();
+    assert_eq!(item.original_folder, deep);
+    rt.trash_restore(ext.root.storage_id.clone(), item.bucket).unwrap();
+    assert_eq!(fs::read(ex(&format!("{deep}/фото.jpg"))).unwrap(), b"jpeg");
+    assert!(rt.trash_list(ext.root.storage_id.clone()).unwrap().is_empty());
 }
