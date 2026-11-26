@@ -53,6 +53,8 @@ interface CoreGateway {
     /** Bounded, structured read-only content. Format validation and all IO stay in Core. */
     suspend fun officeOpen(location: Location): CoreResult<OfficeDocument> = unsupported()
     suspend fun imagePng(location: Location, side: Int): CoreResult<ByteArray>
+    /** BLAKE3 of a file (hex), for duplicate search. */
+    suspend fun fileHash(location: Location): CoreResult<String> = unsupported()
     suspend fun pdfPage(location: Location, page: Int, width: Int): CoreResult<PdfPage>
     suspend fun pdfSearch(location: Location, query: String, start: Int): CoreResult<PdfMatches>
     /** Stop the PDF worker and drop the loaded document (viewer closed, pause/lock). Never blocks the caller. */

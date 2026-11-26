@@ -24,6 +24,23 @@ class ParanoicApplication : Application() {
     }
     override fun onCreate() {
         super.onCreate()
+        // Android decodes every WebP variant, HEIC and AVIF; used only when the core decoder refuses a format.
+        PlatformImageFallback.decode = { bytes, side ->
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            var sample = 1
+            while (bounds.outWidth / (sample * 2) >= side && bounds.outHeight / (sample * 2) >= side) sample *= 2
+            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+                ?.let { full ->
+                    val scale = minOf(1f, side.toFloat() / maxOf(full.width, full.height))
+                    val fitted = if (scale < 1f) android.graphics.Bitmap.createScaledBitmap(full, (full.width * scale).toInt().coerceAtLeast(1),
+                        (full.height * scale).toInt().coerceAtLeast(1), true) else full
+                    val out = java.io.ByteArrayOutputStream()
+                    fitted.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                    if (fitted !== full) fitted.recycle(); full.recycle()
+                    out.toByteArray()
+                }
+        }
         // The isolated decoder process must not touch the app's private records.
         if (android.os.Process.myUid() == applicationInfo.uid) diagnostics.install()
     }

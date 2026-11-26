@@ -138,6 +138,9 @@ class AppSession(val core: CoreGateway, private val scope: CoroutineScope, priva
             }
         }
     }
+    /** Duplicate/junk scan of a device place (owner 26.11); [cleanupView] opens its screen. */
+    val cleanup by lazy { CleanupScanner(core, workScope) }
+    var cleanupView by mutableStateOf<Space?>(null)
     /** Files picked elsewhere (categories) waiting to be moved into the Safe's personal folder. */
     var safeInbox by mutableStateOf<List<FileItem>>(emptyList())
     /** Places whose delete goes to the trash (device folders with atomic no-replace move). */

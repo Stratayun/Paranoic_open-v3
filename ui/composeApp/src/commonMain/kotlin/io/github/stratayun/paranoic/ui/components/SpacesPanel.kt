@@ -25,7 +25,8 @@ import io.github.stratayun.paranoic.ui.state.*
 fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, busy: Boolean, onConnect: () -> Unit,
     onOpen: (Space) -> Unit, onDetach: (Space) -> Unit, modifier: Modifier = Modifier,
     onConnectServer: ((String, String, String) -> Unit)? = null, onOpenPath: ((Space, String) -> Unit)? = null,
-    onOpenCategory: ((Space, FileCategory) -> Unit)? = null, onOpenTrash: ((Space) -> Unit)? = null, trashFilled: Set<String> = emptySet()) {
+    onOpenCategory: ((Space, FileCategory) -> Unit)? = null, onOpenTrash: ((Space) -> Unit)? = null, trashFilled: Set<String> = emptySet(),
+    onOpenCleanup: ((Space) -> Unit)? = null) {
     var serverDialog by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf<Space?>(null) }
     var renaming by remember { mutableStateOf<Space?>(null) }
@@ -90,6 +91,13 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
                 subtitle = tr("По имени и типу на всём устройстве", "By name and kind across the device"),
                 leading = { BrandIcon(Res.drawable.ic_search, size = 52.dp) },
                 onClick = { onOpenCategory?.invoke(device.copy(name = title(device)), FileCategory.All) })
+            if (onOpenCleanup != null) {
+                Spacer(Modifier.height(2.dp))
+                GroupedRow(tr("Очистка", "Cleanup"), GroupPosition.Single, enabled = connected && !busy,
+                    subtitle = tr("Дубли и ненужные файлы", "Duplicates and junk files"),
+                    leading = { BrandIcon(Res.drawable.ic_cleanup, size = 52.dp) },
+                    onClick = { onOpenCleanup(device.copy(name = title(device))) })
+            }
             Spacer(Modifier.height(8.dp))
             QuickPlaces(enabled = connected && !busy, onCategory = { c -> onOpenCategory?.invoke(device.copy(name = title(device)), c) },
                 onTrash = onOpenTrash?.let { open -> { open(device.copy(name = title(device))) } }, trashFull = device.root.storageId in trashFilled) { path -> onOpenPath(device.copy(name = title(device)), path) }

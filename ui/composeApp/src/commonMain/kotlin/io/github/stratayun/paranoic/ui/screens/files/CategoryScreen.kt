@@ -65,15 +65,20 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
     }
     val canWrite = !session.writing && session.core.connected && session.fileBatch == null
     fun showInFolder(item: FileItem) {
+        // openPath takes a path relative to the place's root; locations carry the full path.
         val parent = item.location.path.substringBeforeLast('/', "")
+        val root = state.space.root.path
+        val relative = if (root.isNotEmpty() && (parent == root || parent.startsWith("$root/"))) parent.removePrefix(root).trimStart('/') else parent
         session.categories.close()
-        session.openPath(state.space, parent)
+        session.openPath(state.space, relative)
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         Surface(Modifier.fillMaxWidth().padding(vertical = 8.dp), shape = MaterialTheme.shapes.extraLarge, color = scheme.surfaceContainer) {
             if (selecting) Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { selected = emptySet() }, modifier = Modifier.actionDescription(tr("Снять выбор", "Clear selection"))) { AppIcon(AppSymbol.Close) }
-                Text(tr("Выбрано: ${selectedItems.size}", "Selected: ${selectedItems.size}"), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                // One file: its name and the full action sheet (show in folder, properties, rename…).
+                Text(selectedItems.singleOrNull()?.let { displayName(it.name) } ?: tr("Выбрано: ${selectedItems.size}", "Selected: ${selectedItems.size}"),
+                    Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 IconButton(onClick = { selected = if (selectedItems.size == shown.size) emptySet() else shown.map(::key).toSet() },
                     modifier = Modifier.actionDescription(tr("Выбрать все", "Select all"))) { AppIcon(AppSymbol.SelectAll) }
                 if (onSendToSafe != null) IconButton(enabled = canWrite && selectedItems.all { it.canMove(session.files.spaces) },
@@ -85,6 +90,11 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
                 IconButton(enabled = canWrite && selectedItems.all { it.canDelete(session.files.spaces) },
                     onClick = { trashingMany = selectedItems },
                     modifier = Modifier.actionDescription(tr("Удалить", "Delete"))) { AppIcon(AppSymbol.Trash) }
+                selectedItems.singleOrNull()?.let { one ->
+                    IconButton(onClick = { selected = emptySet(); showInFolder(one) },
+                        modifier = Modifier.actionDescription(tr("Показать в папке", "Show in folder"))) { AppIcon(AppSymbol.Folder) }
+                    IconButton(onClick = { selected = emptySet(); sheet = one }, modifier = Modifier.actionDescription(tr("Действия", "Actions"))) { AppIcon(AppSymbol.More) }
+                }
             } else Row(Modifier.padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = session.categories::close, modifier = Modifier.actionDescription(tr("Закрыть", "Close"))) { AppIcon(AppSymbol.Back) }
                 Column(Modifier.weight(1f)) {

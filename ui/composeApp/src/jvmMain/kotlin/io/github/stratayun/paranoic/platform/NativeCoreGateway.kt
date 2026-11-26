@@ -315,7 +315,28 @@ class NativeCoreGateway private constructor(
             else -> PreviewKind.Unsupported
         }, p.mime, p.length)
     }
-    override suspend fun imagePng(location: Location, side: Int) = call { runtime.imagePng(location.native(), side.toUInt()) }
+    override suspend fun imagePng(location: Location, side: Int): CoreResult<ByteArray> {
+        val result = call { runtime.imagePng(location.native(), side.toUInt()) }
+        val fallback = PlatformImageFallback.decode
+        if (result !is CoreResult.Failure || result.fault != CoreFault.Unsupported || fallback == null) return result
+        // The core refused the format: let the platform decoder try the same bytes (owner 26.11, .webp).
+        return call {
+            val reader = runtime.openStream(location.native())
+            try {
+                val length = reader.length()
+                if (length > (32uL shl 20)) throw IOException("image too large for the platform decoder")
+                val bytes = java.io.ByteArrayOutputStream(length.toInt())
+                var offset = 0uL
+                while (offset < length) {
+                    val part = reader.readAt(offset, minOf(1048576uL, length - offset).toUInt())
+                    if (part.isEmpty()) throw IOException("short read")
+                    bytes.write(part); offset += part.size.toULong()
+                }
+                fallback(bytes.toByteArray(), side) ?: throw UnsupportedOperationException()
+            } finally { try { reader.releaseStream() } finally { reader.destroy() } }
+        }
+    }
+    override suspend fun fileHash(location: Location) = call { runtime.fileHash(location.native()) }
     override suspend fun pdfPage(location: Location, page: Int, width: Int) = call {
         val p = runtime.pdfPage(location.native(), page.toUInt(), width.toUInt())
         PdfPage(p.pages.toInt(), p.index.toInt(), p.png)

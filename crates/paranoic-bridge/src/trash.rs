@@ -129,6 +129,19 @@ impl NativeRuntime {
     }
 }
 
+#[uniffi::export]
+impl NativeRuntime {
+    /// Cleanup (owner 26.11): BLAKE3 of a file's bytes, hex, to group exact duplicates.
+    /// Read through Core with the metadata pinned before and after.
+    pub fn file_hash(&self, location: NativeLocation) -> Result<String> {
+        let location = location.core()?;
+        let metadata = self.core.metadata(&location)?;
+        if metadata.kind != EntryKind::File { return Err(BridgeError::Invalid); }
+        let digest = self.content_digest(&location, &metadata)?;
+        Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
+    }
+}
+
 impl NativeRuntime {
     fn trash_storage(&self, storage_id: &str) -> Result<std::sync::Arc<dyn paranoic_core::Storage>> {
         let id = StorageId(Uuid::parse_str(storage_id).map_err(|_| BridgeError::Invalid)?);

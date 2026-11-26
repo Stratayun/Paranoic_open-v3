@@ -522,7 +522,7 @@ impl NativeRuntime {
 const PDF_RECHECK: Duration = Duration::from_secs(3);
 impl NativeRuntime {
     /// BLAKE3 of a file's bytes, bound to the metadata seen before and after.
-    fn content_digest(&self, location: &paranoic_core::Location, expected: &Metadata) -> Result<[u8; 32]> {
+    pub(crate) fn content_digest(&self, location: &paranoic_core::Location, expected: &Metadata) -> Result<[u8; 32]> {
         use std::io::Read;
         let mut input = self.core.open_read(location)?;
         if input.metadata()? != *expected { return Err(BridgeError::Changed); }
