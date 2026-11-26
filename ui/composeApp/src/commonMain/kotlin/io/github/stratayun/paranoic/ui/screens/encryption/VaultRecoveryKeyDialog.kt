@@ -1,5 +1,6 @@
 package io.github.stratayun.paranoic.ui.screens.encryption
 
+import io.github.stratayun.paranoic.ui.components.SensitiveWindow
 import io.github.stratayun.paranoic.ui.components.PeekToggle
 import io.github.stratayun.paranoic.ui.components.peek
 import androidx.compose.foundation.layout.*
@@ -53,7 +54,7 @@ internal fun VaultRecoveryKeyDialog(core: CoreGateway, keyText: String, onClose:
     AlertDialog(modifier = Modifier.trackSecretActivity(), onDismissRequest = {},
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
         title = { Text(if (checking) tr("Проверьте запись ключа", "Verify the recorded key") else tr("Запишите ключ сейчас", "Record the key now")) },
-        text = { Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        text = { SensitiveWindow();  Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(tr("Ключ открывает хранилище без пароля. Храните отдельно от устройства — повторно он не покажется.",
                 "The key opens the vault without a password. Keep it away from the device; it is not shown again."))
             if (!checking) {

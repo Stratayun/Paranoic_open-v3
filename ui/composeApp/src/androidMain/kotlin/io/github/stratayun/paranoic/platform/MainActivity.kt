@@ -40,6 +40,10 @@ class MainActivity : FragmentActivity() {
         if (savedInstanceState == null) incoming.accept(intent)
         setIntent(Intent(this, MainActivity::class.java).setAction(Intent.ACTION_MAIN))
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        // Audit 26.11 (Android 14+): screen readers that are real accessibility tools (TalkBack)
+        // keep working; other accessibility services can no longer read the app's text or input.
+        if (android.os.Build.VERSION.SDK_INT >= 34)
+            window.decorView.setAccessibilityDataSensitive(android.view.View.ACCESSIBILITY_DATA_SENSITIVE_YES)
         val app = application as ParanoicApplication
         setContent {
             val allowCapture = screenshotPolicy.allowed

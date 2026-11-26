@@ -31,7 +31,7 @@ class AndroidNotesQuickKey internal constructor(private val wrapAlias: String, p
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
             .setKeySize(256).setRandomizedEncryptionRequired(true).setUserAuthenticationRequired(true)
             .setUserAuthenticationParameters(timeout, KeyProperties.AUTH_BIOMETRIC_STRONG)
-            .setInvalidatedByBiometricEnrollment(true).build()
+            .setInvalidatedByBiometricEnrollment(true).setUnlockedDeviceRequired(true).build()
         KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply { init(spec) }.generateKey()
     }
     private fun guardCipher(): Cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {

@@ -34,6 +34,9 @@ class AndroidNotesKey internal constructor(private val alias: String) : NotesKey
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setKeySize(256).setRandomizedEncryptionRequired(true)
             if (strongBox && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) spec.setIsStrongBoxBacked(true)
+            // Audit 26.11: unusable while the phone is locked, so tools working on a locked
+            // phone cannot use it as an oracle for password guessing. The Safe is locked anyway then.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) spec.setUnlockedDeviceRequired(true)
             init(spec.build())
         }.generateKey()
         return try { generate(strongBox = true) } catch (_: Exception) { generate(strongBox = false) }

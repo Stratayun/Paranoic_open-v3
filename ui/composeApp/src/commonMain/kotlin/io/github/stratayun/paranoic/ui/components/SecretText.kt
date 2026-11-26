@@ -9,10 +9,17 @@ import androidx.compose.runtime.Composable
  */
 object SecretTextInput {
     var wrapper: (@Composable (@Composable () -> Unit) -> Unit)? = null
+    /** Android 14+: marks the current window (a dialog is a window of its own) as accessibility-sensitive. */
+    var sensitiveWindow: (@Composable () -> Unit)? = null
 }
+
+/** Place inside dialogs that show or take secrets: only real accessibility tools may read them. */
+@Composable
+fun SensitiveWindow() { SecretTextInput.sensitiveWindow?.invoke() }
 
 @Composable
 fun SecretInput(content: @Composable () -> Unit) {
+    SensitiveWindow()
     val wrapper = SecretTextInput.wrapper
     if (wrapper != null) wrapper(content) else content()
 }

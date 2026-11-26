@@ -33,6 +33,8 @@ fun peek(key: String): VisualTransformation =
 fun PeekToggle(key: String) {
     val states = LocalPeekStates.current
     val shown = states.visible[key] == true
+    // Every password field has this toggle: its window is protected from non-tool accessibility services.
+    SensitiveWindow()
     DisposableEffect(states, key) { onDispose { states.visible.remove(key) } }
     IconButton(onClick = { states.visible[key] = !shown },
         modifier = Modifier.actionDescription(if (shown) tr("Скрыть пароль", "Hide password") else tr("Показать пароль", "Show password"))) {

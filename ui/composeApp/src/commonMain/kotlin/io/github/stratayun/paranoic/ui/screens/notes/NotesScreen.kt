@@ -48,6 +48,7 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
     var personalBusy by remember { mutableStateOf(false) }
     val busy = notesBusy || personalBusy
     var personalFiles by remember { mutableStateOf(false) }
+    var weakSafePassword by remember(session.secretsEpoch) { mutableStateOf(false) }
     var tabs by remember { mutableStateOf<List<NoteTab>>(emptyList()) }
     var dirty by remember { mutableStateOf(false) }
     var notesLoaded by remember { mutableStateOf(false) }
@@ -187,6 +188,8 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
                     act {
                         when (val r = safe { core.notesUnlock(password) }) {
                             is CoreResult.Value -> {
+                                // Audit 26.11: depends only on the typed password, the same for every way in.
+                                weakSafePassword = (core.passwordFeedback(password) as? CoreResult.Value)?.value?.strength == PasswordStrength.Weak
                                 // The same policy follows EVERY successful authentication.
                                 // Never ask Core whether a duress password was used.
                                 authenticated()
@@ -198,6 +201,13 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
             }
             else -> { Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 LaunchedEffect(current.unlocked) { if (!notesLoaded) act { loadNotes() } }
+                if (weakSafePassword) Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.tertiaryContainer) {
+                    Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                        Text(tr("Пароль Сейфа слабее нынешнего правила (от 12 символов). Смените его в настройках Сейфа ниже.",
+                            "The Safe password is weaker than the current rule (12+ characters). Change it in the Safe settings below."))
+                        TextButton(onClick = { weakSafePassword = false }) { Text(tr("Понятно", "Got it")) }
+                    }
+                }
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 8.dp)) {
                     SegmentedButton(selected = !personalFiles, enabled = !busy, onClick = { personalFiles = false },
                         shape = SegmentedButtonDefaults.itemShape(0, 2), icon = { AppIcon(AppSymbol.Notes) }) { Text(tr("Заметки", "Notes")) }

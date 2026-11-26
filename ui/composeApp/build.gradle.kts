@@ -138,6 +138,10 @@ android {
         }
         buildTypes.getByName("debug").signingConfig = project
         buildTypes.getByName("release").signingConfig = project
+        // Audit 26.11: builds handed to people are not debuggable. A debuggable APK lets anyone
+        // with USB debugging read the app's private data (`adb shell run-as`) and attach a
+        // debugger to dump keys from memory. Test builds without the project key stay debuggable.
+        buildTypes.getByName("debug").isDebuggable = false
     }
 }
 

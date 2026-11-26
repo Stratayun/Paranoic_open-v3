@@ -27,6 +27,7 @@ class ParanoicApplication : Application() {
         PlatformImageFallback.decode = AndroidImageFallback::decode
         PlatformMediaIndex.query = { root, extensions, limit -> AndroidMediaIndex.query(this, root, extensions, limit) }
         io.github.stratayun.paranoic.ui.components.SecretTextInput.wrapper = incognitoKeyboard
+        io.github.stratayun.paranoic.ui.components.SecretTextInput.sensitiveWindow = sensitiveWindow
         if (android.os.Process.myUid() == applicationInfo.uid) {
             AndroidClipboardHygiene.install(this)
             registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {

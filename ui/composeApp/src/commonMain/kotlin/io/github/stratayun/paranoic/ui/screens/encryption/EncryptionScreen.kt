@@ -63,6 +63,8 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
     var path by remember { mutableStateOf<List<String>>(emptyList()) }
     var listing by remember { mutableStateOf<VaultListing?>(null) }
     var anchorsDamaged by remember { mutableStateOf(false) }
+    // Audit 26.11: a vault opened with a password weaker than today's rule is offered a change.
+    var weakPassword by remember { mutableStateOf(false) }
     var fault by remember { mutableStateOf<CoreFault?>(null) }
     var uncertain by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -93,7 +95,7 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
         onDispose { if (opened != null) scope.launch(NonCancellable) { safe { gateway.lock(opened.handle) } } }
     }
     LaunchedEffect(session.secretsEpoch) {
-        ++readRevision; vault = null; path = emptyList(); listing = null; recoveryText = null; dialog = null; viewing = null
+        ++readRevision; vault = null; weakPassword = false; path = emptyList(); listing = null; recoveryText = null; dialog = null; viewing = null
     }
 
     val files = session.files
@@ -139,6 +141,16 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
     CompositionLocalProvider(LocalSecretActivity provides { if (vault != null) interaction++ }) {
     Column(Modifier.fillMaxSize().padding(16.dp).trackSecretActivity(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Column(Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (weakPassword && vault != null) Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.tertiaryContainer) {
+            Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                Text(tr("Пароль этого хранилища слабее нынешнего правила (от 12 символов). Его проще подобрать — лучше сменить.",
+                    "This vault's password is weaker than the current rule (12+ characters). It is easier to guess — better change it."))
+                Row {
+                    TextButton(enabled = vault?.writable == true, onClick = { weakPassword = false; dialog = Dialog.ChangePassword }) { Text(tr("Сменить пароль", "Change password")) }
+                    TextButton(onClick = { weakPassword = false }) { Text(tr("Позже", "Later")) }
+                }
+            }
+        }
         completed?.let { result -> Text(when (result) {
             FolderWriteNotice.Password -> tr("Пароль изменён. При следующем открытии используйте новый пароль.", "Password changed. Use the new password on the next open.")
             FolderWriteNotice.Move -> tr("Объект перенесён. Имя сохранено.", "Entry moved. Its name is unchanged.")
@@ -416,6 +428,7 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
                             if (!writable) gateway.restrictWrites(r.value)
                             val v = OpenVault(r.value, if (d.create) name else node.name, writable, location)
                             vault = v; reload(v, emptyList())
+                            weakPassword = !d.create && (session.core.passwordFeedback(password) as? CoreResult.Value)?.value?.strength == PasswordStrength.Weak
                         }
                         is CoreResult.Failure -> {
                             fault = r.fault; uncertain = unknownOutcome(r.fault)

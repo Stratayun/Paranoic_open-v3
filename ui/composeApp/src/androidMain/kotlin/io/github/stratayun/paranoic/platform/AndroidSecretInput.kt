@@ -28,6 +28,15 @@ internal val incognitoKeyboard: @Composable (@Composable () -> Unit) -> Unit = {
     }, content = content)
 }
 
+/** Audit 26.11: dialogs are windows of their own; mark the one holding this composable. */
+internal val sensitiveWindow: @Composable () -> Unit = {
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.DisposableEffect(view) {
+        if (Build.VERSION.SDK_INT >= 34) view.rootView.setAccessibilityDataSensitive(android.view.View.ACCESSIBILITY_DATA_SENSITIVE_YES)
+        onDispose {}
+    }
+}
+
 /**
  * Audit 26.11: text copied inside Paranoic is marked sensitive (Android 13+ hides it from
  * the clipboard preview) and cleared after two minutes unless something else was copied
