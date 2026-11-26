@@ -42,8 +42,8 @@ internal fun NotesDuressSettings(session: AppSession, enabled: Boolean, onSet: (
         false -> tr("Выключен", "Off")
         null -> tr("Состояние не прочитано", "State has not been read")
     })
-    Text(tr("Вход с этим паролем необратимо стирает прежние заметки и личную папку, затем открывает пустые заметки. При входе отдельного сообщения не будет. Внешние копии не стираются.",
-        "Unlocking with this password irreversibly wipes the previous notes and personal folder, then opens empty notes. Unlocking shows no special message. External copies are not erased."),
+    Text(tr("Вход с этим паролем необратимо стирает прежние заметки и личную папку, затем открывает пустые заметки. При входе отдельного сообщения не будет. Внешние копии не стираются. Защищает от беглой проверки, не от экспертизы телефона.",
+        "Unlocking with this password irreversibly wipes the previous notes and personal folder, then opens empty notes. Unlocking shows no special message. External copies are not erased. It protects against a quick look, not against forensic analysis of the phone."),
         style = MaterialTheme.typography.bodySmall)
     fault?.let { FaultNotice(it) }
     Row {

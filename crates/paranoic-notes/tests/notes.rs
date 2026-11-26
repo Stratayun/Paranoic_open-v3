@@ -517,14 +517,15 @@ impl DeviceKey for FlakyDevice {
     assert!(hints("abc").contains(&H::TooShort));
     assert!(hints("myqwertyhouse").contains(&H::Common));
     assert!(hints("aaaaaaaaaaaa").contains(&H::Repeats));
-    assert!(hints("onlylowercaseletters").contains(&H::OneKind));
+    assert!(hints("onlylowercase").contains(&H::OneKind));
     let (strength, rest) = password_feedback(PASSWORD);
     assert_eq!(strength, PasswordStrength::Strong);
     assert!(!rest.contains(&H::AddWord) && !rest.contains(&H::TooShort));
     assert_ne!(password_feedback("correcthorse").0, PasswordStrength::Strong);
     assert!(hints("correcthorse").contains(&H::AddWord));
-    // Owner's rule: 8+ characters with all four kinds; Strong from 12.
-    assert_eq!(password_strength("Abcdef1!"), PasswordStrength::Fair);
-    assert_eq!(password_strength("Abcdefgh1!xy"), PasswordStrength::Strong);
-    assert_eq!(password_strength("abcdef1!"), PasswordStrength::Weak);
+    // Rule of 26.11: length over composition.
+    assert_eq!(password_strength("Abcdef1!"), PasswordStrength::Weak, "under 12");
+    assert_eq!(password_strength("Abcdefgh1!xy"), PasswordStrength::Weak, "a run squeezed out leaves too little");
+    assert_eq!(password_strength("лиса гора облако"), PasswordStrength::Strong, "a lowercase phrase is enough");
+    assert_eq!(password_strength("Mz7#qwRt-9vLk"), PasswordStrength::Strong);
 }

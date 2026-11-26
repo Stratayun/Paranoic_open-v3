@@ -21,6 +21,7 @@ jobs:
   android:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-distributions]')
     uses: ./.github/workflows/phone-apk.yml
+    secrets: inherit
   windows:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-distributions]')
     uses: ./.github/workflows/windows-app.yml
@@ -68,7 +69,7 @@ jobs:
           (output / 'SHA256SUMS').write_text(''.join(checksums))
           Path('release-notes.md').write_text(
               f"Test build from main, commit `{os.environ['GITHUB_SHA']}`.\n\n"
-              '- Android: debug-signed arm64 APK, Rust Core, PDF worker and PDFium.\n'
+              '- Android: arm64 APK signed with the project key, Rust Core, PDF worker and PDFium.\n'
               '- Windows: extract the whole Portable ZIP and run Paranoic/Paranoic.exe; '
               'the JVM, native libraries and diagnostic launcher are included.\n\n'
               'This is a test build, not a stable release. Device verification is pending.\n'

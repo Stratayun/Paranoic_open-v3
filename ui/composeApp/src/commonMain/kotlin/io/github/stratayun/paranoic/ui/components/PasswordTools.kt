@@ -47,8 +47,8 @@ fun PasswordTools(core: CoreGateway, password: String, enabled: Boolean = true,
     DisposableEffect(core) { onDispose { generated = null } }
     val scheme = MaterialTheme.colorScheme
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(tr("Не менее 8 символов: строчные и заглавные буквы, цифра и спецсимвол.",
-            "At least 8 characters: lowercase and uppercase letters, a digit and a symbol."),
+        Text(tr("От 12 символов. Лучше фраза из нескольких слов — её легче запомнить.",
+            "12 characters or more. A phrase of several words is easier to remember."),
             style = MaterialTheme.typography.bodySmall)
         if (password.isNotEmpty()) when (val result = assessment) {
             null -> Text(tr("Проверяем пароль…", "Checking password…"), style = MaterialTheme.typography.bodySmall)
@@ -63,12 +63,12 @@ fun PasswordTools(core: CoreGateway, password: String, enabled: Boolean = true,
                     color = if (result.acceptsPassword()) scheme.primary else scheme.onSurfaceVariant)
                 feedback.hints.forEach { hint ->
                     Text(when (hint) {
-                        PasswordHint.TooShort -> tr("Нужно не менее 8 символов.", "Use at least 8 characters.")
+                        PasswordHint.TooShort -> tr("Нужно не менее 12 символов.", "Use at least 12 characters.")
                         PasswordHint.Common -> tr("Содержит распространённый пароль — замените эту часть.", "Contains a common password — replace that part.")
                         PasswordHint.Repeats -> tr("Есть повторы символов.", "Contains repeated characters.")
                         PasswordHint.Sequence -> tr("Есть последовательность вроде 1234 или abcd.", "Contains a run such as 1234 or abcd.")
-                        PasswordHint.OneKind -> tr("Нужны строчные и заглавные буквы, цифра и спецсимвол.", "Include lowercase and uppercase letters, a digit and a symbol.")
-                        PasswordHint.AddWord -> tr("Увеличьте длину пароля.", "Make the password longer.")
+                        PasswordHint.OneKind -> tr("Один вид символов: удлините фразу или добавьте цифру либо заглавную.", "One kind of character: make it longer or add a digit or capital.")
+                        PasswordHint.AddWord -> tr("Добавьте ещё слово — станет надёжнее.", "Add another word to make it stronger.")
                     }, style = MaterialTheme.typography.bodySmall)
                 }
             }

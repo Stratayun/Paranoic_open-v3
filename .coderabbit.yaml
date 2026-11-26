@@ -17,7 +17,7 @@ reviews:
   path_instructions:
     - path: "**/*"
       instructions: |
-        Follow AGENTS.md and docs/architecture/CONTRACTS.md.
+        Follow AGENTS.md.
         Prioritize exploitable security flaws, data loss, incorrect behavior,
         incomplete integrations and meaningful duplication. Give a concrete
         failure scenario and distinguish evidence from hypotheses.
@@ -59,4 +59,3 @@ knowledge_base:
     enabled: true
     filePatterns:
       - "AGENTS.md"
-      - "docs/architecture/CONTRACTS.md"

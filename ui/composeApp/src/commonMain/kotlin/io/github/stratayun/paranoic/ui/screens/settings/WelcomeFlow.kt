@@ -106,7 +106,7 @@ private fun WelcomeNotesPassword(core: CoreGateway, onBusy: (Boolean) -> Unit) {
                 label = { Text(tr("Повтор пароля", "Repeat password")) }, visualTransformation = peek("WelcomeFlow:15"), trailingIcon = { PeekToggle("WelcomeFlow:15") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false))
             val passwordAssessment = rememberPasswordAssessment(core, password)
             PasswordTools(core, password, !busy, assessment = passwordAssessment) { password = it; repeat = "" }
-            Text(tr("Не менее 8 символов. Пароль не сохраняется в настройках мастера.", "At least 8 characters. The wizard never saves the password in preferences."))
+            Text(tr("От 12 символов. Пароль не сохраняется в настройках мастера.", "12 characters or more. The wizard never saves the password in preferences."))
             Button(enabled = !busy && passwordAssessment.acceptsPassword() && password == repeat && fault != CoreFault.OutcomeUnknown, onClick = {
                 val secret = password; password = ""; repeat = ""; busy = true; onBusy(true)
                 scope.launch {

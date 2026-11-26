@@ -76,7 +76,7 @@ fun ArchiveDialog(session: AppSession, sources: List<FileItem>, action: ArchiveA
                         modifier = Modifier.fieldError(passwordMismatchText(), repeat.isNotEmpty() && repeat != password),
                         visualTransformation = peek("ArchiveDialog:5"), trailingIcon = { PeekToggle("ArchiveDialog:5") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
                         isError = repeat.isNotEmpty() && repeat != password, supportingText = { if (repeat.isNotEmpty() && repeat != password) Text(passwordMismatchText()) })
-                    Text(tr("Минимум 8 символов: строчные и заглавные буквы, цифра и символ.", "At least 8 characters: lower- and uppercase letters, a digit and a symbol."))
+                    Text(tr("От 12 символов; лучше фраза из нескольких слов.", "12 characters or more; a phrase of several words is best."))
                 }
             }
             if (format == ArchiveFormat.SevenZip && action != ArchiveAction.Create)

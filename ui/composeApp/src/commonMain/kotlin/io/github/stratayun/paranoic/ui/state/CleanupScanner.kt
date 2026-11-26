@@ -93,7 +93,7 @@ class CleanupScanner(private val core: CoreGateway, private val scope: Coroutine
             val junk = listOf(JunkGroup(JunkKind.EmptyFiles, emptyFiles), JunkGroup(JunkKind.EmptyFolders, emptyFolders),
                 JunkGroup(JunkKind.Temporary, temporary), JunkGroup(JunkKind.Installers, installers), JunkGroup(JunkKind.Thumbnails, thumbnails))
                 .filter { it.items.isNotEmpty() }
-            // Duplicates: only sizes seen more than once are hashed, largest first, within a byte budget.
+            // Duplicates: only sizes seen more than once are compared, largest first; full reads stay within a byte budget.
             val candidates = bySize.filterValues { it.size > 1 }.entries.sortedByDescending { it.key }
             var budget = HASH_BUDGET
             val toHash = candidates.sumOf { it.value.size }
@@ -102,14 +102,25 @@ class CleanupScanner(private val core: CoreGateway, private val scope: Coroutine
             var hashed = 0
             for ((size, list) in candidates) {
                 if (!isActive) return@launch
-                if (size * list.size.toULong() > budget) { truncated = true; continue }
-                budget -= size * list.size.toULong()
-                val byHash = HashMap<String, MutableList<FileItem>>()
+                // Stage 1: size + head/tail sample (128 KiB per file). Stage 2: full hash only where samples agree.
+                val bySample = HashMap<String, MutableList<FileItem>>()
                 for (item in list) {
-                    (core.fileHash(item.location) as? CoreResult.Value)?.value?.let { byHash.getOrPut(it) { mutableListOf() } += item }
-                    hashed++
-                    if (hashed % 10 == 0) state = state?.copy(hashed = hashed)
+                    if (!isActive) return@launch
+                    val sample = if (size <= SAMPLE_COVERS_ALL) "all" else (core.fileSampleHash(item.location) as? CoreResult.Value)?.value
+                    sample?.let { bySample.getOrPut(it) { mutableListOf() } += item }
                 }
+                val byHash = HashMap<String, MutableList<FileItem>>()
+                for (same in bySample.values.filter { it.size > 1 }) {
+                    // The byte budget limits full reads only; samples are cheap.
+                    if (size * same.size.toULong() > budget) { truncated = true; continue }
+                    budget -= size * same.size.toULong()
+                    for (item in same) {
+                        if (!isActive) return@launch
+                        (core.fileHash(item.location) as? CoreResult.Value)?.value?.let { byHash.getOrPut(it) { mutableListOf() } += item }
+                    }
+                }
+                hashed += list.size
+                state = state?.copy(hashed = hashed)
                 byHash.filterValues { it.size > 1 }.forEach { (hash, same) ->
                     groups += DuplicateGroup(hash, size, same.sortedBy { it.modifiedMs ?: ULong.MAX_VALUE })
                 }
@@ -127,5 +138,7 @@ class CleanupScanner(private val core: CoreGateway, private val scope: Coroutine
         const val MAX_FILES = 60000
         const val MIN_DUPLICATE = 16_384uL
         const val HASH_BUDGET = 8_589_934_592uL
+        /** Files this small are read whole by the full hash anyway. */
+        const val SAMPLE_COVERS_ALL = 131_072uL
     }
 }

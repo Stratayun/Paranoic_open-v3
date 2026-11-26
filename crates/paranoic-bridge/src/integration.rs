@@ -1,5 +1,5 @@
 //! Bridge calls for the integration seams (batch 1): the Rust cores are
-//! done; these expose them to the host. Contracts: docs/architecture/CONTRACTS.md.
+//! done; these expose them to the host. Rules: AGENTS.md.
 use crate::*;
 use features::{finish, notes_error, run_wait, vault_error};
 use paranoic_core::{EntryKind, ResourcePath};

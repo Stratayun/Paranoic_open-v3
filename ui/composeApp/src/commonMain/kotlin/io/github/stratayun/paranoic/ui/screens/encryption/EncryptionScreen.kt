@@ -172,6 +172,7 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
                 LinearProgressIndicator(Modifier.fillMaxWidth())
                 Text(tr("Обрабатываем запрос хранилища. Это может занять время…", "Processing the vault request. This may take a while…"))
             }
+            SingleFileCrypto(session, enabled = !busy && !uncertain && !session.writing)
             key(session.secretsEpoch) {
                 Box(Modifier.weight(1f)) {
                     VaultLauncher(core, files.spaces, session.vaultCatalog, !busy && !uncertain && !session.writing, format,
@@ -604,8 +605,8 @@ private fun PasswordDialog(core: CoreGateway, create: Boolean, context: String, 
                         visualTransformation = peek("EncryptionScreen:17"), trailingIcon = { PeekToggle("EncryptionScreen:17") }, isError = repeat.isNotEmpty() && repeat != password,
                         supportingText = { if (repeat.isNotEmpty() && repeat != password) Text(passwordMismatchText()) },
                         keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
-                    Text(tr("Не меньше 8 символов; лучше фраза из нескольких слов. Забытый пароль восстановить нельзя.",
-                        "At least 8 characters; a phrase of several words is better. A forgotten password cannot be recovered."),
+                    Text(tr("От 12 символов; лучше фраза из нескольких слов. Забытый пароль восстановить нельзя.",
+                        "12 characters or more; a phrase of several words is better. A forgotten password cannot be recovered."),
                         style = MaterialTheme.typography.bodySmall)
                 }
                 }
@@ -658,4 +659,33 @@ private fun VaultEntrySheet(entry: VaultEntry, format: FolderFormat, canWrite: B
             SheetAction(tr("Удалить", "Delete"), AppSymbol.Trash, canWrite, danger = true, run = run(onDelete)),
         )),
     ), onDismiss = onDismiss)
+}
+
+/**
+ * One file with age, without a folder (owner 26.11): pick a file, enter a password,
+ * the result appears beside it. The same dialog as in Files.
+ */
+@Composable
+private fun SingleFileCrypto(session: AppSession, enabled: Boolean) {
+    var picking by remember(session.secretsEpoch) { mutableStateOf<Boolean?>(null) }
+    var source by remember(session.secretsEpoch) { mutableStateOf<Pair<FileItem, Boolean>?>(null) }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilledTonalButton(enabled = enabled, onClick = { picking = false }, modifier = Modifier.weight(1f)) {
+            AppIcon(AppSymbol.Vault, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(tr("Зашифровать файл", "Encrypt a file"), maxLines = 1)
+        }
+        OutlinedButton(enabled = enabled, onClick = { picking = true }, modifier = Modifier.weight(1f)) {
+            AppIcon(AppSymbol.Passwords, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(tr("Расшифровать .age", "Decrypt .age"), maxLines = 1)
+        }
+    }
+    picking?.let { decrypt ->
+        CoreFilePickerDialog(session.core, session.files.spaces,
+            if (decrypt) tr("Файл .age для расшифровки", "An .age file to decrypt") else tr("Файл для шифрования (age)", "A file to encrypt (age)"),
+            CorePickKind.Files, onDismiss = { picking = null }) { picked ->
+            picking = null
+            picked.firstOrNull()?.takeIf { it.kind == EntryKind.File }?.let { source = it to decrypt }
+        }
+    }
+    source?.let { (item, decrypt) ->
+        FileCryptoDialog(session, item, decrypt, initialParent = Location(item.location.storageId, item.location.path.substringBeforeLast('/', ""))) { source = null }
+    }
 }

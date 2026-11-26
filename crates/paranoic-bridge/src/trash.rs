@@ -150,6 +150,49 @@ impl NativeRuntime {
         let digest = self.content_digest(&location, &metadata)?;
         Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
     }
+
+    /// Cleanup pre-filter: BLAKE3 of the size, the first and the last 64 KiB.
+    /// Equal samples only make a full `file_hash` worthwhile; different samples
+    /// prove the files differ. Without random access the tail is read through.
+    pub fn file_sample_hash(&self, location: NativeLocation) -> Result<String> {
+        use std::io::Read;
+        const SAMPLE: u64 = 64 * 1024;
+        let location = location.core()?;
+        let metadata = self.core.metadata(&location)?;
+        if metadata.kind != EntryKind::File { return Err(BridgeError::Invalid); }
+        let mut input = self.core.open_read(&location)?;
+        if input.metadata()? != metadata { return Err(BridgeError::Changed); }
+        let mut hash = blake3::Hasher::new();
+        hash.update(&metadata.bytes.to_le_bytes());
+        let mut buffer = vec![0u8; SAMPLE as usize];
+        let mut read_exact = |input: &mut Box<dyn paranoic_core::ReadHandle>, len: usize, hash: &mut blake3::Hasher| -> Result<()> {
+            let mut filled = 0;
+            while filled < len {
+                let n = input.read(&mut buffer[filled..len]).map_err(paranoic_core::CoreError::io)?;
+                if n == 0 { return Err(BridgeError::Changed); }
+                filled += n;
+            }
+            hash.update(&buffer[..len]);
+            Ok(())
+        };
+        let head = metadata.bytes.min(SAMPLE);
+        read_exact(&mut input, head as usize, &mut hash)?;
+        if metadata.bytes > SAMPLE {
+            let tail_start = metadata.bytes.saturating_sub(SAMPLE).max(SAMPLE);
+            if input.seek_to(tail_start).is_err() {
+                let mut skip = tail_start - head;
+                let mut scratch = vec![0u8; 256 * 1024];
+                while skip > 0 {
+                    let n = input.read(&mut scratch[..skip.min(256 * 1024) as usize]).map_err(paranoic_core::CoreError::io)?;
+                    if n == 0 { return Err(BridgeError::Changed); }
+                    skip -= n as u64;
+                }
+            }
+            read_exact(&mut input, (metadata.bytes - tail_start) as usize, &mut hash)?;
+        }
+        if input.metadata()? != metadata { return Err(BridgeError::Changed); }
+        Ok(hash.finalize().to_hex().to_string())
+    }
 }
 
 impl NativeRuntime {

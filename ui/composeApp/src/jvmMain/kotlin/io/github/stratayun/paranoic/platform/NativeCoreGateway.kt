@@ -351,6 +351,7 @@ class NativeCoreGateway private constructor(
         } }
     }
     override suspend fun fileHash(location: Location) = call { runtime.fileHash(location.native()) }
+    override suspend fun fileSampleHash(location: Location) = call { runtime.fileSampleHash(location.native()) }
     override suspend fun pdfPage(location: Location, page: Int, width: Int) = call {
         val p = runtime.pdfPage(location.native(), page.toUInt(), width.toUInt())
         PdfPage(p.pages.toInt(), p.index.toInt(), p.png)

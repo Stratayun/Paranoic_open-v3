@@ -4,6 +4,11 @@ run-name: Phone APK · ${{ github.ref_name }} · ${{ github.sha }}
 on:
   workflow_dispatch:
   workflow_call:
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
 permissions:
   contents: read
 concurrency:
@@ -21,6 +26,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
@@ -33,11 +39,29 @@ jobs:
           rustup target add aarch64-linux-android
           cargo install cargo-ndk --version 3.5.4 --locked
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: android-arm64
+      - name: Project signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::warning::Secret ANDROID_KEYSTORE_BASE64 is missing: this APK gets a one-off key and will not install over the phone's copy."
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/paranoic.p12"
+          echo "PARANOIC_KEYSTORE=$RUNNER_TEMP/paranoic.p12" >> "$GITHUB_ENV"
       - name: Build complete phone APK (arm64, PDFium enabled)
         working-directory: ui
+        env:
+          PARANOIC_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: ./gradlew --no-daemon --stacktrace -Pparanoic.androidAbis=arm64-v8a -Pparanoic.pdfium=fetch :composeApp:assembleDebug
       - name: Verify complete native payload
         run: python3 tools/validation/android_apk.py ui/composeApp/build/outputs/apk/debug/composeApp-debug.apk --abis arm64-v8a --profile pdf --packaging extracted
+      - name: Remove the decoded key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/paranoic.p12"
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
@@ -47,6 +71,6 @@ jobs:
           retention-days: 14
       - name: APK summary
         run: |
-          echo "Phone APK (arm64-v8a), debug-signed; Rust Core, PDF worker and PDFium included." >> "$GITHUB_STEP_SUMMARY"
+          echo "Phone APK (arm64-v8a), signed with the project key when the secret is set; Rust Core, PDF worker and PDFium included." >> "$GITHUB_STEP_SUMMARY"
           echo "Source commit: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
           echo "Download the APK ZIP from the Artifacts section below." >> "$GITHUB_STEP_SUMMARY"

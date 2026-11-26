@@ -1,68 +1,70 @@
-# Paranoic v2.1
-
-Новая реализация защищённого файлового менеджера с нуля: Android + Windows.
-
-## About (English)
+# Paranoic
 
 **Paranoic** is an open-source, privacy-first file manager for **Android and Windows** with a Rust core and a Kotlin/Compose interface.
 
-- Full file manager: storage, SD/USB, folders, categories (Downloads, Documents, Music, Videos, Pictures), search, trash, photo/video/audio and document viewer.
-- Encrypted folders: **Cryptomator**-compatible vaults and its own **Paranoic** format; single files with **age**.
-- **Safe**: notes and a personal folder behind one password, isolated from the file manager and the cloud, with biometrics, duress password and wipe.
-- Archives (ZIP/AES, 7z) and a self-hosted server over WebDAV. Encrypted folders can be moved to any cloud by hand; no third-party cloud accounts are stored.
-- Decrypted data never leaves the app. About 70% complete; `main` is the working, not-yet-stable code.
+- **Files:** internal storage, SD/USB, categories (Downloads, Documents, Music, Videos, Pictures), search, tabs, trash, cleanup of duplicates and junk; viewer for photos, video, audio, PDF, Word, Excel, Markdown and text.
+- **Encrypted folders:** **Cryptomator**-compatible vaults (formats 7/8) and the own **Paranoic** format; single files with **age**.
+- **Safe:** notes and a personal folder behind one password, isolated from the file manager and the cloud; biometrics, duress password, auto-wipe, recovery key.
+- **Archives:** ZIP (incl. AES) and 7z — browse, extract, create.
+- **Own server:** `paranoic-server` over WebDAV (Nextcloud and other WebDAV servers work too). No third-party cloud accounts are stored; encrypted folders can be moved to any cloud by hand.
+- Decrypted data never leaves the app.
 
-**Collaboration is welcome.** Anyone interested in privacy, Rust, Kotlin Multiplatform, cryptography or UI design — open an issue or a pull request, or just say hello. Always glad to meet people with the same interests.
+`main` is the working code, not a stable release. Status: [ROADMAP.md](ROADMAP.md).
 
-## Сотрудничество
+![Paranoic](docs/images/app-preview.png)
 
-Приглашаю всех, кому интересен проект: приватность, Rust, Kotlin/Compose, криптография, дизайн. Пишите в issues, присылайте pull request'ы или просто знакомьтесь — всегда рад новым знакомым по интересам.
+## Collaboration / Сотрудничество
 
-## Поддержать проект / Support
+Anyone interested in privacy, Rust, Kotlin Multiplatform, cryptography or UI design is welcome — open an issue or a pull request, or just say hello.
 
-Донат в **BNB Smart Chain (BEP-20)**:
+Приглашаю всех, кому интересен проект: приватность, Rust, Kotlin/Compose, криптография, дизайн. Пишите в issues, присылайте pull request'ы или просто знакомьтесь.
+
+## Support / Поддержать
+
+**BNB Smart Chain (BEP-20)** only:
 
 ```
 0x669dd60c8D6E45515600e5638563A2b6bBC7F998
 ```
 
-Отправляйте только в сети BNB Smart Chain (BEP-20). / Send only on BNB Smart Chain (BEP-20).
+## Layout
 
-**Карта проекта:** [ROADMAP.md](ROADMAP.md) — что есть, что работает, что дальше; проблемы и тесты — в [docs/roadmap](docs/roadmap/).
+| Path | What |
+| --- | --- |
+| `crates/paranoic-core` | Storage API, job queue, SQLite journal, crash recovery |
+| `crates/paranoic-local` | Native folders and Android shared storage through capability handles |
+| `crates/paranoic-crypto` | Authenticated encryption, keys, sessions, password tools |
+| `crates/paranoic-formats` | age, Cryptomator 7/8, Paranoic vault ([format spec](docs/format/paranoic-v1.md)) |
+| `crates/paranoic-documents` | Archives, PDF (isolated worker), Office, media decoding ([licenses](crates/paranoic-documents/ARCHIVE_LICENSES.md)) |
+| `crates/paranoic-notes` | Safe: notes, duress password, password strength |
+| `crates/paranoic-cloud`, `crates/paranoic-server` | WebDAV client, sync and backup; own WebDAV server |
+| `crates/paranoic-windows` | Windows file primitives (no-replace rename, durable replace) |
+| `crates/paranoic-bridge` | UniFFI API for Kotlin |
+| `ui/` | Kotlin Multiplatform + Compose app (Android and Windows) |
+| `tools/` | Native build, validation, Cryptomator interop fixtures |
 
-![Paranoic](docs/images/app-preview.png)
+## Build
 
-**Правила для исполнителей:** [AGENTS.md](AGENTS.md).
+- **Android APK:** in `ui/`, `./gradlew -Pparanoic.androidAbis=arm64-v8a :composeApp:assembleDebug` (Rust 1.89+, JDK 17, Android SDK 36 + NDK, `cargo-ndk`). Set `PARANOIC_KEYSTORE` and `PARANOIC_KEYSTORE_PASSWORD` to sign with the project key; otherwise a local debug key is used and the APK will not install over a project-signed copy.
+- **Windows:** workflow `windows-app.yml` (portable folder and MSI), or `./gradlew :composeApp:createDistributable` on Windows.
+- **Downloads:** workflow `distributions.yml` builds the APK and Windows portable and publishes them as a test release.
+- **Rust tests:** `cargo test --workspace --locked --features paranoic-documents/pdf -- --test-threads=1`.
 
-**Структура исходников:** [docs/REPOSITORY_LAYOUT.md](docs/REPOSITORY_LAYOUT.md).
+### Own server
 
-## Рабочий принцип
+```
+paranoic-server token          # prints a new token for clients and its BLAKE3 hash
+paranoic-server run config.json
+```
 
-- **Rust-first:** ядро, файловые операции, шифрование, архивы, документы и облачные адаптеры — Rust.
-- **Интерфейс:** Kotlin Multiplatform + Compose (Material 3, тёмная тема и иконки владельца); связь с Rust через UniFFI (`crates/paranoic-bridge`).
-- **Облако:** собственный сервер `paranoic-server` по WebDAV (подходит и Nextcloud). Google Drive / OneDrive / pCloud API не используются — решение владельца 25.11: зашифрованные папки переносятся в облако вручную.
-- Все завершённые изменения сразу коммитятся в **main**. Скачать весь текущий код: GitHub → **Code → Download ZIP**.
-- **main = актуальный код, а не гарантированная стабильная версия.** Проверки только по отдельной команде владельца после окончания крупного блока. Непроверенный код отмечается как непроверенный.
-- Не копировать старые реализации и ограничения без необходимости; новую структуру развивать модульно.
+```json
+{ "root": "/srv/paranoic", "listen": "0.0.0.0:8443", "username": "me",
+  "token_blake3": "<64 hex>", "tls_cert": "/etc/paranoic/cert.pem",
+  "tls_key": "/etc/paranoic/key.pem", "read_only": false }
+```
 
-## Текущее ядро
+MOVE/COPY never replace an existing entry; DELETE goes to a hidden trash inside the root; only the token's hash is stored; TLS is required unless listening on loopback.
 
-В Cargo workspace написаны `paranoic-core` (API, очередь, журнал SQLite,
-восстановление), `paranoic-local` (доступ к native-каталогам через capability handles)
-и `paranoic-crypto` (аутентифицированное шифрование, ключи, сессии).
-Описание контрактов, подключения и ограничений: [Core API](crates/paranoic-core/README.md).
-Кодовая часть 1.6 и границы её ответственности: [Crypto Engine](crates/paranoic-crypto/README.md).
-В `paranoic-formats` (1.7) написаны [адаптеры age и Cryptomator (форматы 7/8)](crates/paranoic-formats/README.md) (VeraCrypt и AES Crypt удалены 2026-11-14).
+## License
 
-Сборки: Android — `./gradlew :composeApp:assembleDebug` в `ui/`; Windows exe/MSI — workflow `windows-app.yml`.
-
-**Состояние и планы** — только в [ROADMAP.md](ROADMAP.md); проблемы и тесты — [docs/roadmap](docs/roadmap/).
-
-Проверка вручную (Linux): сначала `cargo build -p paranoic-server -p paranoic-documents --features paranoic-documents/pdf`, затем `cargo test --workspace --locked --features paranoic-documents/pdf -- --test-threads=1`.
-Совместимость с Cryptomator: `tools/interop/` (Java, Maven) создаёт хранилища и
-передаётся тестам через `PARANOIC_CRYPTOMATOR_FIXTURES` / `PARANOIC_CRYPTOMATOR_V7_FIXTURES`.
-
-## Лицензия / License
-
-© 2026 stratayun. Распространяется по лицензии **GNU AGPL-3.0-or-later** — см. [LICENSE](LICENSE).
 Copyright © 2026 stratayun. Licensed under the **GNU Affero General Public License v3.0 or later** — see [LICENSE](LICENSE).

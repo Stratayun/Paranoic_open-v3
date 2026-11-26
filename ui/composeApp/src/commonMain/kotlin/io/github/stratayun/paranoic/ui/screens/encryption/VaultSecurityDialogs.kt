@@ -36,8 +36,8 @@ internal fun VaultChangePasswordDialog(core: CoreGateway, name: String, cryptoma
                 PasswordTools(core, password, assessment = passwordAssessment) { password = it; repeat = "" }
                 SecretField(repeat, { if (it.length <= 1024) repeat = it }, tr("Повторите новый пароль", "Repeat new password"),
                     if (repeat.isNotEmpty() && repeat != password) passwordMismatchText() else null)
-                Text(tr("Новый пароль: не меньше 8 символов; лучше длинная фраза. Текущий пароль проверяется перед изменением.",
-                    "Use at least 8 characters, preferably a long phrase. The current password is verified before changing it."))
+                Text(tr("Новый пароль: от 12 символов; лучше длинная фраза. Текущий пароль проверяется перед изменением.",
+                    "Use 12 characters or more, preferably a long phrase. The current password is verified before changing it."))
                 Text(tr("Копии старого заголовка или файла ключей в облачных версиях и резервных копиях по-прежнему открываются старым паролем. Ключ содержимого не меняется.",
                     "Old headers or key files in cloud versions and backups still open with the old password. The content key is unchanged."))
                 if (cryptomator) Text(tr("Прерванная смена пароля доводится при следующем открытии Cryptomator. После неё нужен новый пароль.",
@@ -107,8 +107,8 @@ internal fun VaultRecoveryOpenDialog(core: CoreGateway, name: String, canReset: 
                 PasswordTools(core, password, assessment = passwordAssessment) { password = it; repeated = "" }
                 SecretField(repeated, { if (it.length <= 4096) repeated = it }, tr("Повторите новый пароль", "Repeat new password"),
                     if (repeated.isNotEmpty() && repeated != password) passwordMismatchText() else null)
-                Text(tr("Не меньше 8 символов. Пароль изменится после проверки ключа. Внешние копии старого заголовка могут сохранять доступ со старым паролем.",
-                    "At least 8 characters. The password changes after key verification. External copies of the old header may retain old-password access."))
+                Text(tr("От 12 символов. Пароль изменится после проверки ключа. Внешние копии старого заголовка могут сохранять доступ со старым паролем.",
+                    "12 characters or more. The password changes after key verification. External copies of the old header may retain old-password access."))
             }
             Text(tr("Ключ хранилища не восстанавливает заметки. Заметки не переносятся и удаляются вместе с приложением.",
                 "A vault key cannot recover notes. Notes are not transferred and are removed with the app."), style = MaterialTheme.typography.bodySmall)

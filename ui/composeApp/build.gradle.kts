@@ -126,6 +126,19 @@ android {
     // Extract native libs at install: the PDF worker (libparanoic_pdf_worker.so)
     // must exist as an executable file in nativeLibraryDir.
     packaging { jniLibs { useLegacyPackaging = true } }
+    // One project key for every APK (owner 26.11), so each build installs over the last.
+    // The key never enters the repository: CI decodes it from GitHub Secrets, local
+    // builds point PARANOIC_KEYSTORE at the owner's copy. Without it: one-off debug key.
+    val keystore = providers.environmentVariable("PARANOIC_KEYSTORE").orNull?.takeIf { it.isNotBlank() && file(it).isFile }
+    if (keystore != null) {
+        val password = providers.environmentVariable("PARANOIC_KEYSTORE_PASSWORD").get()
+        val project = signingConfigs.create("paranoic") {
+            storeFile = file(keystore); storeType = "PKCS12"; storePassword = password
+            keyAlias = providers.environmentVariable("PARANOIC_KEY_ALIAS").getOrElse("paranoic"); keyPassword = password
+        }
+        buildTypes.getByName("debug").signingConfig = project
+        buildTypes.getByName("release").signingConfig = project
+    }
 }
 
 dependencies {
