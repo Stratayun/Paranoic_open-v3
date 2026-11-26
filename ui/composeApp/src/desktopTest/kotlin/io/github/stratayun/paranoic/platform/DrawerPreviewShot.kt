@@ -41,7 +41,7 @@ class DrawerPreviewShot {
                         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                             DrawerHeader {}
                             SpacesPanel(spaces, places, connected = true, busy = false, onConnect = {}, onOpen = {}, onDetach = {},
-                                onConnectServer = { _, _, _ -> }, onOpenPath = { _, _ -> }, onOpenCategory = { _, _ -> }, onOpenTrash = {},
+                                onConnectServer = { _, _, _ -> }, onOpenPath = { _, _ -> }, onOpenCategory = { _, _ -> }, onOpenTrash = {}, onOpenCleanup = {},
                                 trashFilled = setOf("dev"))
                             DrawerFooter(enabled = true, runningTasks = 0, onSafe = {}, onVaults = {}, onSync = {}, onDiagnostics = {},
                                 onTasks = {}, onSettings = {}, showFiles = false)

@@ -87,16 +87,13 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
             enabled = connected && !busy, onClick = { onOpen(device.copy(name = title(device))) })
         if (device != null && onOpenPath != null) {
             SectionLabel(tr("Места", "Places"))
-            GroupedRow(tr("Поиск по всем файлам", "Search all files"), GroupPosition.Single, enabled = connected && !busy,
-                subtitle = tr("По имени и типу на всём устройстве", "By name and kind across the device"),
-                leading = { BrandIcon(Res.drawable.ic_search, size = 52.dp) },
-                onClick = { onOpenCategory?.invoke(device.copy(name = title(device)), FileCategory.All) })
-            if (onOpenCleanup != null) {
-                Spacer(Modifier.height(2.dp))
-                GroupedRow(tr("Очистка", "Cleanup"), GroupPosition.Single, enabled = connected && !busy,
-                    subtitle = tr("Дубли и ненужные файлы", "Duplicates and junk files"),
-                    leading = { BrandIcon(Res.drawable.ic_cleanup, size = 52.dp) },
-                    onClick = { onOpenCleanup(device.copy(name = title(device))) })
+            // Owner 26.11: search and cleanup side by side, one row.
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ToolTile(tr("Поиск", "Search"), tr("по всем файлам", "all files"), Res.drawable.ic_search, connected && !busy, Modifier.weight(1f)) {
+                    onOpenCategory?.invoke(device.copy(name = title(device)), FileCategory.All)
+                }
+                if (onOpenCleanup != null) ToolTile(tr("Очистка", "Cleanup"), tr("дубли и мусор", "duplicates, junk"), Res.drawable.ic_cleanup,
+                    connected && !busy, Modifier.weight(1f)) { onOpenCleanup(device.copy(name = title(device))) }
             }
             Spacer(Modifier.height(8.dp))
             QuickPlaces(enabled = connected && !busy, onCategory = { c -> onOpenCategory?.invoke(device.copy(name = title(device)), c) },
@@ -265,3 +262,20 @@ private fun QuickPlaces(enabled: Boolean, onCategory: (FileCategory) -> Unit, on
 }
 
 private const val TRASH = "\u0000trash"
+
+@Composable
+private fun ToolTile(title: String, subtitle: String, icon: org.jetbrains.compose.resources.DrawableResource, enabled: Boolean,
+    modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = 64.dp), shape = MaterialTheme.shapes.large,
+        color = scheme.surfaceContainerHigh) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            BrandIcon(icon, size = 40.dp)
+            Spacer(Modifier.width(8.dp))
+            Column {
+                Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(subtitle, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}

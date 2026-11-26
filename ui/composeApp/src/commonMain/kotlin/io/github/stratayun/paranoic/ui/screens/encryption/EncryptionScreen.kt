@@ -669,14 +669,15 @@ private fun VaultEntrySheet(entry: VaultEntry, format: FolderFormat, canWrite: B
 private fun SingleFileCrypto(session: AppSession, enabled: Boolean) {
     var picking by remember(session.secretsEpoch) { mutableStateOf<Boolean?>(null) }
     var chosen by remember(session.secretsEpoch) { mutableStateOf<Pair<List<FileItem>, Boolean>?>(null) }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilledTonalButton(enabled = enabled, onClick = { picking = false }, modifier = Modifier.weight(1f)) {
-            AppIcon(AppSymbol.Vault, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(tr("Зашифровать файлы", "Encrypt files"), maxLines = 1)
-        }
-        OutlinedButton(enabled = enabled, onClick = { picking = true }, modifier = Modifier.weight(1f)) {
-            AppIcon(AppSymbol.Passwords, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(tr("Расшифровать .age", "Decrypt .age"), maxLines = 1)
-        }
-    }
+    // Owner 26.11: both actions spelled out in full; two half-width buttons clipped the labels on phones.
+    Text(tr("Файлы (age)", "Files (age)"), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    GroupedRow(tr("Зашифровать файлы", "Encrypt files"), GroupPosition.First, enabled = enabled,
+        subtitle = tr("Выберите один или несколько — рядом появится .age", "Pick one or more — an .age appears beside each"),
+        leading = { BrandIcon(Res.drawable.ic_lock, size = 40.dp) }, onClick = { picking = false })
+    GroupedRow(tr("Расшифровать .age", "Decrypt .age"), GroupPosition.Last, enabled = enabled,
+        subtitle = tr("Исходник не меняется", "The source stays unchanged"),
+        leading = { AppIcon(AppSymbol.Passwords, Modifier.size(28.dp)) }, onClick = { picking = true })
+    Spacer(Modifier.height(4.dp))
     picking?.let { decrypt ->
         CoreFilePickerDialog(session.core, session.files.spaces,
             if (decrypt) tr("Файлы .age для расшифровки", ".age files to decrypt") else tr("Файлы для шифрования (age)", "Files to encrypt (age)"),
