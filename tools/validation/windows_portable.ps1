@@ -20,20 +20,32 @@ public static class StartupWindow {
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr window, StringBuilder text, int count);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr window, StringBuilder text, int count);
-    public static bool Exists(int pid) {
-        bool found = false;
+    public static int Find(int[] pids) {
+        int found = 0;
         EnumWindows((window, data) => {
             uint owner; GetWindowThreadProcessId(window, out owner);
-            if (owner != pid || !IsWindowVisible(window)) return true;
+            if (Array.IndexOf(pids, (int)owner) < 0 || !IsWindowVisible(window)) return true;
             var name = new StringBuilder(256); GetClassName(window, name, name.Capacity);
             var title = new StringBuilder(256); GetWindowText(window, title, title.Capacity);
-            if (name.ToString() == "SunAwtFrame" && title.ToString() == "Paranoic") found = true;
+            if (name.ToString() == "SunAwtFrame" && title.ToString() == "Paranoic") found = (int)owner;
             return true;
         }, IntPtr.Zero);
         return found;
     }
 }
 '@
+# jpackage can restart the same executable as a child after preparing PATH.
+# Accept that child, but never an unrelated Paranoic instance elsewhere.
+# Each invocation extracts to a fresh GUID path, and the parent stays alive.
+function Get-LauncherChildren {
+    @(Get-CimInstance Win32_Process -Filter "ParentProcessId = $($process.Id)" | Where-Object {
+        [string]::Equals($_.ExecutablePath, $exe.FullName, [StringComparison]::OrdinalIgnoreCase)
+    })
+}
+function Find-ApplicationWindow {
+    $owners = @($process.Id) + @(Get-LauncherChildren | ForEach-Object { [int]$_.ProcessId })
+    [StartupWindow]::Find([int[]]$owners)
+}
 $env:LOCALAPPDATA = Join-Path $unpacked 'user-data'
 Remove-Item Env:JPACKAGE_DEBUG -ErrorAction SilentlyContinue
 if ($UnicodeTemp) {
@@ -51,20 +63,26 @@ try {
     while ((Get-Date) -lt $deadline) {
         $process.Refresh()
         if ($process.HasExited) { throw "Portable exited before opening its window. Exit code $($process.ExitCode)" }
-        if ([StartupWindow]::Exists($process.Id)) { $visible = $true; break }
+        $windowOwner = Find-ApplicationWindow
+        if ($windowOwner -ne 0) { $visible = $true; break }
         Start-Sleep -Milliseconds 500
     }
     if (!$visible) { throw 'Portable did not show its application window within 60 seconds' }
     Start-Sleep -Seconds 10
     $process.Refresh()
-    if ($process.HasExited -or -not ([StartupWindow]::Exists($process.Id))) { throw 'Application window disappeared after startup' }
-    'PASS: visible Paranoic AWT window survived startup.' | Tee-Object (Join-Path $report 'result.txt')
+    if ($process.HasExited -or (Find-ApplicationWindow) -ne $windowOwner) { throw 'Application window disappeared after startup' }
+    "PASS: visible Paranoic AWT window survived startup. Launcher PID $($process.Id), window owner PID $windowOwner." |
+        Tee-Object (Join-Path $report 'result.txt')
 } catch {
     $_ | Out-String | Tee-Object (Join-Path $report 'result.txt')
     throw
 } finally {
     $process | Format-List Id,MainWindowTitle,MainWindowHandle,Responding |
         Out-File (Join-Path $report 'processes.txt')
+    if ($process) {
+        Get-LauncherChildren | Format-List ProcessId,ParentProcessId,ExecutablePath,CreationDate |
+            Out-File (Join-Path $report 'processes.txt') -Append
+    }
     try {
         Add-Type -AssemblyName System.Windows.Forms,System.Drawing
         $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
@@ -74,7 +92,10 @@ try {
         $screen.Save((Join-Path $report 'desktop.png'))
         $graphics.Dispose(); $screen.Dispose()
     } catch { $_ | Out-File (Join-Path $report 'screenshot-error.txt') }
-    if ($process -and !$process.HasExited) { Stop-Process -Id $process.Id -Force }
+    if ($process) {
+        Get-LauncherChildren | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        if (!$process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+    }
     Get-ChildItem $unpacked -Recurse -File | Where-Object {
         $_.Name -in @('startup-error.txt', 'last-jvm-crash-v1.bin') -or $_.Name -like 'hs_err_pid*.log'
     } | Copy-Item -Destination $report -Force

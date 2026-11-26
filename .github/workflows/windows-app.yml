@@ -62,6 +62,13 @@ jobs:
       - name: Zip portable folder
         shell: pwsh
         run: Compress-Archive -Path ui/composeApp/build/compose/binaries/main/app/Paranoic -DestinationPath Paranoic-windows-portable.zip
+      # Preserve the bundle even if a later runtime check fails, for diagnosis.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Paranoic-windows-portable
+          path: Paranoic-windows-portable.zip
+          if-no-files-found: error
+          retention-days: 14
       - name: Verify portable startup and Unicode paths
         shell: pwsh
         run: |
@@ -74,11 +81,6 @@ jobs:
           name: Windows-startup-results
           path: startup-results
           retention-days: 7
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Paranoic-windows-portable
-          path: Paranoic-windows-portable.zip
-          retention-days: 14
       - uses: actions/upload-artifact@v4
         if: ${{ !inputs.portable_only }}
         with:

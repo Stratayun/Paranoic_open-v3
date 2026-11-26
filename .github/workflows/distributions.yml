@@ -3,6 +3,7 @@ run-name: APK and Portable · ${{ github.sha }}
 
 # The push marker starts only an explicitly requested distribution build.
 # Ordinary source changes do not build or publish application binaries.
+# Build note: verify jpackage child-process window ownership (26 November).
 on:
   workflow_dispatch:
   push:
