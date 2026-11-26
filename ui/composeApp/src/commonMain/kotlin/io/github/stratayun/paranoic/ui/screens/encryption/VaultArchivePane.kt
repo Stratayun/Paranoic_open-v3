@@ -68,8 +68,8 @@ internal fun VaultArchivePane(session: AppSession, gateway: EncryptedFolderGatew
                 OutlinedTextField(targetName, { if (it.length <= 255) targetName = it }, enabled = !guard.busy, singleLine = true,
                     label = { Text(tr("Имя новой зашифрованной папки", "New encrypted folder name")) },
                     isError = targetName.isNotEmpty() && !plausibleOperationName(targetName))
-                Text(tr("Открытые файлы снаружи не создаются. При ошибке может остаться частично заполненная зашифрованная папка. Замены, слияния и автоматического повтора нет.",
-                    "No plaintext files are created outside the vault. A failure can leave a partly filled encrypted folder. There is no replacement, merging or automatic retry."),
+                Text(tr("Открытых файлов снаружи не будет. При ошибке может остаться неполная папка; повтора нет.",
+                    "No unencrypted files outside. On error a partial folder may remain; nothing is retried."),
                     style = MaterialTheme.typography.bodySmall)
                 LabeledCheckbox(tr("Подтверждаю распаковку в новую папку", "Extract into a new folder"), acknowledged, enabled = !guard.busy,
                     onChange = { acknowledged = it })

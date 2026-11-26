@@ -54,8 +54,8 @@ fun DiagnosticsScreen(session: AppSession, environment: DiagnosticEnvironment, o
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Text(tr("Диагностика", "Diagnostics"), Modifier.sectionHeading(), style = MaterialTheme.typography.headlineSmall)
-            Text(tr("Отчёт содержит технические сведения, общий журнал ядра и сохранённый сбой Kotlin/JVM. Пароли, содержимое документов, имена файлов и пути в него не включаются.",
-                "The report contains technical information, the shared Core journal and a saved Kotlin/JVM crash. It excludes passwords, document contents, file names and paths."))
+            Text(tr("В отчёте технические сведения и журнал ядра. Пароли, имена файлов, пути и содержимое не входят.",
+                "The report has technical facts and the core journal. No passwords, file names, paths or content."))
             TextButton(enabled = !loading && !clearing, onClick = { revision++ }) { Text(tr("Обновить", "Refresh")) }
         }
         item { RenameProbeSection(session) }
@@ -86,8 +86,8 @@ fun DiagnosticsScreen(session: AppSession, environment: DiagnosticEnvironment, o
         item {
             Text(tr("Последние события ядра", "Recent Core events"), Modifier.sectionHeading(), style = MaterialTheme.typography.titleMedium)
             Text(tr("Это общий журнал; события могут относиться к разным операциям.", "This journal is shared; events can belong to different operations."))
-            Text(tr("Журнал и запись сбоя очищаются после Clear и каждого успешного входа в Сейф. Сохранённые вами отчёты при этом не удаляются.",
-                "The journal and crash record are cleared after Clear and every successful Safe unlock. Reports you saved are not removed."), style = MaterialTheme.typography.bodySmall)
+            Text(tr("Журнал очищается после Clear и каждого входа в Сейф. Ваши сохранённые отчёты остаются.",
+                "The journal clears after Clear and each Safe sign-in. Reports you saved stay."), style = MaterialTheme.typography.bodySmall)
             TextButton(enabled = !loading && !clearing && (diagnostics.isNotEmpty() || crash != null || crashUnreadable), onClick = { confirmClear = true }) { Text(tr("Очистить журнал и запись сбоя", "Clear journal and crash record")) }
             if (diagnostics.isEmpty() && !loading) Text(tr("Событий нет.", "No events."))
         }
@@ -125,8 +125,8 @@ private fun RenameProbeSection(session: AppSession) {
     val scheme = MaterialTheme.colorScheme
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(tr("Проверка атомарной записи", "Atomic write check"), Modifier.sectionHeading(), style = MaterialTheme.typography.titleMedium)
-        Text(tr("Проверяет, умеет ли память переименовывать файл, не заменяя существующий (RENAME_NOREPLACE). Создаёт и сразу удаляет два пробных файла в скрытой папке.",
-            "Checks whether the storage can rename a file without replacing an existing one (RENAME_NOREPLACE). Creates and removes two probe files in a hidden folder."),
+        Text(tr("Проверяет, может ли память переименовать файл без замены существующего. Создаёт и удаляет два пробных файла.",
+            "Checks whether storage can rename without replacing an existing file. Creates and removes two test files."),
             style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
         if (places.isEmpty()) Text(tr("Нет подключённой памяти устройства.", "No device storage connected."))
         places.forEach { space ->
@@ -146,8 +146,8 @@ private fun RenameProbeSection(session: AppSession) {
                         val (text, color) = when (result) {
                             RenameProbe.Supported -> tr("✓ Поддерживается: запись атомарна и никогда не заменяет чужой файл.",
                                 "✓ Supported: writes are atomic and never replace another file.") to scheme.primary
-                            RenameProbe.Unsupported -> tr("⚠ Не поддерживается: используется обходной путь; в редкой гонке с другим приложением возможна замена файла (находка аудита №1).",
-                                "⚠ Not supported: a fallback is used; a rare race with another app could replace a file (audit finding 1).") to scheme.tertiary
+                            RenameProbe.Unsupported -> tr("⚠ Не поддерживается: в редкой гонке с другим приложением возможна замена файла.",
+                                "⚠ Not supported: a rare race with another app may replace a file.") to scheme.tertiary
                             RenameProbe.Ignored -> tr("✕ Опасно: флаг игнорируется и существующий файл ЗАМЕНЯЕТСЯ. Сообщите разработчику.",
                                 "✕ Dangerous: the flag is ignored and an existing file IS REPLACED. Report this.") to scheme.error
                             RenameProbe.Failed -> tr("Проверка не выполнилась (нет записи или ошибка ввода-вывода).", "The check could not run (no write access or I/O error).") to scheme.error

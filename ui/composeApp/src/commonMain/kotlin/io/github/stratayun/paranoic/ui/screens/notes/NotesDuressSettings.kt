@@ -42,8 +42,8 @@ internal fun NotesDuressSettings(session: AppSession, enabled: Boolean, onSet: (
         false -> tr("Выключен", "Off")
         null -> tr("Состояние не прочитано", "State has not been read")
     })
-    Text(tr("Вход с этим паролем необратимо стирает прежние заметки и личную папку, затем открывает пустые заметки. При входе отдельного сообщения не будет. Внешние копии не стираются. Защищает от беглой проверки, не от экспертизы телефона.",
-        "Unlocking with this password irreversibly wipes the previous notes and personal folder, then opens empty notes. Unlocking shows no special message. External copies are not erased. It protects against a quick look, not against forensic analysis of the phone."),
+    Text(tr("Вход этим паролем молча стирает Сейф и открывает пустой. Защищает от беглой проверки, не от экспертизы.",
+        "Unlocking with it silently wipes the Safe and opens an empty one. Protects against a quick look, not forensics."),
         style = MaterialTheme.typography.bodySmall)
     fault?.let { FaultNotice(it) }
     Row {
@@ -62,8 +62,8 @@ internal fun NotesDuressSettings(session: AppSession, enabled: Boolean, onSet: (
         AlertDialog(modifier = Modifier.trackSecretActivity(), onDismissRequest = { password = ""; repeated = ""; setting = false },
             title = { Text(tr("Настроить пароль под принуждением", "Configure a duress password")) },
             text = { Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(tr("Пароль должен быть сильным и отличаться от основного. Не проверяйте его вводом на экране входа: это уничтожит прежние данные.",
-                    "Use a strong password different from the main password. Do not test it on the unlock screen: that would destroy the previous data."),
+                Text(tr("Пароль должен отличаться от основного. Не проверяйте его на экране входа — это сотрёт данные.",
+                    "It must differ from the main password. Do not test it at sign-in — that wipes the data."),
                     color = MaterialTheme.colorScheme.error)
                 OutlinedTextField(password, { if (it.length <= 4096) { password = it } }, singleLine = true,
                     label = { Text(tr("Пароль под принуждением", "Duress password")) }, visualTransformation = peek("NotesDuressSettings:6"), trailingIcon = { PeekToggle("NotesDuressSettings:6") },
@@ -82,8 +82,8 @@ internal fun NotesDuressSettings(session: AppSession, enabled: Boolean, onSet: (
             dismissButton = { TextButton(onClick = { password = ""; repeated = ""; setting = false }) { Text(tr("Отмена", "Cancel")) } })
     }
     if (removing) AlertDialog(onDismissRequest = { removing = false }, title = { Text(tr("Выключить пароль под принуждением?", "Turn off the duress password?")) },
-        text = { Text(tr("Данные не стираются. Дополнительный пароль перестанет действовать в текущем Сейфе; внешние старые копии не изменятся.",
-            "Data is kept. The additional password stops working in the current Safe; older external copies remain unchanged.")) },
+        text = { Text(tr("Данные не стираются; пароль под принуждением просто перестанет действовать.",
+            "Nothing is wiped; the duress password simply stops working.")) },
         confirmButton = { TextButton(enabled = enabled, onClick = { removing = false; onSet(null) }) { Text(tr("Выключить", "Turn off")) } },
         dismissButton = { TextButton(onClick = { removing = false }) { Text(tr("Отмена", "Cancel")) } })
 }

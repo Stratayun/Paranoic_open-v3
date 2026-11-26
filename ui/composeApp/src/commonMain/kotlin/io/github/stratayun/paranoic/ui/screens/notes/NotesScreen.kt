@@ -151,8 +151,8 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
         fault?.let { FaultNotice(it, message = if (duressSettingFault && it == CoreFault.InvalidName)
             tr("Пароль под принуждением должен отличаться от основного.", "The duress password must differ from the main password.") else it.label()) }
         if (session.protectedWrite.phase == ProtectedWritePhase.Unknown) {
-            Text(tr("Результат защищённой записи неизвестен. Проверьте тетрадь и папку назначения; повтор заблокирован до явной проверки.",
-                "The protected write outcome is unknown. Inspect the notebook and destination folder; retry is blocked until explicit reconciliation."),
+            Text(tr("Результат записи неизвестен. Проверьте тетрадь и папку; повтор заблокирован.",
+                "Write outcome unknown. Check the notebook and folder; retry is blocked."),
                 color = MaterialTheme.colorScheme.error)
             TextButton(enabled = !busy, onClick = { checkingWrite = true }) { Text(tr("Проверить состояние…", "Reconcile state…")) }
         }
@@ -160,10 +160,10 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
             "Imported: ${it.tabs} tabs, ${it.notes} notes; ${it.skipped} skipped.")) }
         exportReport?.let { Text(tr("Экспортировано открытых файлов: ${it.files}. Вложений осталось внутри: ${it.skippedAttachments}.",
             "Plaintext files exported: ${it.files}. Attachments kept inside: ${it.skippedAttachments}.")) }
-        if (diagnosticCleanupFailed) Text(tr("Часть диагностических записей не удалось очистить. Повторите очистку в разделе диагностики; очищение заметок не повторяется.",
-            "Some diagnostic records could not be cleared. Retry in Diagnostics; the notes wipe is not repeated."), color = MaterialTheme.colorScheme.error)
-        if (saveUncertain) Text(tr("Результат сохранения неизвестен. Откройте заметки заново и проверьте текст; сохранение не повторялось автоматически.",
-            "The save outcome is unknown. Reopen the notes and check the text; the save was not repeated automatically."),
+        if (diagnosticCleanupFailed) Text(tr("Часть журнала не очистилась — повторите очистку в Диагностике.",
+            "Part of the journal was not cleared — clear it again in Diagnostics."), color = MaterialTheme.colorScheme.error)
+        if (saveUncertain) Text(tr("Результат сохранения неизвестен. Откройте заметки заново и проверьте текст.",
+            "Save outcome unknown. Reopen the notes and check the text."),
             color = MaterialTheme.colorScheme.error)
         }
         when {
@@ -389,8 +389,8 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
         var checked by remember { mutableStateOf(false) }
         AlertDialog(onDismissRequest = { checkingWrite = false }, title = { Text(tr("Проверка после потерянного ответа", "Reconcile a lost reply")) },
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(tr("При экспорте проверьте папку назначения: могла остаться полная или частичная открытая копия. При импорте тетрадь будет перечитана. Эта кнопка не повторяет запись и не удаляет её результат.",
-                    "For exports, inspect the destination: complete or partial plaintext copies may exist. For imports, the notebook will be reloaded. This button neither repeats the write nor removes its result."))
+                Text(tr("Проверьте папку назначения: могла остаться открытая копия. Кнопка ничего не повторяет и не удаляет.",
+                    "Check the destination: an unencrypted copy may remain. This button neither retries nor deletes."))
                 LabeledCheckbox(tr("Проверил(а) состояние файлов; разрешаю перечитать заметки", "I inspected the files; reload the notebook"), checked, onChange = { checked = it })
             } },
             confirmButton = { TextButton(enabled = checked && !busy, onClick = {
@@ -434,8 +434,8 @@ private fun CreateNotes(session: AppSession, status: NotesStatus, busy: Boolean,
     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         BrandIcon(Res.drawable.ic_safe, size = 96.dp)
         Text(tr("Защищённые заметки", "Protected notes"), Modifier.sectionHeading(), style = MaterialTheme.typography.headlineSmall)
-        Text(tr("Один отдельный пароль для заметок и личной папки. Содержимое Сейфа скрыто из файлового менеджера, не уходит в облако и не синхронизируется. Забытый пароль заметок восстановить нельзя.",
-            "One separate password for notes and the personal folder. Safe data is hidden from the file manager, never goes to the cloud and is not synchronized. A forgotten notes password cannot be recovered."))
+        Text(tr("Свой пароль для заметок и личной папки. Сейф скрыт из файлов и не синхронизируется. Забытый пароль не восстановить.",
+            "A separate password for notes and the personal folder. The Safe is hidden and never synced. A forgotten password cannot be recovered."))
         OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), singleLine = true,
             label = { Text(tr("Пароль", "Password")) }, visualTransformation = peek("NotesScreen:8"), trailingIcon = { PeekToggle("NotesScreen:8") }, keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
         val strength = PasswordTools(session.core, password, !busy) {
@@ -637,8 +637,8 @@ private fun NotesSettings(session: AppSession, status: NotesStatus, busy: Boolea
         trailing = { AppIcon(if (expanded) AppSymbol.Up else AppSymbol.Forward) }, onClick = { expanded = !expanded })
     if (enablingQuick) AlertDialog(onDismissRequest = { enablingQuick = false },
         title = { Text(tr("Включить быстрый вход?", "Enable quick unlock?")) },
-        text = { Text(tr("Биометрия даст дополнительный доступ к заметкам без пароля. Пароль надёжнее. Ключи не используются для входа в приложение или файлов.",
-            "Biometrics add access to notes without a password. A password is safer. These keys are separate from app-entry authentication and files.")) },
+        text = { Text(tr("Биометрия — дополнительный вход в заметки без пароля. Пароль надёжнее.",
+            "Biometrics add password-free access to notes. A password is stronger.")) },
         confirmButton = { TextButton(enabled = !busy, onClick = { enablingQuick = false; onQuick(true) }) { Text(tr("Подтвердить биометрией", "Confirm with biometrics")) } },
         dismissButton = { TextButton(onClick = { enablingQuick = false }) { Text(tr("Отмена", "Cancel")) } })
     if (expanded) Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -682,15 +682,15 @@ private fun NotesSettings(session: AppSession, status: NotesStatus, busy: Boolea
             title = { Text(tr("Стереть заметки и личную папку?", "Erase notes and the personal folder?")) },
             text = {
                 Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(tr("Ключи Сейфа будут уничтожены: заметки и личная папка станут нерасшифровываемыми. Отменить нельзя. Раздел останется пустым для нового пароля. Открытые копии снаружи не удаляются.",
-                        "The Safe keys are destroyed: notes and the personal folder become undecryptable. This cannot be undone. The section stays empty for a new password. Plaintext copies outside are not removed."))
+                    Text(tr("Ключи Сейфа будут уничтожены — заметки и личная папка пропадут навсегда. Копии снаружи не удаляются.",
+                        "Safe keys are destroyed — notes and the personal folder are gone for good. Copies outside are not deleted."))
                     Text(when (status.guarantee) {
                         KeyGuarantee.PasswordOnly -> tr("На этой платформе нет ключа устройства: старые копии файлов (резервные копии) остаются защищены только паролем.",
                             "This platform has no device key: old copies of the files (backups) remain protected by the password only.")
-                        KeyGuarantee.DeviceKey -> tr("Ключ устройства удаляется. Защита от восстановления старой копии самого ключа не подтверждена; абсолютное стирание резервных копий не гарантируется.",
-                            "The device key is deleted. Resistance to restoring an old key copy is unconfirmed; absolute erasure of backups is not guaranteed.")
-                        KeyGuarantee.HardwareKey -> tr("Ключ устройства удаляется: даже сохранённая где-то копия файлов перестаёт расшифровываться. Физическое стирание флеш-памяти не гарантируется.",
-                            "The device key is deleted: even a copy of the files kept elsewhere can no longer be decrypted. Physical erasure of flash memory is not guaranteed.")
+                        KeyGuarantee.DeviceKey -> tr("Ключ устройства удаляется. Стирание резервных копий не гарантируется.",
+                            "The device key is deleted. Erasing backups is not guaranteed.")
+                        KeyGuarantee.HardwareKey -> tr("Ключ удаляется — даже сохранённые где-то копии файлов перестанут расшифровываться.",
+                            "The key is deleted — even saved copies of the files stop decrypting.")
                     }, style = MaterialTheme.typography.bodySmall)
                     LabeledCheckbox(tr("Понимаю, заметки и личная папка будут уничтожены", "I understand notes and the personal folder will be destroyed"),
                         checked = confirmed, onChange = { confirmed = it })

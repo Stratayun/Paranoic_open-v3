@@ -95,8 +95,8 @@ fun PasswordTools(core: CoreGateway, password: String, enabled: Boolean = true,
             title = { Text(tr("Случайный пароль", "Random password")) },
             text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(tr("Запомните или запишите его в безопасном месте отдельно от устройства. Приложение не сохраняет его и не копирует в буфер.",
-                    "Remember it or write it down somewhere safe, separately from this device. The app does not store or copy it."))
+                Text(tr("Запишите его отдельно от устройства: приложение его не сохраняет.",
+                    "Write it down away from the device: the app does not keep it."))
                 // Deliberately not selectable and not a clipboard/live-region value.
                 Text(value, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.titleLarge)
                 Text(tr("После подстановки повторите пароль самостоятельно.", "After applying it, type the password again to confirm."))

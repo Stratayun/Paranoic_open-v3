@@ -55,6 +55,8 @@ interface CoreGateway {
     suspend fun imagePng(location: Location, side: Int): CoreResult<ByteArray>
     /** BLAKE3 of a file (hex), for duplicate search. */
     suspend fun fileHash(location: Location): CoreResult<String> = unsupported()
+    /** Files with these extensions from the OS index of a device place, newest first; null = no index, walk folders. */
+    suspend fun indexedFiles(space: Space, extensions: Set<String>, limit: Int): CoreResult<List<FileItem>>? = null
     /** Size + first/last 64 KiB; a cheap pre-filter before fileHash. */
     suspend fun fileSampleHash(location: Location): CoreResult<String> = unsupported()
     suspend fun pdfPage(location: Location, page: Int, width: Int): CoreResult<PdfPage>

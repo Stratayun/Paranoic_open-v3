@@ -38,8 +38,8 @@ internal fun VaultChangePasswordDialog(core: CoreGateway, name: String, cryptoma
                     if (repeat.isNotEmpty() && repeat != password) passwordMismatchText() else null)
                 Text(tr("Новый пароль: от 12 символов; лучше длинная фраза. Текущий пароль проверяется перед изменением.",
                     "Use 12 characters or more, preferably a long phrase. The current password is verified before changing it."))
-                Text(tr("Копии старого заголовка или файла ключей в облачных версиях и резервных копиях по-прежнему открываются старым паролем. Ключ содержимого не меняется.",
-                    "Old headers or key files in cloud versions and backups still open with the old password. The content key is unchanged."))
+                Text(tr("Старые копии заголовка в облаке и бэкапах по-прежнему открываются старым паролем.",
+                    "Old header copies in clouds and backups still open with the old password."))
                 if (cryptomator) Text(tr("Прерванная смена пароля доводится при следующем открытии Cryptomator. После неё нужен новый пароль.",
                     "An interrupted Cryptomator password change is completed on the next open. Use the new password afterwards."))
             }
@@ -61,10 +61,10 @@ internal fun VaultRecoverySetupDialog(name: String, onClose: () -> Unit, onConfi
     AlertDialog(modifier = Modifier.trackSecretActivity(), onDismissRequest = { password = ""; onClose() }, title = { Text(tr("Новый ключ восстановления", "New recovery key")) },
         text = { Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(displayName(name))
-            Text(tr("Ключ даст доступ к папке без пароля. Он заменит прежний ключ в текущем заголовке. Старые копии заголовка вне этой папки могут сохранять прежний доступ.",
-                "This key opens the vault without a password. It replaces the previous key in the current header. Old header copies outside this vault may retain previous access."))
-            Text(tr("Ключ будет показан один раз. Запишите его в безопасном месте вне приложения: оно не сохраняет ключ и не предлагает его экспорт.",
-                "The key is shown once. Record it somewhere safe outside the app: the app does not save or export it."))
+            Text(tr("Ключ откроет папку без пароля и заменит прежний. Старые копии заголовка могут хранить прежний доступ.",
+                "The key opens the folder without a password and replaces the old one. Old header copies may keep the old access."))
+            Text(tr("Ключ будет показан один раз — запишите его вне приложения.",
+                "The key is shown once — write it down outside the app."))
             SecretField(password, { if (it.length <= 1024) password = it }, tr("Текущий пароль", "Current password"))
             LabeledCheckbox(tr("Понимаю: прежний ключ будет заменён", "I understand: the previous key will be replaced"),
                 checked = confirmed, onChange = { confirmed = it })
@@ -107,8 +107,8 @@ internal fun VaultRecoveryOpenDialog(core: CoreGateway, name: String, canReset: 
                 PasswordTools(core, password, assessment = passwordAssessment) { password = it; repeated = "" }
                 SecretField(repeated, { if (it.length <= 4096) repeated = it }, tr("Повторите новый пароль", "Repeat new password"),
                     if (repeated.isNotEmpty() && repeated != password) passwordMismatchText() else null)
-                Text(tr("От 12 символов. Пароль изменится после проверки ключа. Внешние копии старого заголовка могут сохранять доступ со старым паролем.",
-                    "12 characters or more. The password changes after key verification. External copies of the old header may retain old-password access."))
+                Text(tr("От 12 символов. Старые копии заголовка могут открываться старым паролем.",
+                    "12+ characters. Old header copies may still open with the old password."))
             }
             Text(tr("Ключ хранилища не восстанавливает заметки. Заметки не переносятся и удаляются вместе с приложением.",
                 "A vault key cannot recover notes. Notes are not transferred and are removed with the app."), style = MaterialTheme.typography.bodySmall)

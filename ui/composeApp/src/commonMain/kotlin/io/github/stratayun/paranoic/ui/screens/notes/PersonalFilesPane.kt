@@ -356,8 +356,8 @@ private fun PersonalExportDialog(core: CoreGateway, spaces: List<Space>, entry: 
         title = { Text(tr("Создать открытую копию?", "Create a plaintext copy?")) },
         text = { Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(displayName(entry.name))
-            Text(tr("В выбранной папке появится НЕЗАШИФРОВАННЫЙ файл. Он доступен другим приложениям и резервным копиям. Clear, блокировка и пароль под принуждением не удалят эту копию. Имя сохраняется; существующий файл не заменяется.",
-                "The selected folder will contain an UNENCRYPTED file, accessible to other apps and backups. Clear, locking and a duress password will not remove it. The name is kept; an existing file is never replaced."), color = MaterialTheme.colorScheme.error)
+            Text(tr("В папке появится НЕЗАШИФРОВАННЫЙ файл. Clear и блокировка его не удалят.",
+                "An UNENCRYPTED file appears in the folder. Clear and locking do not delete it."), color = MaterialTheme.colorScheme.error)
             TextButton(onClick = { choosing = true }) { Text(tr("Выбрать папку…", "Choose folder…")) }
             parent?.let { Text(displayName(spaces.firstOrNull { s -> s.id == it.location.storageId }?.name.orEmpty()) + " / " + displayName(it.location.path), maxLines = 3) }
             LabeledCheckbox(tr("Понимаю: создаётся открытая копия вне Сейфа", "I understand: a plaintext copy is created outside the Safe"), checked, onChange = { checked = it })

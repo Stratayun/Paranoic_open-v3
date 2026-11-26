@@ -90,8 +90,8 @@ fun ReplaceFileDialog(source: FileItem, target: FileItem, destination: List<Fold
                 Text(tr("Папка назначения: ", "Destination folder: ") +
                     destination.joinToString(" / ") { displayName(it.name) })
                 Text(tr("Заменяемый файл: ", "File to replace: ") + displayName(target.name))
-                Text(tr("Прежнее содержимое этого файла будет заменено. Core повторно проверит допустимость операции. Отмена этого диалога ничего не записывает.",
-                    "The previous file contents will be replaced. Core rechecks whether the operation is supported. Cancelling this dialog writes nothing."))
+                Text(tr("Прежнее содержимое файла будет заменено.",
+                    "The file's previous content will be replaced."))
             }
         },
         confirmButton = {

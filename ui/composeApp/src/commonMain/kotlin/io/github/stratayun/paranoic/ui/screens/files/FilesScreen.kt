@@ -46,6 +46,7 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
     var batchAction by remember(state.folder, session.secretsEpoch) { mutableStateOf<Pair<FileBatchKind, List<FileItem>>?>(null) }
     var trashing by remember(state.folder, session.secretsEpoch) { mutableStateOf<List<FileItem>?>(null) }
     var cryptoSource by remember(state.folder, session.secretsEpoch) { mutableStateOf<FileItem?>(null) }
+    var batchCrypto by remember(state.folder, session.secretsEpoch) { mutableStateOf<Pair<List<FileItem>, Boolean>?>(null) }
     var decrypting by remember { mutableStateOf(false) }
     var archiveSources by remember(state.folder, session.secretsEpoch) { mutableStateOf<List<FileItem>>(emptyList()) }
     var archiveAction by remember(state.folder, session.secretsEpoch) { mutableStateOf<ArchiveAction?>(null) }
@@ -255,6 +256,14 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
                             else DropdownMenuItem(text = { Text(tr("Расшифровать…", "Decrypt…")) }, leadingIcon = { AppIcon(AppSymbol.Passwords) },
                                 enabled = cryptoEnabled, onClick = { moreMenu = false; decrypting = true; cryptoSource = selected })
                         }
+                        // Several files: one password for all (owner 26.11).
+                        if (selectedItems.size > 1 && selectedItems.all { it.kind == EntryKind.File }) {
+                            val allAge = selectedItems.all { isEncrypted(it) }
+                            DropdownMenuItem(text = { Text(if (allAge) tr("Расшифровать файлы…", "Decrypt files…") else tr("Зашифровать файлы (age)…", "Encrypt files (age)…")) },
+                                leadingIcon = { AppIcon(if (allAge) AppSymbol.Passwords else AppSymbol.Vault) },
+                                enabled = canAct && session.directWrite?.phase != DirectWritePhase.Unknown,
+                                onClick = { moreMenu = false; batchCrypto = selectedItems.toList() to allAge })
+                        }
                         DropdownMenuItem(text = { Text(tr("Выбрать все видимые (${visible.size})", "Select all visible (${visible.size})")) },
                             leadingIcon = { AppIcon(AppSymbol.SelectAll) }, enabled = canSelectAll,
                             onClick = { moreMenu = false; inTab { session.selectVisible(visible.map { it.location }) } })
@@ -364,6 +373,7 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
         }
     }
     cryptoSource?.let { source -> FileCryptoDialog(session, source, decrypting) { cryptoSource = null } }
+    batchCrypto?.let { (sources, decrypt) -> BatchCryptoDialog(session, sources, decrypt) { batchCrypto = null; session.clearSelection() } }
     archiveAction?.let { action -> ArchiveDialog(session, archiveSources, action, onDismiss = { archiveAction = null },
         onOpened = { showingArchive = true }) }
 }

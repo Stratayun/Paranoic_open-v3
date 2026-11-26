@@ -154,15 +154,15 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
             tr("Ключ восстановления не подошёл, имеет неверный формат или данные повреждены.",
                 "The recovery key does not match, has an invalid format, or the data is damaged.") else it.label()) }
         if (uncertain) {
-            Text(tr("Результат неизвестен. Проверьте задания и папку. Закройте хранилище и откройте заново; после смены пароля может потребоваться новый пароль. Новые записи заблокированы, автоматического повтора нет.",
-                "Outcome unknown. Inspect jobs and the folder. Lock and reopen the vault; a password change may require the new password. New writes are blocked; there is no automatic retry."), color = MaterialTheme.colorScheme.error)
+            Text(tr("Результат неизвестен. Проверьте папку, закройте и откройте хранилище заново. Повтора не будет.",
+                "Outcome unknown. Check the folder, then lock and reopen the vault. Nothing is retried."), color = MaterialTheme.colorScheme.error)
             if (vault == null) TextButton(enabled = !busy, onClick = { uncertain = false; fault = null }) {
                 Text(tr("Проверил(а) задания и папку", "I inspected jobs and the folder"))
             }
         }
         if (format == FolderFormat.Cryptomator) {
-            if (details) Text(tr("Cryptomator не обнаруживает удаление целых последних блоков файла. Размер в списке — размер шифротекста, не точная длина исходника. Сбой изменения может потребовать ручного разбора в задачах.",
-                "Cryptomator cannot detect removal of whole trailing file blocks. Listed sizes are ciphertext sizes, not exact plaintext lengths. An interrupted change may require manual review in Tasks."))
+            if (details) Text(tr("Cryptomator не замечает обрезку файла целыми блоками; размеры в списке — размеры шифротекста.",
+                "Cryptomator cannot detect whole trailing blocks being cut; listed sizes are ciphertext sizes."))
         }
         }
         val open = vault
@@ -200,8 +200,8 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
             }
         } else {
             val l = listing
-            if (session.vaultCatalog.failed) Text(tr("Хранилище открыто, но сохранить карточку не удалось. Её прежние данные сохранены; перечитайте каталог после блокировки.",
-                "The vault is open, but its card could not be saved. Previous details are retained; reload the catalog after locking."), color = MaterialTheme.colorScheme.error)
+            if (session.vaultCatalog.failed) Text(tr("Хранилище открыто, но карточку сохранить не удалось.",
+                "The vault is open, but its card could not be saved."), color = MaterialTheme.colorScheme.error)
             var sheetEntry by remember(open.handle) { mutableStateOf<VaultEntry?>(null) }
             var vaultMenu by remember(open.handle) { mutableStateOf(false) }
             var addMenu by remember(open.handle) { mutableStateOf(false) }
@@ -357,8 +357,8 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
 
     if (anchorsDamaged) AlertDialog(onDismissRequest = { anchorsDamaged = false },
         title = { Text(tr("Повреждена защита от отката", "Rollback protection damaged")) },
-        text = { Text(tr("Файл, где это устройство помнит последнюю версию каждой папки Paranoic 1.8, повреждён. Пока он такой, папки не открываются: нельзя проверить, не подсунули ли старую версию. Если вы доверяете текущему состоянию папок, начните запоминать заново (повреждённый файл сохранится рядом).",
-            "The file where this device remembers the latest version of each Paranoic 1.8 folder is damaged. Until then folders do not open: an older version could not be detected. If you trust the folders as they are now, start remembering anew (the damaged file is kept aside).")) },
+        text = { Text(tr("Повреждена память версий папок 1.8 — папки не открываются. Доверяете их состоянию — начните запоминать заново.",
+            "The 1.8 version record is damaged — folders do not open. If you trust their state, start recording again.")) },
         confirmButton = { TextButton(onClick = { anchorsDamaged = false; scope.launch { fault = (session.core.vaultAnchorsReset() as? CoreResult.Failure)?.fault } }) {
             Text(tr("Доверять и продолжить", "Trust and continue")) } },
         dismissButton = { TextButton(onClick = { anchorsDamaged = false }) { Text(tr("Отмена", "Cancel")) } })
@@ -487,8 +487,8 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
                 Text(tr("В хранилище: ", "In vault: ") + vaultPath(d.path + d.entry.name))
                 Text(tr("Новый источник: ", "New source: ") + displayName(files.spaces.spaceOf(d.source.location)?.name.orEmpty()) + " /" + displayName(d.source.location.path))
                 Text(tr("Размер выбранного источника: ", "Selected source size: ") + formatSize(d.source.bytes))
-                Text(tr("Текущее содержимое файла в папке 1.8 будет заменено данными источника, прочитанными при выполнении. Имя сохранится; исходный файл не удаляется. Изменение цели или источника после начала операции приводит к отказу (Changed). Старое содержимое может быть недоступно после успешной замены.",
-                    "The current contents in the 1.8 vault will be replaced with source bytes read during execution. The name stays; the source is kept. A target or source change after the operation starts causes Changed. Old contents may be unavailable after a successful replacement."))
+                Text(tr("Файл в папке будет заменён содержимым источника. Исходник остаётся; прежнее содержимое не вернуть.",
+                    "The file in the folder is replaced by the source content. The source stays; old content cannot be restored."))
             } },
             confirmButton = { TextButton(enabled = !busy && !uncertain, onClick = {
                 dialog = null
@@ -580,16 +580,16 @@ private fun PasswordDialog(core: CoreGateway, create: Boolean, context: String, 
                     else -> tr("Шаг 6 из 6 · Проверка", "Step 6 of 6 · Review")
                 }, style = MaterialTheme.typography.labelLarge)
                 if (create && stage == 1) {
-                    Text(tr("Используются защитные параметры, заданные движком для выбранного формата. Размер хранилища растёт с добавлением файлов; фиксированная ёмкость не выделяется.",
-                        "The engine uses the protective defaults for the selected format. Storage grows as files are added; no fixed capacity is preallocated."))
-                    Text(tr("Пароль не сохраняется в карточке. Место и имя можно проверить перед созданием. Изменение технических параметров этим мастером не поддерживается.",
-                        "The card does not store your password. Review the location and name before creation. This wizard does not expose changes to technical parameters."))
+                    Text(tr("Параметры защиты задаёт формат. Хранилище растёт по мере добавления файлов.",
+                        "Protection settings come from the format. The vault grows as files are added."))
+                    Text(tr("Пароль в карточке не сохраняется. Место и имя можно проверить перед созданием.",
+                        "The password is not stored in the card. Check the place and name before creating."))
                     TextButton(onClick = { stage = 0 }) { Text(tr("Назад к паролю", "Back to password")) }
                 } else if (reviewing) {
                     Text(tr("Проверьте перед созданием", "Review before creating"), style = MaterialTheme.typography.titleMedium)
                     Text(displayName(name))
-                    Text(tr("В выбранном месте появится новая зашифрованная подпапка. Существующие файлы не заменяются. Пароль в сводке не показывается.",
-                        "A new encrypted subfolder will be created at this location. Existing files are not replaced. The password is not shown in this review."))
+                    Text(tr("В выбранном месте появится новая зашифрованная подпапка.",
+                        "A new encrypted subfolder appears in the chosen place."))
                     TextButton(onClick = { stage = 1 }) { Text(tr("Назад к параметрам", "Back to settings")) }
                 } else {
                 if (create) OutlinedTextField(name, { if (it.length <= 255) name = it }, singleLine = true,
@@ -668,10 +668,10 @@ private fun VaultEntrySheet(entry: VaultEntry, format: FolderFormat, canWrite: B
 @Composable
 private fun SingleFileCrypto(session: AppSession, enabled: Boolean) {
     var picking by remember(session.secretsEpoch) { mutableStateOf<Boolean?>(null) }
-    var source by remember(session.secretsEpoch) { mutableStateOf<Pair<FileItem, Boolean>?>(null) }
+    var chosen by remember(session.secretsEpoch) { mutableStateOf<Pair<List<FileItem>, Boolean>?>(null) }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         FilledTonalButton(enabled = enabled, onClick = { picking = false }, modifier = Modifier.weight(1f)) {
-            AppIcon(AppSymbol.Vault, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(tr("Зашифровать файл", "Encrypt a file"), maxLines = 1)
+            AppIcon(AppSymbol.Vault, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(tr("Зашифровать файлы", "Encrypt files"), maxLines = 1)
         }
         OutlinedButton(enabled = enabled, onClick = { picking = true }, modifier = Modifier.weight(1f)) {
             AppIcon(AppSymbol.Passwords, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(tr("Расшифровать .age", "Decrypt .age"), maxLines = 1)
@@ -679,13 +679,15 @@ private fun SingleFileCrypto(session: AppSession, enabled: Boolean) {
     }
     picking?.let { decrypt ->
         CoreFilePickerDialog(session.core, session.files.spaces,
-            if (decrypt) tr("Файл .age для расшифровки", "An .age file to decrypt") else tr("Файл для шифрования (age)", "A file to encrypt (age)"),
-            CorePickKind.Files, onDismiss = { picking = null }) { picked ->
+            if (decrypt) tr("Файлы .age для расшифровки", ".age files to decrypt") else tr("Файлы для шифрования (age)", "Files to encrypt (age)"),
+            CorePickKind.Files, maxSelection = 128, onDismiss = { picking = null }) { picked ->
             picking = null
-            picked.firstOrNull()?.takeIf { it.kind == EntryKind.File }?.let { source = it to decrypt }
+            picked.filter { it.kind == EntryKind.File }.takeIf { it.isNotEmpty() }?.let { chosen = it to decrypt }
         }
     }
-    source?.let { (item, decrypt) ->
-        FileCryptoDialog(session, item, decrypt, initialParent = Location(item.location.storageId, item.location.path.substringBeforeLast('/', ""))) { source = null }
+    chosen?.let { (items, decrypt) ->
+        if (items.size == 1) FileCryptoDialog(session, items[0], decrypt,
+            initialParent = Location(items[0].location.storageId, items[0].location.path.substringBeforeLast('/', "")), picked = true) { chosen = null }
+        else BatchCryptoDialog(session, items, decrypt, picked = true) { chosen = null }
     }
 }

@@ -16,8 +16,8 @@ fun IncomingFilesSection(incoming: IncomingDocuments, enabled: Boolean, occupied
     var selected by remember { mutableStateOf<String?>(null) }
     if (incoming.documents.isEmpty()) return
     Text(tr("Переданные файлы", "Shared files"), Modifier.sectionHeading(), style = MaterialTheme.typography.titleMedium)
-    Text(tr("Временный доступ. Копия будет зашифрована прямо в текущую папку; исходник останется у отправителя. Повторного постоянного доступа приложение не получает.",
-        "Temporary access. A copy is encrypted directly into the current folder; the sender keeps the source. The app does not obtain permanent access."),
+    Text(tr("Копия зашифруется в текущую папку; исходник останется у отправителя.",
+        "The copy is encrypted into this folder; the original stays with the sender."),
         style = MaterialTheme.typography.bodySmall)
     incoming.documents.forEach { document ->
         Column {
@@ -41,8 +41,8 @@ fun IncomingFilesSection(incoming: IncomingDocuments, enabled: Boolean, occupied
                 OutlinedTextField(name, { if (it.length <= 255) name = it }, singleLine = true,
                     label = { Text(tr("Имя в хранилище", "Name in the vault")) },
                     isError = name.isNotEmpty() && (!plausibleOperationName(name) || name in occupied))
-                Text(tr("Существующий файл не заменяется. После попытки этот временный источник закрывается; для повторной отправки используйте «Поделиться» заново.",
-                    "An existing file is never replaced. This temporary source closes after the attempt; share it again to resend."))
+                Text(tr("Существующий файл не заменяется. Чтобы отправить снова, нажмите «Поделиться» ещё раз.",
+                    "Existing files are not replaced. To send again, use Share once more."))
                 LabeledCheckbox(tr("Подтверждаю копирование в текущую защищённую папку", "Copy into the current protected folder"), checked, onChange = { checked = it })
             } },
             confirmButton = { TextButton(enabled = ready, onClick = {

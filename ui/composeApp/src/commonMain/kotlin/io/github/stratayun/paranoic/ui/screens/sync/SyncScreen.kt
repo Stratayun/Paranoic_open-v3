@@ -85,12 +85,12 @@ fun SyncScreen(core: CoreGateway, onFiles: () -> Unit, onJobs: () -> Unit) {
         }
         fault?.let {
             FaultNotice(it, message = when (it) {
-                CoreFault.DeviceKey -> tr("Синхронизация недоступна без ключа устройства (Keystore/DPAPI). На desktop Linux/macOS этот ключ пока не поддерживается.",
-                    "Sync requires a device key (Keystore/DPAPI). This key is not yet supported on desktop Linux/macOS.")
-                CoreFault.InvalidName -> tr("Пара, папка или сохранённый план недоступны. Для новой пары нужны локальная и подключённая облачная папки; перед запуском создайте план.",
-                    "The pair, folder or saved plan is unavailable. New pairs require a local and a connected cloud folder; create a plan before running.")
-                CoreFault.Busy -> tr("Старый план уже отправлял задания. Сначала завершите его через «Продолжить сохранённый план»; затем можно строить новый план и принимать решения.",
-                    "The previous plan already submitted jobs. Finish it using Resume saved plan before planning again or making decisions.")
+                CoreFault.DeviceKey -> tr("Синхронизации нужен ключ устройства (Keystore/DPAPI); на Linux/macOS пока нет.",
+                    "Sync needs a device key (Keystore/DPAPI); not yet on Linux/macOS.")
+                CoreFault.InvalidName -> tr("Нужны локальная и облачная папки и план.",
+                    "A local folder, a cloud folder and a plan are needed.")
+                CoreFault.Busy -> tr("Сначала завершите старый план («Продолжить сохранённый план»).",
+                    "Finish the old plan first (Resume saved plan).")
                 else -> it.label()
             })
         }
@@ -143,8 +143,8 @@ fun SyncScreen(core: CoreGateway, onFiles: () -> Unit, onJobs: () -> Unit) {
                             Text(tr("Продолжить сохранённый план…", "Resume saved plan…"))
                         }
                     }
-                    Text(tr("После прерывания используйте сохранённый план: уже принятые задания не повторяются. План и запуск могут занять время.",
-                        "After an interruption, resume the saved plan: accepted jobs are not repeated. Planning and running may take time."),
+                    Text(tr("После прерывания продолжайте сохранённый план — принятые задания не повторятся.",
+                        "After an interruption resume the saved plan — accepted jobs are not repeated."),
                         style = MaterialTheme.typography.bodySmall)
                     Text(tr("«План» сравнивает папки и показывает изменения, не изменяя файлы.",
                         "Plan compares folders and previews changes without modifying files."), style = MaterialTheme.typography.bodySmall)
@@ -180,8 +180,8 @@ fun SyncScreen(core: CoreGateway, onFiles: () -> Unit, onJobs: () -> Unit) {
                     Column {
                         Text(reportLabel(report.kind))
                         Text(displayName(report.path), style = MaterialTheme.typography.bodySmall)
-                        if (report.kind == 1) Text(tr("Сначала выполните план: облачная версия сохранится локальной конфликтной копией. После завершения появится выбор версии.",
-                            "Run the plan first: the cloud version is saved as a local conflict copy. Version choices appear when the run finishes."),
+                        if (report.kind == 1) Text(tr("Сначала выполните план: облачная версия сохранится конфликтной копией.",
+                            "Run the plan first: the cloud version is kept as a conflict copy."),
                             style = MaterialTheme.typography.bodySmall)
                         if (report.kind == 2 || report.kind == 3) TextButton(enabled = canChange,
                             onClick = { decision = PendingDecision(pair, SyncDecision.Forget, report.path) }) { Text(tr("Принять…", "Accept…")) }
@@ -208,8 +208,8 @@ fun SyncScreen(core: CoreGateway, onFiles: () -> Unit, onJobs: () -> Unit) {
                 Text(tr("Облако: ", "Cloud: ") + locationLabel(pending.pair.remote, spaces))
                 if (pending.path.isNotEmpty()) Text(displayName(pending.path))
                 Text(decisionDescription(pending.kind))
-                if (pending.kind == SyncDecision.Run) Text(tr("Действий в плане: ${plan?.actions?.size ?: 0}. Замены и переносы в корзину будут выполнены согласно показанному плану.",
-                    "Planned actions: ${plan?.actions?.size ?: 0}. Replacements and trash moves follow the displayed plan."))
+                if (pending.kind == SyncDecision.Run) Text(tr("Действий в плане: ${plan?.actions?.size ?: 0}. Замены и удаления — по показанному плану.",
+                    "Plan actions: ${plan?.actions?.size ?: 0}. Replacements and deletions follow the plan shown."))
             } },
             confirmButton = { TextButton(enabled = canChange, onClick = {
                 decision = null
@@ -285,14 +285,14 @@ private fun decisionTitle(kind: SyncDecision) = when (kind) {
 private fun decisionDescription(kind: SyncDecision) = when (kind) {
     SyncDecision.Run -> tr("Изменения файлов станут обычными заданиями Core. Их состояние и отмена доступны в «Операциях».",
         "File changes become regular Core jobs. Their status and cancellation are available in Operations.")
-    SyncDecision.Resume -> tr("Используйте после прерывания или перезапуска. Будет выполнен ранее сохранённый план; уже принятые задания не повторяются. Если плана нет, сначала нажмите «План».",
-        "Use after an interruption or restart. The previously saved plan will run; accepted jobs are not repeated. If no plan exists, select Plan first.")
+    SyncDecision.Resume -> tr("Продолжить прерванный план; принятые задания не повторяются. Нет плана — нажмите «План».",
+        "Resume an interrupted plan; accepted jobs are not repeated. No plan — press \u201cPlan\u201d.")
     SyncDecision.Remove -> tr("Пара и её история сравнения будут забыты. Файлы с обеих сторон останутся.",
         "The pair and its comparison history will be forgotten. Files on both sides remain.")
-    SyncDecision.Local, SyncDecision.Remote -> tr("Выбор будет применён следующим планом: другая версия будет заменена. После подтверждения заново нажмите «План» и просмотрите изменения.",
-        "The next plan applies this choice and replaces the other version. After confirming, select Plan again and inspect the changes.")
-    SyncDecision.Forget -> tr("История синхронизации забудет этот путь и всё под ним. Это не удаляет файлы ни локально, ни в облаке. Затем создайте новый план.",
-        "Sync history forgets this path and everything below it. This deletes no local or cloud files. Create a new plan afterwards.")
+    SyncDecision.Local, SyncDecision.Remote -> tr("Выбор применится следующим планом: другая версия будет заменена. Затем нажмите «План».",
+        "The choice applies in the next plan: the other version is replaced. Then press Plan.")
+    SyncDecision.Forget -> tr("Синхронизация забудет этот путь. Файлы не удаляются. Затем создайте новый план.",
+        "Sync forgets this path. No files are deleted. Then create a new plan.")
 }
 
 @Composable
@@ -322,8 +322,8 @@ private fun AddSyncPair(core: CoreGateway, spaces: List<Space>, onClose: () -> U
                 Checkbox(trash, onCheckedChange = null)
                 Text(tr("Удалённое локально — в корзину облака", "Local deletions go to cloud trash"))
             }
-            Text(tr("Корзина работает только там, где сервер подтвердил её поддержку. Удаления без этой опции показываются как предупреждения.",
-                "Trash requires confirmed server support. Without this option, deletions are reported as warnings."), style = MaterialTheme.typography.bodySmall)
+            Text(tr("Корзина — только там, где сервер её подтвердил; иначе удаления показываются предупреждением.",
+                "Trash only where the server confirms it; otherwise deletions show as warnings."), style = MaterialTheme.typography.bodySmall)
         } },
         confirmButton = { TextButton(enabled = local != null && remote != null && local?.storageId != remote?.storageId,
             onClick = { val l = local; val r = remote; if (l != null && r != null) onAdd(l, r, twoWay, trash) }) { Text(tr("Добавить", "Add")) } },

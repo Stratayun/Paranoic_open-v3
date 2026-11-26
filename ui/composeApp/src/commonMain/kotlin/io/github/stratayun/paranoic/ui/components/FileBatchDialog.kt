@@ -111,8 +111,8 @@ fun FileBatchDialog(core: CoreGateway, spaces: List<Space>, sources: List<FileIt
                     "This folder is not valid for every entry. Check permissions, nesting and connection restrictions."))
                 if (hidden > 0) Text(tr("Часть имён скрыта ядром; дополнительные конфликты проверит ядро.", "Core hid some names and will check additional conflicts."))
             }
-            Text(tr("Каждый объект отправляется отдельным заданием. При отказе возможен частичный результат; неизвестный ответ останавливает оставшуюся отправку. Автоматического повтора нет.",
-                "Each entry is a separate job. Failures can leave partial results; an unknown reply stops remaining submissions. There is no automatic retry."))
+            Text(tr("Каждый объект — отдельное задание. Возможен частичный результат; повтора нет.",
+                "Each item is a separate job. A partial result is possible; nothing is retried."))
         } },
         confirmButton = { TextButton(enabled = ready, onClick = { plan?.let(onSubmit) }) {
             Text(if (deleting) tr("Удалить ${sources.size}", "Delete ${sources.size}") else tr("Отправить ${sources.size} заданий", "Submit ${sources.size} jobs"),

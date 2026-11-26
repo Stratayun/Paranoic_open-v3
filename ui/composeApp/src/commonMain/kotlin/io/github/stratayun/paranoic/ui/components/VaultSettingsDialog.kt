@@ -34,8 +34,8 @@ fun VaultSettingsDialog(entry: SavedVault, defaultIdleSeconds: Int, onDismiss: (
                 FilterChip(selected = idle == null, onClick = { idle = null }, label = { Text(tr("Общая: ${defaultIdleSeconds / 60} мин", "Default: ${defaultIdleSeconds / 60} min")) })
                 VAULT_IDLE_LOCK_CHOICES.forEach { seconds -> FilterChip(selected = idle == seconds, onClick = { idle = seconds }, label = { Text(tr("${seconds / 60} мин", "${seconds / 60} min")) }) }
             }
-            Text(tr("Таймаут очищает открытые ключи приложения, включая другие секреты. Уход в фон блокирует сразу при любом таймауте. Несохранённые правки могут быть потеряны.",
-                "The timeout clears open app keys, including other secrets. Backgrounding locks immediately at any timeout. Unsaved edits may be lost."))
+            Text(tr("По таймауту и при уходе в фон ключи закрываются. Несохранённое может пропасть.",
+                "Keys close on timeout and when the app goes to the background. Unsaved edits may be lost."))
             Text(if (entry.kind == VaultKind.Cryptomator) tr("Cryptomator: создание формата 8, чтение 7/8. Удаление целых последних блоков формат не обнаруживает.",
                 "Cryptomator: creates format 8, reads 7/8. The format cannot detect removal of whole trailing chunks.")
                 else tr("Paranoic 1.8 — экспериментальный формат до завершения аудита.", "Paranoic 1.8 is experimental until the audit is complete."))

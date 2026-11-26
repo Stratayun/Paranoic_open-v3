@@ -161,8 +161,8 @@ internal fun VaultLauncher(core: CoreGateway, spaces: List<Space>, catalog: Vaul
                 Text(displayName(original.title), style = MaterialTheme.typography.titleMedium)
                 Text(tr("Прежний адрес: ", "Previous location: ") + displayName(original.location.path))
                 Text(tr("Новый адрес: ", "New location: ") + displayName(found.location.path))
-                Text(tr("Адрес изменится только после успешного открытия паролем. Совпадение формата само по себе не доказывает, что это прежнее хранилище. Файлы не перемещаются.",
-                    "The location is updated only after a successful password unlock. Matching format alone does not prove this is the same vault. No files are moved."))
+                Text(tr("Адрес сменится только после открытия паролем. Файлы не перемещаются.",
+                    "The location changes only after opening with the password. Files are not moved."))
             } },
             confirmButton = { TextButton(enabled = interactive && catalog.loaded && !catalog.busy && !catalog.failed,
                 onClick = { replacement = null; onRelocate(original, found) }) { Text(tr("Перейти к паролю", "Continue to password")) } },
@@ -187,12 +187,12 @@ internal fun VaultLauncher(core: CoreGateway, spaces: List<Space>, catalog: Vaul
             if (catalog.failed) {
                 Text(tr("Не удалось прочитать или сохранить список. Запись приостановлена, чтобы не затереть сохранённые карточки.",
                     "Could not read or save the list. Changes are paused to preserve saved cards."), color = scheme.error)
-                Text(tr("Существующее хранилище можно найти и открыть только для чтения. Для создания и изменения настроек сначала перечитайте каталог.", "You can find and open an existing vault read-only. Reload the catalog before creating vaults or changing settings."))
+                Text(tr("Пока каталог не перечитан, хранилища открываются только для чтения.", "Until the catalog is reloaded, vaults open read-only."))
                 TextButton(enabled = !catalog.busy, onClick = catalog::load) { Text(tr("Перечитать список", "Reload list")) }
             }
             if (creating == null) fault?.let { FaultNotice(it) }
-            if (missingSaved != null) Text(tr("Хранилище не найдено по сохранённому адресу. Оно могло быть перемещено или место недоступно. Выберите «Найти» в меню карточки.",
-                "The saved vault was not found. It may have moved or its location is unavailable. Choose Find in the card menu."))
+            if (missingSaved != null) Text(tr("Хранилище не найдено: оно перемещено или место недоступно. Нажмите «Найти» в меню карточки.",
+                "Vault not found: it moved or the place is unavailable. Use Find in the card menu."))
             catalog.removed?.let { removed ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(tr("Карточка убрана: ", "Card removed: ") + displayName(removed.title), Modifier.weight(1f))
@@ -205,8 +205,8 @@ internal fun VaultLauncher(core: CoreGateway, spaces: List<Space>, catalog: Vaul
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 BrandIcon(Res.drawable.ic_crypto_folder, size = 120.dp)
                 Text(tr("Хранилищ пока нет", "No vaults yet"), style = MaterialTheme.typography.titleLarge)
-                Text(tr("Подключите хранилище Cryptomator или Paranoic либо создайте новое. Карточка появится после первого успешного открытия.",
-                    "Add a Cryptomator or Paranoic vault or create a new one. Its card appears after the first successful unlock."),
+                Text(tr("Подключите хранилище Cryptomator или Paranoic либо создайте новое.",
+                    "Connect a Cryptomator or Paranoic vault, or create a new one."),
                     style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant, textAlign = TextAlign.Center)
                 FilledTonalButton(onClick = { addSheet = true }, enabled = interactive) { AppIcon(AppSymbol.Add); Spacer(Modifier.width(8.dp)); Text(tr("Добавить хранилище", "Add vault")) }
             }

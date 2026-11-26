@@ -27,8 +27,8 @@ fun ProtectedWriteNotice(session: AppSession) {
         var checked by remember { mutableStateOf(false) }
         AlertDialog(onDismissRequest = { if (!busy) confirming = false }, title = { Text(tr("Завершить проверку состояния?", "Finish reconciliation?")) },
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(tr("Дождёмся завершения прежнего вызова, затем очистим открытые ключи и сеансы. Несохранённые черновики пропадут. Созданные файлы и частичные результаты останутся; сама запись не повторяется.",
-                    "Wait for the earlier call, then clear open keys and sessions. Unsaved drafts are lost. Created files and partial results remain; the write itself is not repeated."))
+                Text(tr("Дождёмся текущей записи и закроем ключи. Несохранённые черновики пропадут.",
+                    "We wait for the current write, then close the keys. Unsaved drafts are lost."))
                 LabeledCheckbox(tr("Проверил(а) результат и разрешаю блокировку", "I inspected the result and agree to locking"), checked,
                     enabled = !busy, onChange = { checked = it })
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())

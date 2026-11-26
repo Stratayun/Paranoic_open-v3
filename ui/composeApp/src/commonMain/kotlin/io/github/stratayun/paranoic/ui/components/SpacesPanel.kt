@@ -183,8 +183,8 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
                 Text(if (appPrivate(space)) tr(
                     "Это рабочая папка Paranoic в данных приложения. Служебные объекты и личная защищённая папка скрыты ядром. На Android эти данные удаляются вместе с приложением; на компьютере папка данных может остаться после удаления программы.",
                     "This is Paranoic's working folder in app data. Core hides service objects and the personal protected folder. Android removes this data with the app; desktop app data may remain after uninstall.")
-                else tr("Paranoic работает только с выбранной папкой. «Убрать» скрывает её из этого меню, сохраняя доступ. «Отозвать доступ» отключает место, сохраняя файлы.",
-                    "Paranoic accesses only the selected folder. Hide removes it from this menu and keeps access. Revoke access disconnects the place and keeps its files."))
+                else tr("«Убрать» скрывает место из меню; «Отозвать доступ» отключает его. Файлы не трогаются.",
+                    "Remove hides the place from the menu; Revoke access disconnects it. Files are untouched."))
                 Text(if (space.writable) tr("Чтение и запись", "Read and write") else tr("Только чтение", "Read-only"))
                 Text(tr("Обычные файлы здесь не шифруются автоматически. Для защиты создайте хранилище.", "Ordinary files here are not encrypted automatically. Create a vault to protect them."))
             } }, confirmButton = { TextButton(onClick = { info = null }) { Text(tr("Понятно", "Got it")) } })
@@ -192,8 +192,8 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
     confirm?.let { space ->
         AlertDialog(onDismissRequest = { confirm = null },
             title = { Text(tr("Отозвать доступ?", "Revoke access?")) },
-            text = { Text(tr("Приложение отключит «${displayName(title(space))}». Файлы и карточки хранилищ сохранятся. Чтобы просто скрыть место из меню, используйте «Убрать».",
-                "The app will disconnect \"${displayName(title(space))}\". Files and vault cards are kept. Use Hide to remove the place from the menu.")) },
+            text = { Text(tr("«${displayName(title(space))}» будет отключено. Файлы и хранилища останутся.",
+                "“${displayName(title(space))}” will be disconnected. Files and vaults stay.")) },
             confirmButton = { TextButton(enabled = connected && !busy, onClick = { confirm = null; onDetach(space) }) { Text(tr("Отозвать доступ", "Revoke access")) } },
             dismissButton = { TextButton(onClick = { confirm = null }) { Text(tr("Отмена", "Cancel")) } })
     }

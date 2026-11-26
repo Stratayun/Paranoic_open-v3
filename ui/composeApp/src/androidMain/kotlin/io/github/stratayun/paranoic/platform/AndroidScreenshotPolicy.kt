@@ -94,8 +94,8 @@ internal fun AndroidScreenshotSettings(policy: AndroidScreenshotPolicy, apply: (
     }
     if (confirming) AlertDialog(onDismissRequest = { confirming = false },
         title = { Text(tr("Разрешить снимки экрана?", "Allow screen capture?")) },
-        text = { Text(tr("Снимок или запись могут содержать открытые заметки, документы и ключи. Такая копия окажется вне защиты Paranoic; Clear её не удалит.",
-            "A screenshot or recording may contain open notes, documents and keys. The copy is outside Paranoic protection and Clear cannot remove it.")) },
+        text = { Text(tr("Снимок может содержать заметки, документы и ключи — он окажется вне защиты Paranoic.",
+            "A capture may contain notes, documents and keys — it ends up outside Paranoic's protection.")) },
         confirmButton = { TextButton(enabled = !busy, onClick = { confirming = false; change(true) }) {
             Text(tr("Разрешить", "Allow"))
         } },

@@ -42,8 +42,8 @@ fun WebDavDialog(onDismiss: () -> Unit, onConnect: (url: String, user: String, t
                 OutlinedTextField(token, { if (it.length <= 4096) token = it }, Modifier.fillMaxWidth(), singleLine = true,
                     label = { Text(tr("Токен или пароль приложения", "Token or app password")) },
                     visualTransformation = peek("WebDavDialog:1"), trailingIcon = { PeekToggle("WebDavDialog:1") }, keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
-                Text(tr("HTTPS; HTTP допустим только для этого устройства. Токен хранится зашифрованным ключом устройства. Файлы на сервере открываются в файловом менеджере; защищённые заметки на сервер не попадают.",
-                    "HTTPS; HTTP is allowed only for this device. The token is stored encrypted with the device key. Server files open in the file manager; protected notes never go to the server."))
+                Text(tr("Нужен HTTPS (HTTP — только для localhost). Токен хранится зашифрованным; заметки Сейфа на сервер не попадают.",
+                    "HTTPS required (HTTP for localhost only). The token is stored encrypted; Safe notes never reach the server."))
             }
         },
         confirmButton = {

@@ -17,8 +17,8 @@ internal fun VaultImportMoveDialog(files: List<FileItem>, enabled: Boolean, onCl
         title = { Text(tr("Переместить в хранилище / Сейф?", "Move into the vault / Safe?")) },
         text = { Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             files.forEach { Text(displayName(it.name)) }
-            Text(tr("После проверки зашифрованной копии приложение попытается удалить именно прочитанную версию исходника. На SAF и Windows исходник остаётся: это будет копирование. Если исходник изменился или удалить его безопасно нельзя, он также сохранится.",
-                "After verifying the encrypted copy, the app tries to remove exactly the source version it read. SAF and Windows keep the source, so the result is a copy. A changed source, or one that cannot be safely removed, is also kept."))
+            Text(tr("После проверки копии исходник удаляется. На SAF и Windows — только копирование, исходник остаётся.",
+                "After the copy is verified the source is deleted. On SAF and Windows it is a copy; the source stays."))
             Text(tr("Удаление не гарантирует стирания следов на флеш-памяти, в резервных копиях и других приложениях.",
                 "Deletion does not guarantee erasing traces on flash storage, in backups, or in other apps."), color = MaterialTheme.colorScheme.error)
         } },

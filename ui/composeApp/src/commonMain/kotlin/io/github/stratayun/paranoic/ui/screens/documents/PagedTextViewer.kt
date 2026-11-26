@@ -118,13 +118,13 @@ fun PagedTextViewer(core: CoreGateway, file: FileItem, onClose: () -> Unit) {
                 }
                 if (opening || reading) LinearProgressIndicator(Modifier.fillMaxWidth())
                 Column(Modifier.fillMaxWidth().heightIn(max = controlsMaxHeight).verticalScroll(rememberScrollState())) {
-                    Text(tr("Только чтение · до 1 ГиБ. Сначала строится индекс; длинные строки делятся на фрагменты. Частичный просмотр нельзя сохранить поверх файла.",
-                        "Read only · up to 1 GiB. The index is built first; long lines are split into fragments. A partial view cannot overwrite the file."),
+                    Text(tr("Только чтение, файлы до 1 ГиБ.",
+                        "Read only, files up to 1 GiB."),
                         style = MaterialTheme.typography.bodySmall)
                     fault?.let { FaultNotice(it, message = when {
                         it == CoreFault.Limit -> tr("Превышен предел чтения: размер или число строк/фрагментов.", "The reading limit was exceeded: file size or number of rows/fragments.")
-                        invalidated -> tr("Чтение прервано. Файл мог измениться, либо сеанс закрыт. Перечитайте файл; старые страницы не смешиваются с новыми.",
-                            "Reading stopped. The file may have changed or the session closed. Reload the file; old pages are not mixed with new ones.")
+                        invalidated -> tr("Чтение прервано: файл изменился или сеанс закрыт. Перечитайте файл.",
+                            "Reading stopped: the file changed or the session closed. Reload the file.")
                         else -> it.label()
                     }) }
                     opened?.let { info ->

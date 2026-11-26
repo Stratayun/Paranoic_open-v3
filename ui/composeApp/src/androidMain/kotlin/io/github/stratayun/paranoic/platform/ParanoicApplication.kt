@@ -25,6 +25,7 @@ class ParanoicApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         PlatformImageFallback.decode = AndroidImageFallback::decode
+        PlatformMediaIndex.query = { root, extensions, limit -> AndroidMediaIndex.query(this, root, extensions, limit) }
         // The isolated decoder process must not touch the app's private records.
         if (android.os.Process.myUid() == applicationInfo.uid) diagnostics.install()
     }

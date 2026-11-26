@@ -30,8 +30,8 @@ fun FileBatchCard(session: AppSession) {
                     else tr("Отправляем задания ядру…", "Submitting jobs to Core…"))
                 TextButton(enabled = !report.stopRequested, onClick = session::stopFileBatch) { Text(tr("Остановить отправку остатка", "Stop remaining submissions")) }
             }
-            Text(tr("Принятые задания продолжаются независимо. Сводка доступна до перезапуска приложения; сами задания сохранены в журнале.",
-                "Accepted jobs continue independently. This summary lasts until app restart; the jobs are saved in the journal."))
+            Text(tr("Принятые задания продолжаются сами; они сохранены в журнале.",
+                "Accepted jobs continue on their own; they are kept in the journal."))
             TextButton(onClick = { details = !details }) { Text(if (details) tr("Свернуть список", "Collapse list") else tr("Результат по каждому объекту", "Per-entry results")) }
             if (details) LazyColumn(Modifier.fillMaxWidth().heightIn(max = 220.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 itemsIndexed(report.entries, key = { _, entry -> entry.requestId }) { index, entry ->
@@ -52,8 +52,8 @@ fun FileBatchCard(session: AppSession) {
         }
     }
     if (closing) AlertDialog(onDismissRequest = { closing = false }, title = { Text(tr("Есть неизвестный результат", "Some outcomes are unknown")) },
-        text = { Text(tr("Сначала проверьте журнал и папки. Закрытие уберёт только эту сводку: задания не отменятся и не повторятся. Повторный запуск с новым запросом может продублировать действие.",
-            "Inspect the journal and folders first. Closing removes only this summary: jobs are neither cancelled nor repeated. Starting a new request may duplicate an action.")) },
+        text = { Text(tr("Сначала проверьте журнал и папки. Закрытие уберёт только сводку — задания не отменятся.",
+            "Check the journal and folders first. Closing hides this summary only; jobs are not cancelled.")) },
         confirmButton = { TextButton(onClick = { closing = false; session.dismissFileBatch() }) { Text(tr("Проверил(а), закрыть", "Inspected, close")) } },
         dismissButton = { TextButton(onClick = { closing = false }) { Text(tr("Вернуться", "Go back")) } })
 }

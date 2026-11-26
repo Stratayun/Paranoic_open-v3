@@ -283,14 +283,18 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                     DirectWritePhase.Running -> MaterialTheme.colorScheme.surfaceContainerHigh
                                 }) { Column(Modifier.padding(vertical = 4.dp)) {
                             Text(when (operation.phase) {
-                                DirectWritePhase.Running -> tr("Выполняется операция… Исходные объекты сохраняются.", "Processing… Source entries are kept.")
+                                DirectWritePhase.Running -> tr("Выполняется… Исходники не меняются.", "Working… Sources stay unchanged.")
                                 DirectWritePhase.Done -> tr("Готово: новый файл создан.", "Done: new file created.")
                                 DirectWritePhase.Failed -> if (operation.kind == DirectWriteKind.DecryptFile && session.writeFault == CoreFault.WrongPassword)
-                                    tr("Неверный пароль или повреждённый файл: эти случаи могут быть неразличимы.", "Wrong password or damaged file: these cases may be indistinguishable.")
-                                    else tr("Операция не завершена. Проверьте сообщение об ошибке и папку назначения.", "The operation did not complete. Check the error message and destination folder.")
-                                DirectWritePhase.Unknown -> tr("Ответ потерян или приложение ушло в фон. Проверьте папку назначения и журнал перед новой записью. Автоматического повтора нет.",
-                                    "The reply was lost or the app went into the background. Inspect the destination folder and journal before another write. There is no automatic retry.")
+                                    tr("Неверный пароль или файл повреждён.", "Wrong password or damaged file.")
+                                    else tr("Не завершено — см. ошибку выше.", "Not completed — see the error above.")
+                                DirectWritePhase.Unknown -> tr("Результат неизвестен. Проверьте папку перед новой записью; повтора не будет.",
+                                    "Outcome unknown. Check the folder before writing again; nothing is retried.")
                             }, Modifier.padding(horizontal = 12.dp))
+                            session.cryptoBatch?.takeIf { operation.kind == DirectWriteKind.EncryptFile || operation.kind == DirectWriteKind.DecryptFile }?.let { (done, total) ->
+                                Text(tr("Файлов: $done из $total", "Files: $done of $total"), Modifier.padding(horizontal = 12.dp),
+                                    style = MaterialTheme.typography.labelMedium)
+                            }
                             if (operation.phase == DirectWritePhase.Running) {
                                 LinearProgressIndicator(Modifier.fillMaxWidth())
                                 if (operation.requestId != null) TextButton(onClick = session::cancelDirectArchive,
@@ -318,8 +322,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                             }
                         }
                         session.uncertainAttention?.let { pending ->
-                            Text(tr("Решение по заданию ${pending.jobId.take(8)}…: ответ неизвестен. Обновите состояние; решение не повторялось автоматически.",
-                                "Decision for job ${pending.jobId.take(8)}…: reply unknown. Refresh its state; the decision was not repeated automatically."),
+                            Text(tr("Задание ${pending.jobId.take(8)}…: ответ неизвестен. Обновите состояние; повтора не было.",
+                                "Job ${pending.jobId.take(8)}…: reply unknown. Refresh the state; nothing was retried."),
                                 Modifier.padding(horizontal = 12.dp))
                             TextButton(onClick = session::checkAttentionDecision,
                                 enabled = core.connected && !session.writing && !session.attention.loading) {
@@ -384,8 +388,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
             if (documentExit.pending != null) AlertDialog(onDismissRequest = documentExit::cancel,
                 title = { Text(tr("Закрыть без сохранения?", "Discard unsaved edits?")) },
                 text = { Text(if (documentExit.uncertain)
-                    tr("Результат записи неизвестен. Проверьте папку и журнал. Закрытие не отменяет уже отправленную запись; несохранённые правки будут потеряны.",
-                        "The write outcome is unknown. Inspect the folder and journal. Closing does not cancel a submitted write; unsaved edits will be lost.")
+                    tr("Результат записи неизвестен — проверьте папку. Несохранённые правки будут потеряны.",
+                        "Write outcome unknown — check the folder. Unsaved edits will be lost.")
                     else tr("Несохранённые правки будут потеряны.", "Unsaved edits will be lost.")) },
                 confirmButton = { TextButton(onClick = documentExit::discard) { Text(tr("Продолжить", "Continue")) } },
                 dismissButton = { TextButton(onClick = documentExit::cancel) { Text(tr("Остаться", "Stay")) } })

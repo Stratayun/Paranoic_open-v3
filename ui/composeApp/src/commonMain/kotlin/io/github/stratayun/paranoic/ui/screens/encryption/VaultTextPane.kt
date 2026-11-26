@@ -71,8 +71,8 @@ internal fun VaultTextPane(session: AppSession, gateway: EncryptedFolderGateway,
                 }
             }
         } else {
-            Text(tr("Сохранение заменяет только открытую версию файла и сохраняет её кодировку. Можно создать отдельную UTF-8 копию. При блокировке черновик пропадёт.",
-                "Save replaces only the opened file version and keeps its encoding. You can also create a separate UTF-8 copy. Locking discards the draft."), style = MaterialTheme.typography.bodySmall)
+            Text(tr("Сохраняется поверх открытой версии в той же кодировке. При блокировке черновик пропадёт.",
+                "Saves over the opened version in the same encoding. Locking discards the draft."), style = MaterialTheme.typography.bodySmall)
             if (changed) Text(tr("Файл изменился, пока был открыт. Сохраните черновик копией или перечитайте файл.",
                 "The file changed while it was open. Save the draft as a copy or reload the file."), color = MaterialTheme.colorScheme.error)
             else if (reloadRequired) Text(tr("Перед следующей заменой перечитайте файл. Черновик можно сохранить копией.",

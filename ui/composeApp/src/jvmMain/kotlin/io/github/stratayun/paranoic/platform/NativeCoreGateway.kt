@@ -116,6 +116,28 @@ class NativeCoreGateway private constructor(
             }
         }, when (outcome.toInt()) { 1 -> JobOutcome.Done; 2 -> JobOutcome.Skipped; else -> JobOutcome.Unknown }, resultTarget?.ui())
 
+    override suspend fun indexedFiles(space: Space, extensions: Set<String>, limit: Int): CoreResult<List<FileItem>>? {
+        val index = PlatformMediaIndex.query ?: return null
+        return withContext(Dispatchers.IO) {
+            try {
+                // Only native volume grants have an absolute root; trees, clouds and app folders walk.
+                val grant = runtime.grants().firstOrNull { it.id == space.id } ?: return@withContext null
+                if (grant.androidTree || grant.reference.startsWith("webdav:") || !space.detachable) return@withContext null
+                val root = grant.reference.trimEnd('/')
+                val entries = index(root, extensions, limit) ?: return@withContext null
+                val base = space.root.path.trim('/')
+                CoreResult.Value(entries.mapNotNull { entry ->
+                    if (!entry.path.startsWith("$root/")) return@mapNotNull null
+                    val relative = entry.path.substring(root.length + 1)
+                    FileItem(Location(space.root.storageId, if (base.isEmpty()) relative else "$base/$relative"),
+                        relative.substringAfterLast('/'), EntryKind.File, entry.bytes.coerceAtLeast(0).toULong(),
+                        entry.modifiedMs.takeIf { it > 0 }?.toULong())
+                })
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { null }
+        }
+    }
+
     override suspend fun spaces() = call {
         val saved = runtime.grants().associateBy { it.id }
         runtime.spaces().map { space ->

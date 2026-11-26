@@ -24,12 +24,12 @@ internal fun NotesImportDialog(core: CoreGateway, spaces: List<Space>, tabs: Lis
     AlertDialog(modifier = Modifier.trackSecretActivity(), onDismissRequest = onDismiss,
         title = { Text(tr("Импорт заметок", "Import notes")) },
         text = { Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(tr("Файлы UTF-8 .txt/.md добавляются в тетрадь. Папка и её ближайшие подпапки дают отдельные вкладки; более глубокие деревья выбирайте отдельно. Исходники сохраняются, неподдерживаемые файлы пропускаются.",
-                "UTF-8 .txt/.md files are added to the notebook. A folder and its immediate subfolders produce separate tabs; select deeper folders separately. Sources are kept and unsupported files are skipped."))
+            Text(tr("Файлы .txt/.md добавляются в тетрадь, подпапки — вкладками. Исходники остаются.",
+                ".txt/.md files are added to the notebook, subfolders as tabs. Sources stay."))
             Text(tr("Перед импортом текущие правки сохраняются. Повторный импорт создаёт дополнительные заметки.",
                 "Current edits are saved before importing. Importing again creates additional notes."))
-            Text(tr("Выбор папки вместе с файлами внутри неё может дать дубликаты. Для глубокой подпапки можно выполнить отдельный импорт.",
-                "Selecting a folder together with files inside it can create duplicates. Import a deeper subfolder separately."), style = MaterialTheme.typography.bodySmall)
+            Text(tr("Папка вместе с её файлами может дать дубликаты.",
+                "A folder together with its files may produce duplicates."), style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { choosing = true }) { Text(tr("Выбрать файлы / папки…", "Choose files / folders…")) }
             sources.take(8).forEach { Text(displayName(it.name), maxLines = 1) }
             if (sources.size > 8) Text(tr("И ещё ${sources.size - 8}", "And ${sources.size - 8} more"))
@@ -65,10 +65,10 @@ internal fun NotesExportDialog(core: CoreGateway, spaces: List<Space>, onDismiss
     AlertDialog(modifier = Modifier.trackSecretActivity(), onDismissRequest = onDismiss,
         title = { Text(tr("Экспорт открытых копий", "Export plaintext copies")) },
         text = { Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(tr("Все вкладки и заметки будут записаны как открытые .md в НОВУЮ папку. Вложения остаются внутри Сейфа и не экспортируются. Существующая папка не объединяется и не заменяется.",
-                "All tabs and notes will be written as plaintext .md files in a NEW folder. Attachments remain inside the Safe and are not exported. An existing folder is never merged or replaced."))
-            Text(tr("Эти копии доступны выбранному месту, другим приложениям и его резервным копиям. Clear, автостирание и пароль под принуждением их не удалят.",
-                "These copies are accessible to the selected storage, other apps and its backups. Clear, auto-wipe and a duress password will not remove them."),
+            Text(tr("Заметки запишутся открытыми .md в новую папку. Вложения не экспортируются.",
+                "Notes are written as unencrypted .md into a new folder. Attachments are not exported."))
+            Text(tr("Эти копии открыты для других приложений. Clear и автостирание их не удалят.",
+                "These copies are open to other apps. Clear and auto-wipe do not delete them."),
                 color = MaterialTheme.colorScheme.error)
             TextButton(onClick = { choosing = true }) { Text(tr("Выбрать папку назначения…", "Choose destination folder…")) }
             parent?.let { Text(displayName(spaces.firstOrNull { space -> space.id == it.location.storageId }?.name.orEmpty()) +

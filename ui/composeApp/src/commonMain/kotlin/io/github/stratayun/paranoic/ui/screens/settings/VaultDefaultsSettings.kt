@@ -18,8 +18,8 @@ fun VaultDefaultsSettings(catalog: VaultCatalog) {
                 enabled = catalog.loaded && !catalog.busy && !catalog.failed, onClick = { catalog.defaultIdleLock(seconds) },
                 label = { Text(tr("${seconds / 60} мин", "${seconds / 60} min")) }) }
         }
-        Text(tr("Таймаут очищает все открытые ключи приложения. Уход в фон блокирует сразу; режим без автоблокировки не предусмотрен.",
-            "The timeout clears all open app keys. Backgrounding locks immediately; idle locking cannot be disabled."))
+        Text(tr("Таймаут закрывает все ключи; уход в фон блокирует сразу.",
+            "The timeout closes all keys; going to the background locks at once."))
         if (catalog.failed) {
             Text(tr("Сохранение приостановлено: каталог не прочитан или произошла ошибка записи.", "Saving is paused because the catalog could not be read or written."), color = MaterialTheme.colorScheme.error)
             TextButton(enabled = !catalog.busy, onClick = catalog::load) { Text(tr("Перечитать каталог", "Reload catalog")) }

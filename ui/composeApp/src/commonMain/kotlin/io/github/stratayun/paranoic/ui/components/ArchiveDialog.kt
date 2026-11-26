@@ -90,8 +90,8 @@ fun ArchiveDialog(session: AppSession, sources: List<FileItem>, action: ArchiveA
                 to?.let { Text(tr("Назначение: ", "Destination: ") + displayName(session.files.spaces.spaceOf(it)?.name ?: it.storageId) + ": /" + displayName(it.path)) }
                 TextButton(onClick = { choosing = true }) { Text(tr("Выбрать другую папку…", "Choose another folder…")) }
                 if (collision) Text(tr("Имя занято; выберите другое. Слияния и замены нет.", "Name already exists; choose another. No merging or replacement."), color = MaterialTheme.colorScheme.error)
-                if (action == ArchiveAction.Extract) Text(tr("Содержимое публикуется только после распаковки целиком, затем перечитывается и проверяется. Зашифрованный архив даст незашифрованные файлы в выбранной папке.",
-                    "Contents are published only after full extraction, then reread and verified. An encrypted archive produces unencrypted files in the chosen folder."))
+                if (action == ArchiveAction.Extract) Text(tr("Файлы появятся после полной распаковки и проверки. Из зашифрованного архива получатся открытые файлы.",
+                    "Files appear after full extraction and a check. An encrypted archive yields unencrypted files."))
             }
         }
     }, confirmButton = { TextButton(enabled = valid, onClick = {

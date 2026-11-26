@@ -41,8 +41,8 @@ fun WelcomeFlow(core: CoreGateway, language: UiLanguage, epoch: Long, busy: Bool
             })
             if (saved == false) Text(tr("Настройки не удалось сохранить. Они действуют до перезапуска.", "Settings could not be saved. They remain active until restart."), color = MaterialTheme.colorScheme.error)
             if (step >= 3) Text(if (step == 3) tr("Создайте хранилище или откройте существующее. Этот шаг можно выполнить позже.", "Create a vault or open an existing one. You can do this later.")
-                else tr("В открытом хранилище создайте ключ восстановления и сохраните его отдельно от устройства. Без пароля и заранее созданного ключа восстановить доступ нельзя.",
-                    "Create a recovery key in the unlocked vault and keep it separately from the device. Access cannot be recovered without the password or a previously created key."))
+                else tr("Создайте ключ восстановления и храните отдельно от устройства. Без него забытый пароль не вернуть.",
+                    "Create a recovery key and keep it away from the device. Without it a forgotten password cannot be recovered."))
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (step) {
                     0 -> Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -53,8 +53,8 @@ fun WelcomeFlow(core: CoreGateway, language: UiLanguage, epoch: Long, busy: Bool
                         } }
                     }
                     1 -> Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(tr("Системный вход защищает открытие приложения, если поддерживается платформой. Пароли заметок и хранилищ настраиваются отдельно. Уход в фон очищает открытые ключи.",
-                            "System authentication protects app entry when supported by the platform. Notes and vault passwords are separate. Backgrounding clears open keys."))
+                        Text(tr("Системный вход защищает запуск приложения. Пароли Сейфа и хранилищ — отдельно.",
+                            "System sign-in protects app start. Safe and vault passwords are separate."))
                         securitySettings()
                     }
                     2 -> key(epoch) { WelcomeNotesPassword(core, onBusy) }
@@ -95,7 +95,7 @@ private fun WelcomeNotesPassword(core: CoreGateway, onBusy: (Boolean) -> Unit) {
         finally { busy = false }
     }
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(tr("Заметки защищены отдельно и не синхронизируются. Android удаляет их с приложением; на компьютере папка данных может сохраниться.", "Notes are separately protected and are not synced. Android removes them with the app; desktop app data may remain."))
+        Text(tr("Заметки не синхронизируются. Android удаляет их вместе с приложением.", "Notes are not synced. Android deletes them with the app."))
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         fault?.let { FaultNotice(it) }
         if (status?.setUp == true) Text(tr("Пароль заметок уже настроен. Менять его здесь не требуется.", "A notes password is already configured. It does not need changing here."))

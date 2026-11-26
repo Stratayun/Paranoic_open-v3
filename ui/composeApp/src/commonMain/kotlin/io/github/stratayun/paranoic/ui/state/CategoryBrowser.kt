@@ -46,6 +46,25 @@ class CategoryBrowser(private val core: CoreGateway, private val scope: Coroutin
         fun matches(name: String) = (category == FileCategory.All || name.substringAfterLast('.', "").lowercase() in category.extensions) &&
             (needle.isEmpty() || normalize(name).contains(needle))
         job = scope.launch {
+            // The OS index first (Android 11+): instant. It applies the same folder rules as the walk below.
+            if (category != FileCategory.All) {
+                val indexed = core.indexedFiles(space, category.extensions, MAX_RESULTS)
+                if (indexed is CoreResult.Value) {
+                    val covers = if (category == FileCategory.Images)
+                        (core.indexedFiles(space, BOOKS, MAX_INDEX_BOOKS) as? CoreResult.Value)?.value.orEmpty()
+                            .map { it.location.path.substringBeforeLast('.').lowercase() }.toSet() else emptySet()
+                    val root = space.root.path.trim('/')
+                    val items = indexed.value.filter { item ->
+                        val relative = item.location.path.removePrefix(root).trimStart('/')
+                        val folders = relative.split('/').dropLast(1)
+                        matches(item.name) && folders.none { skipFolder(it, category) } &&
+                            !(folders.firstOrNull() == "Android" && folders.getOrNull(1) != "media") &&
+                            item.location.path.substringBeforeLast('.').lowercase() !in covers
+                    }
+                    if (isActive) state = state?.copy(items = sorted(items), running = false, truncated = indexed.value.size >= MAX_RESULTS)
+                    return@launch
+                }
+            }
             val queue = ArrayDeque(listOf(space.root))
             val found = mutableListOf<FileItem>()
             var scanned = 0
@@ -113,6 +132,7 @@ class CategoryBrowser(private val core: CoreGateway, private val scope: Coroutin
         val BOOKS = setOf("pdf", "epub", "fb2", "djvu", "mobi", "azw3", "cbz", "cbr")
         const val MAX_FOLDERS = 4000
         const val MAX_RESULTS = 5000
+        const val MAX_INDEX_BOOKS = 20000
         const val MAX_QUEUE = 20000
     }
 }

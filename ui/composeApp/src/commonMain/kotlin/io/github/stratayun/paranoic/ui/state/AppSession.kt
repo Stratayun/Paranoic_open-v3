@@ -440,23 +440,65 @@ class AppSession(val core: CoreGateway, private val scope: CoroutineScope, priva
     fun copy(source: Location, parent: Location, name: String) = submit { id -> core.copy(source, parent, name, id) }
     fun dismissDirectWrite() {
         if (directWrite?.phase != DirectWritePhase.Running) {
-            directWrite = null
+            directWrite = null; cryptoBatch = null
             if (uncertain == null && uncertainAttention == null) writeFault = null
         }
     }
+    /**
+     * age for one file. The source may come from the open folder, the category list or an
+     * explicit pick ([picked]); the source is only read and is never changed.
+     */
     fun transformFile(source: FileItem, parent: Location, name: String, format: FileCryptoFormat,
-        decrypt: Boolean, password: String) {
-        if (writing || !core.connected || !currentSource(source)) return
+        decrypt: Boolean, password: String, picked: Boolean = false) {
+        if (writing || !core.connected || !knownSource(source, picked)) return
         if (source.kind != EntryKind.File || files.spaces.spaceOf(parent)?.writable != true) {
             writeFault = CoreFault.Unsupported; return
         }
         if (!plausibleOperationName(name) || source.isTarget(parent, name) || password.isEmpty() || (!decrypt && password.length < 12)) {
             writeFault = CoreFault.InvalidName; return
         }
+        cryptoBatch = null
         directFileWrite(if (decrypt) DirectWriteKind.DecryptFile else DirectWriteKind.EncryptFile) {
             if (decrypt) core.decryptFile(source.location, parent, name, format, password)
             else core.encryptFile(source.location, parent, name, format, password)
         }
+    }
+    /** Batch result for the banner: done of total; null when no batch ran. */
+    var cryptoBatch by mutableStateOf<Pair<Int, Int>?>(null); private set
+    /**
+     * age for many files with one password (owner 26.11): each result goes beside its
+     * source ("name.age", or the name without ".age" when decrypting). One after another;
+     * the first failure stops the rest, an unknown outcome is never retried.
+     */
+    fun transformFiles(sources: List<FileItem>, decrypt: Boolean, password: String, picked: Boolean = false) {
+        if (writing || !core.connected || sources.isEmpty() || sources.size > 128) return
+        if (sources.any { it.kind != EntryKind.File || !knownSource(it, picked) }) { writeFault = CoreFault.Changed; return }
+        if (password.isEmpty() || (!decrypt && password.length < 12)) { writeFault = CoreFault.InvalidName; return }
+        val jobs = sources.map { source ->
+            val parent = Location(source.location.storageId, source.location.path.substringBeforeLast('/', ""))
+            val name = if (decrypt) source.name.removeSuffix(".age").removeSuffix(".AGE").ifEmpty { source.name + ".decrypted" } else source.name + ".age"
+            Triple(source, parent, name)
+        }
+        if (jobs.any { (source, parent, name) -> files.spaces.spaceOf(parent)?.writable != true || !plausibleOperationName(name) || source.isTarget(parent, name) }) {
+            writeFault = CoreFault.Unsupported; return
+        }
+        cryptoBatch = 0 to jobs.size
+        directFileWrite(if (decrypt) DirectWriteKind.DecryptFile else DirectWriteKind.EncryptFile) {
+            var result: CoreResult<Unit> = CoreResult.Value(Unit)
+            for ((index, job) in jobs.withIndex()) {
+                val (source, parent, name) = job
+                result = if (decrypt) core.decryptFile(source.location, parent, name, FileCryptoFormat.Age, password)
+                    else core.encryptFile(source.location, parent, name, FileCryptoFormat.Age, password)
+                if (result is CoreResult.Failure) break
+                cryptoBatch = index + 1 to jobs.size
+            }
+            result
+        }
+    }
+    private fun knownSource(source: FileItem, picked: Boolean): Boolean {
+        if (picked || foundSource(source) || (files.loaded && !files.loading && source in files.entries)) return true
+        writeFault = CoreFault.Changed
+        return false
     }
     fun openArchive(source: FileItem, format: ArchiveFormat, password: String?): Boolean {
         if (writing || !core.connected || !currentSource(source)) return false

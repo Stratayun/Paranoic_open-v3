@@ -54,6 +54,7 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
     var trashingMany by remember(state.category) { mutableStateOf<List<FileItem>?>(null) }
     // age for single files (owner 26.11: was only reachable from the folder view).
     var crypting by remember(state.category) { mutableStateOf<Pair<FileItem, Boolean>?>(null) }
+    var batchCrypto by remember(state.category) { mutableStateOf<Pair<List<FileItem>, Boolean>?>(null) }
     fun key(item: FileItem) = item.location.storageId + ":" + item.location.path
     val shown = remember(state.items, sort, hideSystemSounds, state.category) {
         state.items.filter { state.category != FileCategory.Music || !hideSystemSounds || !isSystemSound(it) }.sortedWith(sort.comparator)
@@ -89,6 +90,14 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
                 if (clipboard != null) IconButton(enabled = selectedItems.all { it.canMove(session.files.spaces) },
                     onClick = { clipboard.put(selectedItems, cut = true); selected = emptySet() },
                     modifier = Modifier.actionDescription(tr("Вырезать", "Cut"))) { AppIcon(AppSymbol.Cut) }
+                if (selectedItems.size > 1 && selectedItems.all { it.kind == EntryKind.File }) {
+                    val allAge = selectedItems.all { isEncrypted(it) }
+                    IconButton(enabled = canWrite && session.directWrite?.phase != DirectWritePhase.Unknown,
+                        onClick = { batchCrypto = selectedItems to allAge },
+                        modifier = Modifier.actionDescription(if (allAge) tr("Расшифровать", "Decrypt") else tr("Зашифровать (age)", "Encrypt (age)"))) {
+                        AppIcon(if (allAge) AppSymbol.Passwords else AppSymbol.Vault)
+                    }
+                }
                 IconButton(enabled = canWrite && selectedItems.all { it.canDelete(session.files.spaces) },
                     onClick = { trashingMany = selectedItems },
                     modifier = Modifier.actionDescription(tr("Удалить", "Delete"))) { AppIcon(AppSymbol.Trash) }
@@ -210,6 +219,7 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
             )),
         ), onDismiss = { sheet = null })
     }
+    batchCrypto?.let { (sources, decrypt) -> BatchCryptoDialog(session, sources, decrypt) { batchCrypto = null; selected = emptySet(); rescan = true } }
     crypting?.let { (source, decrypt) ->
         FileCryptoDialog(session, source, decrypt, initialParent = Location(source.location.storageId, source.location.path.substringBeforeLast('/', ""))) {
             crypting = null; rescan = true
