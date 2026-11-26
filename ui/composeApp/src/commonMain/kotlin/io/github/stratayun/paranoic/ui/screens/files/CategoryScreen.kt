@@ -52,6 +52,8 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
     var sort by remember { mutableStateOf(CategorySort.Newest) }
     var hideSystemSounds by remember { mutableStateOf(true) }
     var trashingMany by remember(state.category) { mutableStateOf<List<FileItem>?>(null) }
+    // age for single files (owner 26.11: was only reachable from the folder view).
+    var crypting by remember(state.category) { mutableStateOf<Pair<FileItem, Boolean>?>(null) }
     fun key(item: FileItem) = item.location.storageId + ":" + item.location.path
     val shown = remember(state.items, sort, hideSystemSounds, state.category) {
         state.items.filter { state.category != FileCategory.Music || !hideSystemSounds || !isSystemSound(it) }.sortedWith(sort.comparator)
@@ -199,7 +201,19 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
                 SheetAction(tr("Удалить", "Delete"), AppSymbol.Trash, canWrite && item.canDelete(session.files.spaces), danger = true,
                     run = { sheet = null; deleting = item }),
             )),
+            SheetGroup(tr("Шифрование", "Encryption"), listOf(
+                if (isEncrypted(item)) SheetAction(tr("Расшифровать (age)…", "Decrypt (age)…"), AppSymbol.Passwords,
+                    canWrite && session.directWrite?.phase != DirectWritePhase.Unknown, run = { sheet = null; crypting = item to true })
+                else SheetAction(tr("Зашифровать (age)…", "Encrypt (age)…"), AppSymbol.Vault,
+                    canWrite && item.kind == EntryKind.File && session.directWrite?.phase != DirectWritePhase.Unknown,
+                    run = { sheet = null; crypting = item to false }),
+            )),
         ), onDismiss = { sheet = null })
+    }
+    crypting?.let { (source, decrypt) ->
+        FileCryptoDialog(session, source, decrypt, initialParent = Location(source.location.storageId, source.location.path.substringBeforeLast('/', ""))) {
+            crypting = null; rescan = true
+        }
     }
     transferring?.let { (source, mode) ->
         TransferDestinationDialog(session.core, source, session.files.spaces, mode, onDismiss = { transferring = null },

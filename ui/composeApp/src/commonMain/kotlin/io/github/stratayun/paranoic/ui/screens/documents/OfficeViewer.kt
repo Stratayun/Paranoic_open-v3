@@ -2,6 +2,15 @@ package io.github.stratayun.paranoic.ui.screens.documents
 
 import io.github.stratayun.paranoic.ui.components.FaultNotice
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.sp
+import io.github.stratayun.paranoic.ui.components.AppIcon
+import io.github.stratayun.paranoic.ui.components.AppSymbol
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -52,9 +61,11 @@ private fun OfficeContent(core: CoreGateway, file: FileItem, onClose: () -> Unit
     val opened = document
     val zoom = remember { DocumentZoom() }
     DocumentFrame(file.name, onClose, controls = {
-        Text(tr("Только просмотр · структура документа без исходной вёрстки",
-            "Read only · document structure without the original layout"), style = MaterialTheme.typography.bodySmall)
-        ZoomControls(zoom)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(tr("Только просмотр", "Read only"), Modifier.weight(1f).padding(start = 12.dp),
+                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            ZoomControls(zoom)
+        }
         fault?.let {
             FaultNotice(it)
             TextButton(onClick = { attempt++ }) { Text(tr("Повторить", "Retry")) }
@@ -62,12 +73,10 @@ private fun OfficeContent(core: CoreGateway, file: FileItem, onClose: () -> Unit
         if (opened?.truncated == true) LimitNotice()
     }) {
         ZoomableDocument(zoom) {
-            Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                when (opened) {
-                    is OfficeDocument.Word -> WordContent(opened, Modifier.weight(1f))
-                    is OfficeDocument.Workbook -> WorkbookContent(opened, Modifier.weight(1f))
-                    null -> if (fault == null) CircularProgressIndicator()
-                }
+            when (opened) {
+                is OfficeDocument.Word -> PaperPage { WordContent(opened, Modifier.fillMaxSize()) }
+                is OfficeDocument.Workbook -> PaperPage(padding = PaddingValues(0.dp)) { WorkbookContent(opened, Modifier.fillMaxSize()) }
+                null -> if (fault == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
             }
         }
     }
@@ -83,7 +92,7 @@ private fun LimitNotice() {
 // Tables become individual lazy rows, so a large DOCX table cannot eagerly lay out the whole document.
 private sealed interface WordLine {
     data class Paragraph(val value: OfficeBlock.Paragraph) : WordLine
-    data class TableRow(val cells: List<String>) : WordLine
+    data class TableRow(val cells: List<String>, val first: Boolean) : WordLine
 }
 private data class SelectedCell(val title: String, val text: String)
 
@@ -94,20 +103,20 @@ private fun WordContent(document: OfficeDocument.Word, modifier: Modifier) {
             document.blocks.forEach { block ->
                 when (block) {
                     is OfficeBlock.Paragraph -> add(WordLine.Paragraph(block))
-                    is OfficeBlock.Table -> block.rows.forEach { add(WordLine.TableRow(it)) }
+                    is OfficeBlock.Table -> block.rows.forEachIndexed { i, row -> add(WordLine.TableRow(row, i == 0)) }
                 }
             }
         }
     }
     var selected by remember { mutableStateOf<SelectedCell?>(null) }
     val cellTitle = tr("Содержимое ячейки", "Cell contents")
-    if (lines.isEmpty()) Text(tr("Документ пуст.", "The document is empty."))
-    LazyColumn(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        itemsIndexed(lines) { _, line ->
+    if (lines.isEmpty()) Text(tr("Документ пуст.", "The document is empty."), style = Paper.small)
+    LazyColumn(modifier.fillMaxWidth()) {
+        itemsIndexed(lines) { index, line ->
             when (line) {
-                is WordLine.Paragraph -> WordParagraph(line.value)
-                is WordLine.TableRow -> Row(Modifier.horizontalScroll(rememberScrollState())) {
-                    line.cells.forEach { value -> OfficeCell(value) { selected = SelectedCell(cellTitle, value) } }
+                is WordLine.Paragraph -> WordParagraph(line.value, index == 0)
+                is WordLine.TableRow -> Row(Modifier.padding(top = if (line.first) 8.dp else 0.dp).horizontalScroll(rememberScrollState())) {
+                    line.cells.forEach { value -> GridCell(value, 150.dp, header = line.first) { selected = SelectedCell(cellTitle, value) } }
                 }
             }
         }
@@ -116,12 +125,12 @@ private fun WordContent(document: OfficeDocument.Word, modifier: Modifier) {
 }
 
 @Composable
-private fun WordParagraph(paragraph: OfficeBlock.Paragraph) {
+private fun WordParagraph(paragraph: OfficeBlock.Paragraph, first: Boolean) {
     val text = remember(paragraph) {
         buildAnnotatedString {
-            if (paragraph.list) append("• ")
+            if (paragraph.list) append("•  ")
             paragraph.runs.forEach { run ->
-                withStyle(SpanStyle(fontWeight = if (run.bold) FontWeight.Bold else FontWeight.Normal,
+                withStyle(SpanStyle(fontWeight = if (run.bold) FontWeight.Bold else null,
                     fontStyle = if (run.italic) FontStyle.Italic else FontStyle.Normal,
                     textDecoration = if (run.underline) TextDecoration.Underline else TextDecoration.None)) {
                     append(run.text)
@@ -129,80 +138,79 @@ private fun WordParagraph(paragraph: OfficeBlock.Paragraph) {
             }
         }
     }
-    val style = when (paragraph.heading ?: -1) {
-        0, 1 -> MaterialTheme.typography.headlineSmall
-        2 -> MaterialTheme.typography.titleLarge
-        in 3..9 -> MaterialTheme.typography.titleMedium
-        else -> MaterialTheme.typography.bodyMedium
+    val heading = paragraph.heading
+    val top = when { first -> 0.dp; heading != null -> 14.dp; else -> 0.dp }
+    SelectionContainer {
+        Text(text, modifier = (if (heading != null) Modifier.sectionHeading() else Modifier)
+            .padding(top = top, bottom = if (heading != null) 6.dp else 10.dp, start = if (paragraph.list) 12.dp else 0.dp),
+            style = if (heading != null) Paper.heading(heading) else Paper.body)
     }
-    SelectionContainer { Text(text, modifier = if (paragraph.heading != null) Modifier.sectionHeading() else Modifier, style = style) }
 }
 
 @Composable
 private fun WorkbookContent(document: OfficeDocument.Workbook, modifier: Modifier) {
     var sheetIndex by remember(document) { mutableIntStateOf(0) }
-    var menu by remember { mutableStateOf(false) }
     var selected by remember(document) { mutableStateOf<SelectedCell?>(null) }
     val sheet = document.sheets.getOrNull(sheetIndex)
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (sheet == null) Text(tr("В книге нет листов.", "The workbook has no sheets."))
+    Column(modifier.fillMaxWidth()) {
+        if (sheet == null) Text(tr("В книге нет листов.", "The workbook has no sheets."), Modifier.padding(16.dp), style = Paper.small)
         else {
-            Box {
-                TextButton(onClick = { menu = true }) {
-                    Text(tr("Лист: ", "Sheet: ") + displayName(sheet.name), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    document.sheets.forEachIndexed { index, item ->
-                        DropdownMenuItem(text = { Text(displayName(item.name), maxLines = 2) },
-                            onClick = { sheetIndex = index; menu = false; selected = null })
+            if (sheet.truncated && !document.truncated) Box(Modifier.padding(8.dp)) { LimitNotice() }
+            // Reset both scroll axes and column page when changing sheets.
+            key(sheetIndex) { SheetContent(sheet, Modifier.weight(1f)) { selected = it } }
+            // Sheet tabs along the bottom edge, as in a spreadsheet program.
+            HorizontalDivider(color = Paper.rule)
+            Row(Modifier.fillMaxWidth().background(Paper.header).horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp)) {
+                document.sheets.forEachIndexed { index, item ->
+                    val on = index == sheetIndex
+                    Box(Modifier.clickable(role = Role.Tab, onClickLabel = displayName(item.name)) { sheetIndex = index; selected = null }
+                        .background(if (on) Paper.sheet else Color.Transparent)
+                        .padding(horizontal = 14.dp, vertical = 10.dp)) {
+                        Text(displayName(item.name), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            style = if (on) Paper.body.copy(color = Paper.accent, fontWeight = FontWeight.SemiBold, fontSize = 14.sp) else Paper.small.copy(fontSize = 14.sp))
                     }
                 }
             }
-            if (sheet.truncated && !document.truncated) LimitNotice()
-            // Reset both scroll axes and column page when changing sheets.
-            key(sheetIndex) { SheetContent(sheet, Modifier.weight(1f)) { selected = it } }
         }
     }
     selected?.let { CellDialog(it) { selected = null } }
 }
 
 private const val COLUMNS_PER_PAGE = 8
+private val ROW_HEAD = 48.dp
+private val CELL = 124.dp
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SheetContent(sheet: OfficeSheet, modifier: Modifier, onSelect: (SelectedCell) -> Unit) {
     var firstColumn by remember { mutableIntStateOf(0) }
     val columns = remember(sheet) { sheet.rows.maxOfOrNull { it.size } ?: 0 }
     val endColumn = minOf(firstColumn + COLUMNS_PER_PAGE, columns)
     val scroll = rememberScrollState()
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (columns == 0) Text(tr("Лист пуст.", "The sheet is empty."))
+    Column(modifier.fillMaxWidth()) {
+        if (columns == 0) Text(tr("Лист пуст.", "The sheet is empty."), Modifier.padding(16.dp), style = Paper.small)
         else {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(enabled = firstColumn > 0, onClick = { firstColumn -= COLUMNS_PER_PAGE }) {
-                    Text(tr("Назад", "Previous"))
-                }
-                Text(tr("Столбцы ", "Columns ") + columnName(firstColumn) + "–" + columnName(endColumn - 1),
-                    Modifier.padding(vertical = 12.dp))
-                TextButton(enabled = endColumn < columns, onClick = { firstColumn += COLUMNS_PER_PAGE }) {
-                    Text(tr("Далее", "Next"))
-                }
+            if (columns > COLUMNS_PER_PAGE) Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(enabled = firstColumn > 0, onClick = { firstColumn -= COLUMNS_PER_PAGE },
+                    modifier = Modifier.actionDescription(tr("Предыдущие столбцы", "Previous columns"))) { AppIcon(AppSymbol.Prev) }
+                Text(tr("Столбцы ", "Columns ") + columnName(firstColumn) + "–" + columnName(endColumn - 1) + tr(" из ", " of ") + columns,
+                    style = Paper.small, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                IconButton(enabled = endColumn < columns, onClick = { firstColumn += COLUMNS_PER_PAGE },
+                    modifier = Modifier.actionDescription(tr("Следующие столбцы", "Next columns"))) { AppIcon(AppSymbol.Forward) }
             }
             // Only eight columns per page are measured; every parsed column remains reachable.
             Column(Modifier.weight(1f).horizontalScroll(scroll)) {
                 Row {
-                    Text(tr("Строка", "Row"), Modifier.width(64.dp).padding(8.dp))
-                    for (column in firstColumn until endColumn) {
-                        Text(columnName(column), Modifier.width(160.dp).padding(8.dp), fontWeight = FontWeight.Bold)
-                    }
+                    GridCell("", ROW_HEAD, header = true)
+                    for (column in firstColumn until endColumn) GridCell(columnName(column), CELL, header = true, center = true)
                 }
-                LazyColumn(Modifier.weight(1f).width((64 + (endColumn - firstColumn) * 160).dp)) {
+                LazyColumn(Modifier.weight(1f).width(ROW_HEAD + CELL * (endColumn - firstColumn))) {
                     itemsIndexed(sheet.rows) { rowIndex, row ->
                         Row {
-                            Text((rowIndex + 1).toString(), Modifier.width(64.dp).padding(8.dp))
+                            GridCell((rowIndex + 1).toString(), ROW_HEAD, header = true, center = true)
                             for (column in firstColumn until endColumn) {
                                 val value = row.getOrElse(column) { "" }
-                                OfficeCell(value, columnName(column) + (rowIndex + 1)) { onSelect(SelectedCell(columnName(column) + (rowIndex + 1), value)) }
+                                val coordinate = columnName(column) + (rowIndex + 1)
+                                GridCell(value, CELL, coordinate = coordinate) { onSelect(SelectedCell(coordinate, value)) }
                             }
                         }
                     }
@@ -224,13 +232,16 @@ private fun columnName(index: Int): String {
     return result.reverse().toString()
 }
 
+/** One spreadsheet-like cell on the paper: thin grid lines, header cells tinted. */
 @Composable
-private fun OfficeCell(value: String, coordinate: String? = null, onClick: () -> Unit) {
+private fun GridCell(value: String, width: Dp, header: Boolean = false, center: Boolean = false, coordinate: String? = null, onClick: (() -> Unit)? = null) {
     val label = tr("Показать ячейку полностью", "Show full cell") + (coordinate?.let { " " + it } ?: "")
-    Surface(Modifier.width(160.dp).heightIn(min = 48.dp).padding(1.dp).keyboardFocusOutline().clickable(role = Role.Button, onClickLabel = label, onClick = onClick),
-        color = MaterialTheme.colorScheme.surfaceVariant) {
+    var modifier = Modifier.width(width).heightIn(min = 36.dp).background(if (header) Paper.header else Paper.sheet).border(0.5.dp, Paper.rule)
+    if (onClick != null && value.isNotEmpty()) modifier = modifier.keyboardFocusOutline().clickable(role = Role.Button, onClickLabel = label, onClick = onClick)
+    Box(modifier.padding(horizontal = 8.dp, vertical = 8.dp), contentAlignment = if (center) Alignment.Center else Alignment.CenterStart) {
         // Limit layout work, not access to the value: tapping reveals the full parsed cell.
-        Text(value.take(512) + if (value.length > 512) "…" else "", Modifier.padding(8.dp), maxLines = 3, overflow = TextOverflow.Ellipsis)
+        Text(value.take(512) + if (value.length > 512) "…" else "", maxLines = if (header) 1 else 2, overflow = TextOverflow.Ellipsis,
+            style = if (header) Paper.small.copy(fontWeight = FontWeight.SemiBold) else Paper.body.copy(fontSize = 13.sp, lineHeight = 18.sp))
     }
 }
 

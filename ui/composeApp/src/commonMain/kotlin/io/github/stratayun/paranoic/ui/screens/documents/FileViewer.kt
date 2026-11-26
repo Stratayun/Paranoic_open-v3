@@ -29,7 +29,8 @@ fun FileViewer(core: CoreGateway, file: FileItem, onClose: () -> Unit,
     textParent: Location? = null, exitGuard: DocumentExitGuard = remember { DocumentExitGuard() }) {
     key(core, file.location) {
         when (file.name.substringAfterLast('.', "").lowercase()) {
-            "txt", "md", "markdown" -> TextEditor(core, file, textParent, exitGuard, onClose)
+            "txt" -> TextEditor(core, file, textParent, exitGuard, onClose)
+            "md", "markdown" -> MarkdownViewer(core, file, textParent, exitGuard, onClose)
             // Extension selects a screen only; Core validates the actual package.
             "docx", "xlsx", "ods" -> OfficeViewer(core, file, onClose)
             else -> PreviewFile(core, file, onClose, pngImage, mediaPlayer)

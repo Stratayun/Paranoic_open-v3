@@ -13,12 +13,12 @@ import io.github.stratayun.paranoic.bridge.*
 import io.github.stratayun.paranoic.ui.state.*
 
 @Composable
-fun FileCryptoDialog(session: AppSession, source: FileItem, decrypt: Boolean, onDismiss: () -> Unit) {
+fun FileCryptoDialog(session: AppSession, source: FileItem, decrypt: Boolean, initialParent: Location? = null, onDismiss: () -> Unit) {
     val format = FileCryptoFormat.Age
     fun suggested(f: FileCryptoFormat): String = if (decrypt) source.name.removeSuffix("." + source.name.substringAfterLast('.'))
         .takeIf { it.isNotEmpty() && it != source.name } ?: source.name + ".decrypted" else source.name + "." + f.extension
     var name by remember(source, decrypt) { mutableStateOf(suggested(format)) }
-    var parent by remember(source) { mutableStateOf(session.files.folder) }
+    var parent by remember(source) { mutableStateOf(initialParent ?: session.files.folder) }
     var password by remember { mutableStateOf("") }
     val passwordAssessment = rememberPasswordAssessment(session.core, if (decrypt) "" else password)
     var repeat by remember { mutableStateOf("") }

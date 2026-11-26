@@ -1,6 +1,11 @@
 package io.github.stratayun.paranoic.ui.screens.files
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -72,15 +77,7 @@ fun FileWorkspaceScreen(session: AppSession, defaultView: FileView, onOpenFile: 
         return
     }
     Column(Modifier.fillMaxSize()) {
-        if (workspace.tabs.size > 1) LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(horizontal = 12.dp)) {
-            items(workspace.tabs, key = { it.id }) { tab ->
-                val title = tab.files.trail.lastOrNull()?.name ?: tr("Места", "Places")
-                FilterChip(selected = workspace.active == tab.id, onClick = { session.activateFileTab(tab.id) },
-                    label = { Text(displayName(title), maxLines = 1) },
-                    trailingIcon = { IconButton(onClick = { session.closeFileTab(tab.id) }, modifier = Modifier.size(24.dp)
-                        .actionDescription(tr("Закрыть вкладку", "Close tab"))) { AppIcon(AppSymbol.Close, Modifier.size(16.dp)) } })
-            }
-        }
+        FileTabStrip(session)
         feedback?.let { Text(it, Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.error) }
         dragged?.let { Text(tr("Перетащите в другую панель: ", "Drop onto the other pane: ") + displayName(it.item.name), Modifier.padding(horizontal = 12.dp)) }
         BoxWithConstraints(Modifier.weight(1f)) {
@@ -133,4 +130,42 @@ private fun Pane(session: AppSession, tabId: String, defaultView: FileView, onOp
             FilesScreen(session, tab.view ?: defaultView, {}, onOpenFile, pngImage, tabId, drag, onOpenPlaces, clipboard, onNewVault)
         }
     }
+}
+
+/**
+ * Tabs like a desktop file explorer (owner 26.11): always visible, "+" opens a new tab
+ * on the same folder, the cross closes one (the last tab stays).
+ */
+@Composable
+private fun FileTabStrip(session: AppSession) {
+    val workspace = session.fileWorkspace
+    val scheme = MaterialTheme.colorScheme
+    Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 2.dp), verticalAlignment = Alignment.Bottom) {
+        LazyRow(Modifier.weight(1f, fill = false), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            items(workspace.tabs, key = { it.id }) { tab ->
+                val on = workspace.active == tab.id
+                val title = tab.files.trail.lastOrNull()?.name ?: tr("Места", "Places")
+                Surface(onClick = { session.activateFileTab(tab.id) },
+                    shape = RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp),
+                    color = if (on) scheme.surfaceContainerHighest else scheme.surfaceContainerLow,
+                    contentColor = if (on) scheme.onSurface else scheme.onSurfaceVariant) {
+                    Column(Modifier.widthIn(min = 96.dp, max = 200.dp)) {
+                        Row(Modifier.height(36.dp).padding(start = 12.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                            AppIcon(AppSymbol.Folder, Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(displayName(title), Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.labelLarge)
+                            if (workspace.tabs.size > 1) IconButton(onClick = { session.closeFileTab(tab.id) }, modifier = Modifier.size(28.dp)
+                                .actionDescription(tr("Закрыть вкладку", "Close tab"))) { AppIcon(AppSymbol.Close, Modifier.size(14.dp)) }
+                            else Spacer(Modifier.width(10.dp))
+                        }
+                        Box(Modifier.fillMaxWidth().height(2.dp).background(if (on) scheme.primary else Color.Transparent))
+                    }
+                }
+            }
+        }
+        IconButton(onClick = { session.newFileTab(duplicate = true) }, modifier = Modifier.size(36.dp)
+            .actionDescription(tr("Новая вкладка", "New tab"))) { AppIcon(AppSymbol.Add, Modifier.size(20.dp)) }
+    }
+    HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
 }
