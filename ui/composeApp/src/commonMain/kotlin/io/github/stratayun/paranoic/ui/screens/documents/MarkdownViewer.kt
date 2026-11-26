@@ -56,22 +56,22 @@ private fun MarkdownReader(core: CoreGateway, file: FileItem, onClose: () -> Uni
         }
     }
     DisposableEffect(Unit) { onDispose { blocks = null } }
-    val zoom = remember { DocumentZoom() }
+    val zoom = remember { LayoutZoom() }
     DocumentFrame(file.name, onClose, controls = {
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onEdit) { AppIcon(AppSymbol.Edit, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(tr("Редактировать", "Edit")) }
             Spacer(Modifier.weight(1f))
-            ZoomControls(zoom)
+            LayoutZoomControls(zoom)
         }
         fault?.let {
             FaultNotice(it)
             TextButton(onClick = { attempt++ }) { Text(tr("Повторить", "Retry")) }
         }
     }) {
-        ZoomableDocument(zoom) {
+        Box(Modifier.fillMaxSize()) {
             val shown = blocks
             if (shown == null) { if (fault == null) CircularProgressIndicator(Modifier.align(Alignment.Center)) }
-            else PaperPage {
+            else PaperPage(zoom = zoom) {
                 if (shown.isEmpty()) Text(tr("Документ пуст.", "The document is empty."), style = Paper.small)
                 LazyColumn(Modifier.fillMaxSize()) {
                     itemsIndexed(shown) { index, block -> MdBlockView(block, index == 0) }

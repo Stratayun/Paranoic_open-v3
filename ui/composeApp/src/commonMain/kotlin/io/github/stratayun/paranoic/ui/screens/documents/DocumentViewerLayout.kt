@@ -20,6 +20,10 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import kotlin.math.roundToInt
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
@@ -174,6 +178,61 @@ internal fun MediaFrame(name: String, subtitle: String?, onClose: () -> Unit,
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Zoom that re-lays out the page (owner 26.11): 50–300 %. Text reflows and a sheet shows more
+ * rows and columns when zoomed out, instead of scaling a picture of the page.
+ */
+@Stable
+internal class LayoutZoom {
+    var scale by mutableFloatStateOf(1f)
+        private set
+    fun update(factor: Float) { scale = (scale * factor).coerceIn(MIN, MAX) }
+    fun reset() { scale = 1f }
+    companion object { const val MIN = 0.5f; const val MAX = 3f }
+}
+
+@Composable
+internal fun LayoutZoomControls(zoom: LayoutZoom) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(enabled = zoom.scale > LayoutZoom.MIN, onClick = { zoom.update(1f / 1.25f) },
+            modifier = Modifier.actionDescription(tr("Уменьшить", "Zoom out"))) { AppIcon(AppSymbol.ZoomOut) }
+        TextButton(onClick = zoom::reset) { Text("${(zoom.scale * 100).roundToInt()}%") }
+        IconButton(enabled = zoom.scale < LayoutZoom.MAX, onClick = { zoom.update(1.25f) },
+            modifier = Modifier.actionDescription(tr("Увеличить", "Zoom in"))) { AppIcon(AppSymbol.ZoomIn) }
+    }
+}
+
+/**
+ * Two fingers pinch the [LayoutZoom]; one finger is left to the page, so lists and sheets
+ * scroll in both directions. A tap toggles the bars. Two-finger events are taken in the
+ * initial pass, before a list could treat them as a scroll.
+ */
+@Composable
+internal fun ReflowDocument(zoom: LayoutZoom, modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+    val chrome = LocalViewerChrome.current
+    val density = LocalDensity.current
+    Box(modifier.fillMaxSize()
+        .pointerInput(zoom) {
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                do {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    if (event.changes.count { it.pressed } >= 2) {
+                        val factor = event.calculateZoom()
+                        if (factor != 1f) zoom.update(factor)
+                        event.changes.forEach { it.consume() }
+                    }
+                } while (event.changes.any { it.pressed })
+            }
+        }
+        .pointerInput(chrome) { detectTapGestures(onTap = { chrome?.toggle() }) }) {
+        // Scaling the density scales every dp and sp inside: fonts, cells, margins.
+        CompositionLocalProvider(LocalDensity provides Density(density.density * zoom.scale, density.fontScale)) {
+            Box(Modifier.fillMaxSize(), content = content)
         }
     }
 }

@@ -59,12 +59,12 @@ private fun OfficeContent(core: CoreGateway, file: FileItem, onClose: () -> Unit
     }
     DisposableEffect(Unit) { onDispose { document = null } }
     val opened = document
-    val zoom = remember { DocumentZoom() }
+    val zoom = remember { LayoutZoom() }
     DocumentFrame(file.name, onClose, controls = {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(tr("Только просмотр", "Read only"), Modifier.weight(1f).padding(start = 12.dp),
                 style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            ZoomControls(zoom)
+            LayoutZoomControls(zoom)
         }
         fault?.let {
             FaultNotice(it)
@@ -72,12 +72,10 @@ private fun OfficeContent(core: CoreGateway, file: FileItem, onClose: () -> Unit
         }
         if (opened?.truncated == true) LimitNotice()
     }) {
-        ZoomableDocument(zoom) {
-            when (opened) {
-                is OfficeDocument.Word -> PaperPage { WordContent(opened, Modifier.fillMaxSize()) }
-                is OfficeDocument.Workbook -> PaperPage(padding = PaddingValues(0.dp)) { WorkbookContent(opened, Modifier.fillMaxSize()) }
-                null -> if (fault == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
-            }
+        when (opened) {
+            is OfficeDocument.Word -> PaperPage(zoom = zoom) { WordContent(opened, Modifier.fillMaxSize()) }
+            is OfficeDocument.Workbook -> PaperPage(padding = PaddingValues(0.dp), zoom = zoom) { WorkbookContent(opened, Modifier.fillMaxSize()) }
+            null -> if (fault == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
         }
     }
 }
@@ -176,7 +174,6 @@ private fun WorkbookContent(document: OfficeDocument.Workbook, modifier: Modifie
     selected?.let { CellDialog(it) { selected = null } }
 }
 
-private const val COLUMNS_PER_PAGE = 8
 private val ROW_HEAD = 48.dp
 private val CELL = 124.dp
 
@@ -184,20 +181,23 @@ private val CELL = 124.dp
 private fun SheetContent(sheet: OfficeSheet, modifier: Modifier, onSelect: (SelectedCell) -> Unit) {
     var firstColumn by remember { mutableIntStateOf(0) }
     val columns = remember(sheet) { sheet.rows.maxOfOrNull { it.size } ?: 0 }
-    val endColumn = minOf(firstColumn + COLUMNS_PER_PAGE, columns)
     val scroll = rememberScrollState()
-    Column(modifier.fillMaxWidth()) {
+    // As many columns as fit the page (more when zoomed out), at least 4 and at most 32 measured at once.
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+    val perPage = (((maxWidth - ROW_HEAD) / CELL).toInt() + 1).coerceIn(4, 32)
+    val endColumn = minOf(firstColumn + perPage, columns)
+    Column(Modifier.fillMaxSize()) {
         if (columns == 0) Text(tr("Лист пуст.", "The sheet is empty."), Modifier.padding(16.dp), style = Paper.small)
         else {
-            if (columns > COLUMNS_PER_PAGE) Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(enabled = firstColumn > 0, onClick = { firstColumn -= COLUMNS_PER_PAGE },
+            if (columns > perPage) Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(enabled = firstColumn > 0, onClick = { firstColumn = (firstColumn - perPage).coerceAtLeast(0) },
                     modifier = Modifier.actionDescription(tr("Предыдущие столбцы", "Previous columns"))) { AppIcon(AppSymbol.Prev) }
                 Text(tr("Столбцы ", "Columns ") + columnName(firstColumn) + "–" + columnName(endColumn - 1) + tr(" из ", " of ") + columns,
                     style = Paper.small, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
-                IconButton(enabled = endColumn < columns, onClick = { firstColumn += COLUMNS_PER_PAGE },
+                IconButton(enabled = endColumn < columns, onClick = { firstColumn += perPage },
                     modifier = Modifier.actionDescription(tr("Следующие столбцы", "Next columns"))) { AppIcon(AppSymbol.Forward) }
             }
-            // Only eight columns per page are measured; every parsed column remains reachable.
+            // Only one page of columns is measured; every parsed column remains reachable.
             Column(Modifier.weight(1f).horizontalScroll(scroll)) {
                 Row {
                     GridCell("", ROW_HEAD, header = true)
@@ -217,6 +217,7 @@ private fun SheetContent(sheet: OfficeSheet, modifier: Modifier, onSelect: (Sele
                 }
             }
         }
+    }
     }
 }
 

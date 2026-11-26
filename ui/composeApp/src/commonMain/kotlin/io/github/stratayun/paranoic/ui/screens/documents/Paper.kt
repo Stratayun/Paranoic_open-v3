@@ -41,12 +41,14 @@ private val PaperScheme = lightColorScheme(primary = Paper.accent, onPrimary = C
 /** The page: centred, at most a book-page wide on large windows, shadow and thin edge like a PDF page. */
 @Composable
 internal fun PaperPage(modifier: Modifier = Modifier, padding: PaddingValues = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
-    content: @Composable BoxScope.() -> Unit) {
+    zoom: LayoutZoom? = null, content: @Composable BoxScope.() -> Unit) {
     Box(modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 8.dp), contentAlignment = Alignment.TopCenter) {
         MaterialTheme(colorScheme = PaperScheme, typography = MaterialTheme.typography, shapes = MaterialTheme.shapes) {
             Surface(Modifier.widthIn(max = 860.dp).fillMaxSize(), shape = RoundedCornerShape(6.dp), color = Paper.sheet,
                 contentColor = Paper.ink, shadowElevation = 6.dp, border = BorderStroke(1.dp, Paper.rule)) {
-                Box(Modifier.fillMaxSize().padding(padding), content = content)
+                // The sheet keeps its frame; only what is on it follows the zoom.
+                if (zoom != null) ReflowDocument(zoom) { Box(Modifier.fillMaxSize().padding(padding), content = content) }
+                else Box(Modifier.fillMaxSize().padding(padding), content = content)
             }
         }
     }

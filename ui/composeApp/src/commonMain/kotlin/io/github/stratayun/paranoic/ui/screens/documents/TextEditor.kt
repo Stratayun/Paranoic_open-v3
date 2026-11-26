@@ -53,7 +53,7 @@ private fun TextEditorContent(core: CoreGateway, file: FileItem, parent: Locatio
     var copySaved by remember { mutableStateOf<String?>(null) }
     var details by remember { mutableStateOf(false) }
     var textScale by remember { mutableFloatStateOf(1f) }
-    val textTransform = rememberTransformableState { factor, _, _ -> textScale = (textScale * factor).coerceIn(1f, 3f) }
+    val textTransform = rememberTransformableState { factor, _, _ -> textScale = (textScale * factor).coerceIn(0.6f, 3f) }
 
     LaunchedEffect(attempt) {
         loading = true
@@ -165,7 +165,7 @@ private fun TextEditorContent(core: CoreGateway, file: FileItem, parent: Locatio
                         DropdownMenuItem(text = { Text(tr("Крупнее шрифт", "Larger font")) }, leadingIcon = { AppIcon(AppSymbol.ZoomIn) },
                             enabled = textScale < 3f, onClick = { textScale = (textScale * 1.25f).coerceAtMost(3f) })
                         DropdownMenuItem(text = { Text(tr("Мельче шрифт", "Smaller font")) }, leadingIcon = { AppIcon(AppSymbol.ZoomOut) },
-                            enabled = textScale > 1f, onClick = { textScale = (textScale / 1.25f).coerceAtLeast(1f) })
+                            enabled = textScale > 0.6f, onClick = { textScale = (textScale / 1.25f).coerceAtLeast(0.6f) })
                     }
                 }
             }
