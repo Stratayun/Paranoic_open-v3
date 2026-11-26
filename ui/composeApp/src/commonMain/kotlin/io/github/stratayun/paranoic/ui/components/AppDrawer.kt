@@ -24,8 +24,8 @@ fun DrawerHeader(onClose: () -> Unit) {
 
 /**
  * Lower part of the drawer (owner's layout, 25.11): sections Files /
- * Crypto folders / Safe, tools Sync and "Diagnostics and tasks" (tasks live
- * inside Diagnostics), and Settings as one wide pill.
+ * Crypto folders / Safe, tools Sync, "Diagnostics and tasks" (tasks live
+ * inside Diagnostics) and Settings, all rows in one style.
  */
 @Composable
 fun DrawerFooter(
@@ -64,18 +64,15 @@ fun DrawerFooter(
         }
         SectionLabel(tr("Инструменты", "Tools"))
         val rows = listOf(
-            Triple(tr("Синхронизация и бэкап", "Sync and backup"), Res.drawable.ic_sync, onSync to null),
+            Triple(tr("Синхронизация и бэкап", "Sync and backup"), Res.drawable.ic_sync, onSync to tr("Свой сервер", "Own server")),
             Triple(tr("Диагностика и задачи", "Diagnostics and tasks"), Res.drawable.ic_diagnostics, onDiagnostics to
                 (if (runningTasks > 0) tr("Выполняется задач: $runningTasks", "Running tasks: $runningTasks") else tr("Журнал, отчёт, задания", "Journal, report, jobs"))),
+            // Owner (26.11): Settings is an ordinary row in the same style, not a separate button.
+            Triple(tr("Настройки", "Settings"), Res.drawable.ic_settings, onSettings to tr("Тема, язык, безопасность", "Theme, language, security")),
         )
         GroupedList(rows) { (label, icon, pair), position ->
             GroupedRow(label, position, enabled = enabled, subtitle = pair.second,
                 leading = { BrandIcon(icon, size = 52.dp) }, onClick = pair.first)
-        }
-        Spacer(Modifier.height(12.dp))
-        FilledTonalButton(onSettings, Modifier.fillMaxWidth().height(64.dp), enabled = enabled, shape = RoundedCornerShape(32.dp),
-            contentPadding = PaddingValues(start = 8.dp, end = 20.dp)) {
-            BrandIcon(Res.drawable.ic_settings, size = 44.dp); Spacer(Modifier.width(8.dp)); Text(tr("Настройки", "Settings"))
         }
     }
 }

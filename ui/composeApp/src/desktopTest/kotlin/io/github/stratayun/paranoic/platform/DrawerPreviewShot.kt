@@ -34,7 +34,7 @@ class DrawerPreviewShot {
             Space(id, name, Location(id, ""), true, detachable = detachable, androidTree = tree, localContainer = local, cloud = cloud)
         val spaces = listOf(space("app", "App", detachable = false, local = true), space("dev", "Внутренняя память"),
             space("sd", "SD-карта"), space("cloud", "Nextcloud", cloud = true))
-        val scene = ImageComposeScene(1080, 2700, Density(2.625f)) {
+        val scene = ImageComposeScene(1080, 3900, Density(2.625f)) {
             ParanoicTheme(AppearanceSettings()) {
                 CompositionLocalProvider(LocalVolumeUsage provides { VolumeUsage(41L shl 30, 128L shl 30) }) {
                     Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {

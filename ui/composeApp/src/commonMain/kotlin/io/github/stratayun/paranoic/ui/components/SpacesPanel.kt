@@ -47,7 +47,7 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
         else -> AppSymbol.Phone
     }
     val kindPrivate = tr("На этом устройстве · данные Paranoic", "On this device · Paranoic data")
-    val kindCloud = tr("Облако или сервер", "Cloud or server")
+    val kindCloud = tr("Сервер WebDAV", "WebDAV server")
     val kindTree = tr("Папка через системный доступ", "Folder with system access")
     val kindDevice = tr("Память устройства", "Device storage")
     val readOnly = tr(" · только чтение", " · read-only")
@@ -88,7 +88,7 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
             SectionLabel(tr("Места", "Places"))
             GroupedRow(tr("Поиск по всем файлам", "Search all files"), GroupPosition.Single, enabled = connected && !busy,
                 subtitle = tr("По имени и типу на всём устройстве", "By name and kind across the device"),
-                leading = { BrandIcon(Res.drawable.ic_search, size = 48.dp) },
+                leading = { BrandIcon(Res.drawable.ic_search, size = 52.dp) },
                 onClick = { onOpenCategory?.invoke(device.copy(name = title(device)), FileCategory.All) })
             Spacer(Modifier.height(8.dp))
             QuickPlaces(enabled = connected && !busy, onCategory = { c -> onOpenCategory?.invoke(device.copy(name = title(device)), c) },
@@ -106,7 +106,7 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
                     space.androidTree -> Res.drawable.ic_folder
                     space.name.contains("SD", ignoreCase = true) || space.name.contains("USB", ignoreCase = true) -> Res.drawable.ic_external_disk
                     else -> Res.drawable.ic_tiles
-                }, size = 48.dp) },
+                }, size = 52.dp) },
                 trailing = {
                     Box {
                         IconButton(onClick = { menu = true },
@@ -128,11 +128,13 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
         SectionLabel(tr("Подключить", "Connect"))
         val connectRows = buildList {
             add(Triple(tr("Добавить папку", "Add folder"), Res.drawable.ic_folder_add, onConnect))
-            if (onConnectServer != null) add(Triple(tr("Сервер WebDAV", "WebDAV server"), Res.drawable.ic_cloud, { serverDialog = true }))
+            if (onConnectServer != null) add(Triple(tr("Свой сервер", "Own server"), Res.drawable.ic_cloud, { serverDialog = true }))
         }
         GroupedList(connectRows) { (label, icon, action), position ->
             GroupedRow(label, position, enabled = connected && !busy,
-                leading = { BrandIcon(icon, size = 48.dp) },
+                subtitle = if (icon == Res.drawable.ic_folder_add) tr("Папка, флешка или карта памяти", "Folder, USB drive or memory card")
+                    else tr("paranoic-server, Nextcloud", "paranoic-server, Nextcloud"),
+                leading = { BrandIcon(icon, size = 52.dp) },
                 onClick = action)
         }
         if (hidden.isNotEmpty()) {
