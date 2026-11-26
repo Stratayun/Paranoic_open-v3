@@ -459,8 +459,9 @@ class AppSession(val core: CoreGateway, private val scope: CoroutineScope, priva
         }
         cryptoBatch = null
         directFileWrite(if (decrypt) DirectWriteKind.DecryptFile else DirectWriteKind.EncryptFile) {
-            if (decrypt) core.decryptFile(source.location, parent, name, format, password)
-            else core.encryptFile(source.location, parent, name, format, password)
+            val free = freeName(parent, name, if (decrypt) "" else ".age")
+            if (decrypt) core.decryptFile(source.location, parent, free, format, password)
+            else core.encryptFile(source.location, parent, free, format, password)
         }
     }
     /** Batch result for the banner: done of total; null when no batch ran. */
@@ -486,7 +487,8 @@ class AppSession(val core: CoreGateway, private val scope: CoroutineScope, priva
         directFileWrite(if (decrypt) DirectWriteKind.DecryptFile else DirectWriteKind.EncryptFile) {
             var result: CoreResult<Unit> = CoreResult.Value(Unit)
             for ((index, job) in jobs.withIndex()) {
-                val (source, parent, name) = job
+                val (source, parent, wanted) = job
+                val name = freeName(parent, wanted, if (decrypt) "" else ".age")
                 result = if (decrypt) core.decryptFile(source.location, parent, name, FileCryptoFormat.Age, password)
                     else core.encryptFile(source.location, parent, name, FileCryptoFormat.Age, password)
                 if (result is CoreResult.Failure) break
@@ -494,6 +496,23 @@ class AppSession(val core: CoreGateway, private val scope: CoroutineScope, priva
             }
             result
         }
+    }
+    /**
+     * Owner 26.11: decrypting "photo.jpg.age" beside the kept "photo.jpg" hit a conflict.
+     * A taken name becomes "photo (1).jpg" ("photo (1).jpg.age" when encrypting); nothing is
+     * replaced. If the folder cannot be listed, the wanted name goes to Core, which still refuses to replace.
+     */
+    private suspend fun freeName(parent: Location, wanted: String, keepSuffix: String): String {
+        val taken = (core.list(parent) as? CoreResult.Value)?.value?.items?.map { it.name.lowercase() }?.toSet() ?: return wanted
+        if (wanted.lowercase() !in taken) return wanted
+        val stem = if (keepSuffix.isNotEmpty() && wanted.endsWith(keepSuffix, ignoreCase = true)) wanted.dropLast(keepSuffix.length) else wanted
+        val suffix = wanted.substring(stem.length)
+        val dot = stem.lastIndexOf('.').takeIf { it > 0 } ?: stem.length
+        for (n in 1..999) {
+            val candidate = stem.substring(0, dot) + " ($n)" + stem.substring(dot) + suffix
+            if (candidate.lowercase() !in taken) return candidate
+        }
+        return wanted
     }
     private fun knownSource(source: FileItem, picked: Boolean): Boolean {
         if (picked || foundSource(source) || (files.loaded && !files.loading && source in files.entries)) return true

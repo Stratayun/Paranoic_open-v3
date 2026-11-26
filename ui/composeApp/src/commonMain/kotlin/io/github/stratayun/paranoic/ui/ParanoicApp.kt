@@ -330,7 +330,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                 Text(tr("Проверить состояние решения", "Check decision state"))
                             }
                         }
-                        if (session.writeFault != null || session.uncertain != null)
+                        // The operation banner's own "Dismiss" also clears its error: no second button.
+                        if ((session.writeFault != null && session.directWrite == null) || session.uncertain != null)
                             TextButton(onClick = session::dismissWriteFault) { Text(tr("Закрыть сообщение", "Dismiss message")) }
                         }
                         Row(Modifier.weight(1f)) {

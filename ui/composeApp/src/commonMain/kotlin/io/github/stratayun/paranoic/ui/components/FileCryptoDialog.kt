@@ -17,8 +17,18 @@ fun FileCryptoDialog(session: AppSession, source: FileItem, decrypt: Boolean, in
     val format = FileCryptoFormat.Age
     fun suggested(f: FileCryptoFormat): String = if (decrypt) source.name.removeSuffix("." + source.name.substringAfterLast('.'))
         .takeIf { it.isNotEmpty() && it != source.name } ?: source.name + ".decrypted" else source.name + "." + f.extension
-    var name by remember(source, decrypt) { mutableStateOf(suggested(format)) }
     var parent by remember(source) { mutableStateOf(initialParent ?: session.files.folder) }
+    // A taken name is offered as "name (1).ext" right away (owner 26.11: decrypting beside the kept original).
+    var name by remember(source, decrypt) { mutableStateOf(suggested(format).let { wanted ->
+        if (parent != session.files.folder) wanted else {
+            val taken = session.files.entries.map { it.name.lowercase() }.toSet()
+            val suffix = if (!decrypt && wanted.endsWith(".age")) ".age" else ""
+            val stem = wanted.dropLast(suffix.length)
+            val dot = stem.lastIndexOf('.').takeIf { it > 0 } ?: stem.length
+            if (wanted.lowercase() !in taken) wanted
+            else (1..999).map { stem.substring(0, dot) + " ($it)" + stem.substring(dot) + suffix }.firstOrNull { it.lowercase() !in taken } ?: wanted
+        }
+    }) }
     var password by remember { mutableStateOf("") }
     val passwordAssessment = rememberPasswordAssessment(session.core, if (decrypt) "" else password)
     var repeat by remember { mutableStateOf("") }
