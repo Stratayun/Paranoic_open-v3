@@ -545,11 +545,11 @@ private fun ColumnScope.Notebook(tabs: List<NoteTab>, dirty: Boolean, busy: Bool
                 onChange(tabs.mapIndexed { i, t -> if (i == index) t.copy(notes = t.notes.filterNot { it.id == note.id }) else t }); editing = null
             }, modifier = Modifier.actionDescription(tr("Удалить заметку", "Delete note"))) { AppIcon(AppSymbol.Trash) }
         }
-        OutlinedTextField(note.title, { update(note.copy(title = it.take(256), modifiedMs = nowMs())) }, Modifier.fillMaxWidth(),
+        SecretInput { OutlinedTextField(note.title, { update(note.copy(title = it.take(256), modifiedMs = nowMs())) }, Modifier.fillMaxWidth(),
             enabled = !editingBlocked, singleLine = true, textStyle = MaterialTheme.typography.titleLarge,
-            placeholder = { Text(tr("Заголовок", "Title")) }, shape = MaterialTheme.shapes.large)
-        OutlinedTextField(note.body, { update(note.copy(body = it, modifiedMs = nowMs())) }, Modifier.fillMaxWidth().heightIn(min = 220.dp, max = 420.dp),
-            enabled = !editingBlocked, placeholder = { Text(tr("Текст заметки", "Note text")) }, shape = MaterialTheme.shapes.large)
+            placeholder = { Text(tr("Заголовок", "Title")) }, shape = MaterialTheme.shapes.large) }
+        SecretInput { OutlinedTextField(note.body, { update(note.copy(body = it, modifiedMs = nowMs())) }, Modifier.fillMaxWidth().heightIn(min = 220.dp, max = 420.dp),
+            enabled = !editingBlocked, placeholder = { Text(tr("Текст заметки", "Note text")) }, shape = MaterialTheme.shapes.large) }
         SectionLabel(tr("Вложения (${note.attachments.size}/32)", "Attachments (${note.attachments.size}/32)"))
         note.attachments.forEachIndexed { i, attachment ->
             GroupedRow(displayName(attachment.name), groupPosition(i, note.attachments.size),
@@ -585,7 +585,7 @@ private fun ColumnScope.Notebook(tabs: List<NoteTab>, dirty: Boolean, busy: Bool
         var title by remember { mutableStateOf(tab.title) }
         AlertDialog(onDismissRequest = { renaming = false },
             title = { Text(tr("Имя вкладки", "Tab name")) },
-            text = { OutlinedTextField(title, { title = it.take(128) }, singleLine = true, label = { Text(tr("Имя вкладки", "Tab name")) }) },
+            text = { SecretInput { OutlinedTextField(title, { title = it.take(128) }, singleLine = true, label = { Text(tr("Имя вкладки", "Tab name")) }) } },
             confirmButton = { TextButton(enabled = title.isNotBlank(), onClick = {
                 onChange(tabs.mapIndexed { i, t -> if (i == index) t.copy(title = title) else t }); renaming = false
             }) { Text(tr("Сохранить", "Save")) } },

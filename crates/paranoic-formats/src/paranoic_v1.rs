@@ -101,6 +101,9 @@ pub fn change_password(bytes: &[u8], keys: &VaultKeys, new_password: &[u8], rng:
     validate_password(new_password)?;
     let mut header = decode(bytes)?;
     verify_mac(&header, bytes, &keys.master)?;
+    // Audit 26.11: a fresh salt, so an old header copy and the new one cannot be
+    // attacked in one dictionary pass. Only the password slot uses it.
+    rng.fill(&mut header.salt)?;
     let kek = password_kek(new_password, &header, checkpoint)?;
     header.slots.retain(|s| s.0 != SlotKind::Password as u8);
     header.slots.insert(0, seal_slot(&kek, &keys.master, &header.vault_id, SlotKind::Password, rng)?);

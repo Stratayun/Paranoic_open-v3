@@ -169,7 +169,8 @@ impl CryptomatorVault {
         id_bytes[6] = (id_bytes[6] & 15) | 64;
         id_bytes[8] = (id_bytes[8] & 63) | 128;
         let vault = Self {
-            master, cost: 32768, block_size: 8,
+            // Audit 26.11: 2^16 (64 MiB), twice the official default and within this module's limits.
+            master, cost: 65536, block_size: 8,
             names: CryptomatorNameKey::from_unwrapped_master_key(name_bundle),
             content: Content::Gcm(CryptomatorGcmKey::from_unwrapped_encryption_key(encryption)),
             id: uuid::Uuid::from_bytes(id_bytes), threshold: 220, format: 8, key_version: 999,
@@ -200,7 +201,7 @@ impl CryptomatorVault {
         OsRng.try_fill_bytes(&mut salt).map_err(|_| CryptoError::Entropy)?;
         // Never weaken imported parameters; new wrapping has at least the
         // standard creation work factor, while retaining its admitted r.
-        let cost = self.cost.max(32768);
+        let cost = self.cost.max(65536);
         let kek = derive_password(&password, &salt, cost, self.block_size)?;
         checkpoint()?;
         let wrapper = KekAes256::try_from(&kek[..]).map_err(|_| CryptoError::InvalidInput)?;

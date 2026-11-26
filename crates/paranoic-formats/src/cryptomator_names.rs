@@ -55,7 +55,9 @@ impl CryptomatorNameKey {
     /// The authenticated shorteningThreshold must be applied by the vault layer
     /// before publishing this component on a filesystem.
     pub fn encrypt_name(&self, parent: &CryptomatorDirectoryId, name: &str) -> Result<String> {
-        validate_name(name)?;
+        // Cryptomator stores names in NFC; a decomposed (macOS) name would not match its entry.
+        let name: String = unicode_normalization::UnicodeNormalization::nfc(name).collect();
+        validate_name(&name)?;
         let mut payload = Zeroizing::new(name.as_bytes().to_vec());
         let tag = self.cipher()?.encrypt_in_place_detached(
             [parent.as_bytes()], &mut payload[..],

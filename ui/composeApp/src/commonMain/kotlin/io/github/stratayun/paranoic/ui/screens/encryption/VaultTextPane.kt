@@ -11,6 +11,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import io.github.stratayun.paranoic.bridge.*
 import io.github.stratayun.paranoic.ui.components.FaultNotice
+import io.github.stratayun.paranoic.ui.components.SecretInput
 import io.github.stratayun.paranoic.ui.state.*
 import kotlinx.coroutines.*
 
@@ -77,10 +78,10 @@ internal fun VaultTextPane(session: AppSession, gateway: EncryptedFolderGateway,
                 "The file changed while it was open. Save the draft as a copy or reload the file."), color = MaterialTheme.colorScheme.error)
             else if (reloadRequired) Text(tr("Перед следующей заменой перечитайте файл. Черновик можно сохранить копией.",
                 "Reload before replacing the file again. The draft can be saved as a copy."))
-            OutlinedTextField(text, { value -> if (value.length <= 65_536) { text = value; guard.dirty = changed || value != opened?.text; copySaved = null; saved = false } },
+            SecretInput { OutlinedTextField(text, { value -> if (value.length <= 65_536) { text = value; guard.dirty = changed || value != opened?.text; copySaved = null; saved = false } },
                 readOnly = opened == null || !writable || guard.busy || session.protectedWrite.phase != ProtectedWritePhase.Ready,
                 modifier = Modifier.weight(1f).fillMaxWidth(), label = { Text(tr("Текст", "Text")) },
-                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace))
+                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)) }
             Button(enabled = opened != null && writable && !guard.busy && guard.dirty && !changed && !reloadRequired &&
                 session.protectedWrite.phase == ProtectedWritePhase.Ready, onClick = {
                 val original = document ?: return@Button

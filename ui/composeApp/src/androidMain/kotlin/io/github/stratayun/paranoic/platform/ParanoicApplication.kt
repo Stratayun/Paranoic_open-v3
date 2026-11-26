@@ -26,6 +26,20 @@ class ParanoicApplication : Application() {
         super.onCreate()
         PlatformImageFallback.decode = AndroidImageFallback::decode
         PlatformMediaIndex.query = { root, extensions, limit -> AndroidMediaIndex.query(this, root, extensions, limit) }
+        io.github.stratayun.paranoic.ui.components.SecretTextInput.wrapper = incognitoKeyboard
+        if (android.os.Process.myUid() == applicationInfo.uid) {
+            AndroidClipboardHygiene.install(this)
+            registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+                private var started = 0
+                override fun onActivityStarted(activity: android.app.Activity) { started++; AndroidClipboardHygiene.foreground = true }
+                override fun onActivityStopped(activity: android.app.Activity) { started--; AndroidClipboardHygiene.foreground = started > 0 }
+                override fun onActivityCreated(activity: android.app.Activity, state: android.os.Bundle?) {}
+                override fun onActivityResumed(activity: android.app.Activity) {}
+                override fun onActivityPaused(activity: android.app.Activity) {}
+                override fun onActivitySaveInstanceState(activity: android.app.Activity, state: android.os.Bundle) {}
+                override fun onActivityDestroyed(activity: android.app.Activity) {}
+            })
+        }
         // The isolated decoder process must not touch the app's private records.
         if (android.os.Process.myUid() == applicationInfo.uid) diagnostics.install()
     }
