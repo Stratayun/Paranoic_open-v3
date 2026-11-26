@@ -56,7 +56,7 @@ impl SafStorage {
         let created = self.host.create(self.tree.clone(), parent.to_owned(), name.to_owned(), false);
         status(created.error)?;
         if created.name != name {
-            let _ = self.host.delete(self.tree.clone(), created.document);
+            let _ = self.host.delete(self.tree.clone(), created.document, false);
             return Err(exists());
         }
         let opened = self.host.open_write(self.tree.clone(), created.document);
@@ -144,8 +144,8 @@ impl SafStorage {
         self.relocate(&staging, target_name, target_parent.as_str(), target_name)?;
         if self.observe_mapping(target.as_str(), old, new)? != MappedEntryObservation::NewMapping { return Err(integrity("published mapping differs")); }
         // Success: the evidence is no longer needed; the empty staging goes.
-        let _ = self.host.delete(self.tree.clone(), self.document(&join(&staging, "old-mapping"))?);
-        if self.names(&staging)?.is_empty() { let _ = self.host.delete(self.tree.clone(), self.document(&staging)?); }
+        let _ = self.host.delete(self.tree.clone(), self.document(&join(&staging, "old-mapping"))?, false);
+        if self.names(&staging)?.is_empty() { let _ = self.host.delete(self.tree.clone(), self.document(&staging)?, true); }
         Ok(())
     }
     pub(crate) fn saf_inspect_mapped(&self, source: &ResourcePath, target: &ResourcePath, job: JobId, old: &[u8], new: &[u8],
@@ -231,8 +231,8 @@ impl SafStorage {
         self.relocate(&staging, "entry", &staging, target_name)?;
         self.relocate(&staging, target_name, target_parent.as_str(), target_name)?;
         if self.reshape_state(target.as_str(), layout)? != MappedEntryObservation::NewMapping { return Err(integrity("published wrapper differs")); }
-        if let Ok(document) = self.document(&join(&staging, "old-mapping")) { let _ = self.host.delete(self.tree.clone(), document); }
-        if self.names(&staging)?.is_empty() { let _ = self.host.delete(self.tree.clone(), self.document(&staging)?); }
+        if let Ok(document) = self.document(&join(&staging, "old-mapping")) { let _ = self.host.delete(self.tree.clone(), document, false); }
+        if self.names(&staging)?.is_empty() { let _ = self.host.delete(self.tree.clone(), self.document(&staging)?, true); }
         Ok(())
     }
     pub(crate) fn saf_inspect_reshape(&self, source: &ResourcePath, target: &ResourcePath, job: JobId, layout: &DirectoryReshape,

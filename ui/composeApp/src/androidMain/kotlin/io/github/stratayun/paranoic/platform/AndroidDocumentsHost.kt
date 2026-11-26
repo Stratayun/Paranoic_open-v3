@@ -19,7 +19,9 @@ import java.util.concurrent.atomic.AtomicLong
  * decision (create-new protocol, conflicts, deletion rules).
  * Status codes: 0 ok, 1 permission, 2 unsupported, 3 IO, 4 limit, 5 not found.
  */
-class AndroidDocumentsHost(private val resolver: ContentResolver) : AndroidDocuments {
+class AndroidDocumentsHost(private val resolver: ContentResolver,
+    localRoots: () -> Map<String, String> = { emptyMap() }) : AndroidDocuments {
+    private val deletion = AndroidSafDeletion(localRoots)
     private class Opened(
         val descriptor: ParcelFileDescriptor,
         val input: FileInputStream?,
@@ -45,6 +47,12 @@ class AndroidDocumentsHost(private val resolver: ContentResolver) : AndroidDocum
         is UnsupportedOperationException -> 2u
         is ListingLimit -> 4u
         is FileNotFoundException -> 5u
+        is ErrnoException -> when (e.errno) {
+            OsConstants.EACCES, OsConstants.EPERM -> 1u
+            OsConstants.ENOENT -> 5u
+            OsConstants.ENOTEMPTY, OsConstants.EISDIR, OsConstants.ENOTDIR, OsConstants.ELOOP -> 2u
+            else -> 3u
+        }
         else -> 3u
     }
     private fun unavailable(code: UInt) = HostInfo(code, 0u, 0uL, null)
@@ -294,14 +302,14 @@ class AndroidDocumentsHost(private val resolver: ContentResolver) : AndroidDocum
         val actual = displayName(verified) ?: throw java.io.IOException("moved document unreadable")
         HostCreated(0u, actual, verified.toString())
     } catch (e: Exception) { HostCreated(error(e), "", "") }
-    /** Files only: Rust never asks to delete a directory (deleteDocument is recursive). */
-    override fun delete(tree: String, document: String): UInt = try {
+    override fun deletionSupported(tree: String): Boolean = writable(tree) && deletion.supported(Uri.parse(tree))
+
+    /** Typed kernel operation; never invoke a provider's recursive deleteDocument. */
+    override fun delete(tree: String, document: String, directory: Boolean): UInt = try {
+        if (!writable(tree)) throw SecurityException("write grant unavailable")
         val uri = document(tree, document)
-        val mime = resolver.query(uri, arrayOf(DocumentsContract.Document.COLUMN_MIME_TYPE), null, null, null)
-            ?.use { if (it.moveToFirst()) it.getString(0) else null } ?: throw FileNotFoundException("document unavailable")
-        if (mime == DocumentsContract.Document.MIME_TYPE_DIR) throw UnsupportedOperationException("directories are never deleted")
-        if (!DocumentsContract.deleteDocument(resolver, uri)) throw java.io.IOException("delete failed")
-        resolved.values.removeIf { it == uri }
+        deletion.delete(Uri.parse(tree), uri, directory)
+        resolved.clear()
         0u
     } catch (e: Exception) { error(e) }
 }

@@ -34,6 +34,7 @@ thiserror.workspace = true
 uuid.workspace = true
 zeroize = "1.8"
 blake3.workspace = true
+cap-std.workspace = true
 
 [dev-dependencies]
 rusqlite.workspace = true

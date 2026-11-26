@@ -14,8 +14,8 @@
 //! choice and the rename are separate steps (tiny window against another app
 //! creating the same name). The temporary document is addressed by its URI
 //! from creation on, never re-resolved by path. Moves are not offered (no
-//! atomic no-replace). SAF directories are never deleted (deleteDocument is
-//! recursive): an empty folder is left and reported.
+//! atomic no-replace). Deletion is offered only with a host-confirmed native
+//! unlink/rmdir path; generic deleteDocument is never used for cleanup either.
 use std::{io::{self, Read, Write}, sync::Arc};
 use paranoic_core::*;
 use crate::{AndroidDocuments, HostInfo};
@@ -70,7 +70,7 @@ impl SafStorage {
         status(created.error)?;
         if created.name != name {
             if directory { return Err(CoreError::new(ErrorCode::NeedsAttention, "name taken; provider created an extra empty folder")); }
-            let _ = self.host.delete(self.tree.clone(), created.document);
+            let _ = self.host.delete(self.tree.clone(), created.document, false);
             return Err(exists());
         }
         Ok(created.document)
@@ -150,7 +150,7 @@ impl Storage for SafStorage {
     /// No directory sync; creating a new vault tree is accepted anyway (E2.8,
     /// owner decision 2026-11-14).
     fn capabilities(&self) -> Capabilities {
-        Capabilities { read: true, write: self.writable, delete: self.writable, atomic_move_no_replace: self.writable,
+        Capabilities { read: true, write: self.writable, delete: self.writable && self.host.deletion_supported(self.tree.clone()), atomic_move_no_replace: self.writable,
             directory_sync_waived: self.writable, ..Capabilities::default() }
     }
     fn metadata(&self, path: &ResourcePath) -> Result<Metadata> { metadata(self.host.metadata(self.tree.clone(), path.as_str().to_owned())) }
@@ -174,7 +174,7 @@ impl Storage for SafStorage {
         let document = self.create_exact(&parent, &temporary, false)?;
         let opened = self.host.open_write(self.tree.clone(), document.clone());
         if let Err(error) = status(opened.error) {
-            let _ = self.host.delete(self.tree.clone(), document);
+            let _ = self.host.delete(self.tree.clone(), document, false);
             return Err(error);
         }
         Ok(Box::new(SafStage { host: Arc::clone(&self.host), tree: self.tree.clone(), document,
@@ -267,25 +267,27 @@ impl Storage for SafStorage {
     }
     fn delete_file(&self, path: &ResourcePath) -> Result<()> {
         self.read_only()?;
+        if !self.host.deletion_supported(self.tree.clone()) {
+            return Err(CoreError::new(ErrorCode::Unsupported, "atomic SAF deletion unavailable"));
+        }
+        if path.is_root() { return Err(CoreError::new(ErrorCode::InvalidInput, "root is never deleted")); }
         let resolved = self.host.resolve(self.tree.clone(), path.as_str().to_owned());
         status(resolved.error)?;
         if self.metadata(path)?.kind != EntryKind::File { return Err(CoreError::new(ErrorCode::Unsupported, "not a file")); }
-        status(self.host.delete(self.tree.clone(), resolved.document))
+        status(self.host.delete(self.tree.clone(), resolved.document, false))
     }
-    /// Only an EMPTY folder (vault folders, Cryptomator staging). The
-    /// provider's delete is recursive, so emptiness is checked by a listing
-    /// immediately before the call; a child another app creates in between
-    /// would be lost — no atomic Android API exists (register У-11).
+    /// Only an EMPTY folder. The host must use atomic rmdir: a listing cannot
+    /// prove it is still empty when a provider performs recursive deletion.
     fn delete_empty_directory(&self, path: &ResourcePath) -> Result<()> {
         self.read_only()?;
+        if !self.host.deletion_supported(self.tree.clone()) {
+            return Err(CoreError::new(ErrorCode::Unsupported, "atomic SAF deletion unavailable"));
+        }
         if path.is_root() { return Err(CoreError::new(ErrorCode::InvalidInput, "root is never deleted")); }
         if self.metadata(path)?.kind != EntryKind::Directory { return Err(CoreError::new(ErrorCode::Unsupported, "not a folder")); }
         let resolved = self.host.resolve(self.tree.clone(), path.as_str().to_owned());
         status(resolved.error)?;
-        let listing = self.host.list(self.tree.clone(), path.as_str().to_owned(), 1);
-        status(listing.error)?;
-        if !listing.entries.is_empty() { return Err(CoreError::new(ErrorCode::InvalidInput, "folder is not empty")); }
-        status(self.host.delete(self.tree.clone(), resolved.document))
+        status(self.host.delete(self.tree.clone(), resolved.document, true))
     }
     /// A new folder `target` with a bounded sidecar and one streamed file
     /// (Cryptomator long names). Built in a hidden folder and renamed into
@@ -321,8 +323,10 @@ impl Storage for SafStorage {
             Ok(handle) => Ok(Box::new(SafBundle { host: Arc::clone(&self.host), tree: self.tree.clone(), folder: folder.document,
                 target: name.to_owned(), handle: Some(handle), finished: false })),
             Err(error) => {
-                let _ = self.host.delete(self.tree.clone(), folder.document);
-                Err(error)
+                match status(self.host.delete(self.tree.clone(), folder.document, true)) {
+                    Ok(()) => Err(error),
+                    Err(_) => Err(CoreError::new(ErrorCode::NeedsAttention, "staging bundle preserved; cleanup required")),
+                }
             }
         }
     }
@@ -336,7 +340,7 @@ impl SafStage {
     }
     fn discard(&mut self) -> Result<()> {
         let closed = self.close();
-        let deleted = status(self.host.delete(self.tree.clone(), self.document.clone()));
+        let deleted = status(self.host.delete(self.tree.clone(), self.document.clone(), false));
         self.finished = true;
         closed.and(deleted).map_err(|_| CoreError::new(ErrorCode::NeedsAttention, "temporary document cleanup failed"))
     }
@@ -358,7 +362,7 @@ impl StagedWrite for SafStage {
         self.finished = true;
         if renamed.name != self.target {
             // Name was taken: remove our own renamed document (by identity), never the other one.
-            return match status(self.host.delete(self.tree.clone(), renamed.document)) {
+            return match status(self.host.delete(self.tree.clone(), renamed.document, false)) {
                 Ok(()) => Err(exists()),
                 Err(_) => Err(CoreError::new(ErrorCode::NeedsAttention, "conflicting copy left under a provider-chosen name")),
             };
@@ -376,8 +380,10 @@ impl SafBundle {
         if let Some(handle) = self.handle.take() { let _ = self.host.finish_write(handle); }
         if self.finished { return Ok(()); }
         self.finished = true;
-        // Our own hidden folder: removing it recursively loses nothing else.
-        status(self.host.delete(self.tree.clone(), self.folder.clone()))
+        // A staged folder can acquire somebody else's files too. Never recurse;
+        // leave a nonempty bundle as evidence and report that cleanup is needed.
+        status(self.host.delete(self.tree.clone(), self.folder.clone(), true))
+            .map_err(|_| CoreError::new(ErrorCode::NeedsAttention, "staging bundle preserved; cleanup required"))
     }
 }
 impl Write for SafBundle {
@@ -397,8 +403,8 @@ impl StagedWrite for SafBundle {
         if let Err(error) = status(renamed.error) { self.discard()?; return Err(error); }
         self.finished = true;
         if renamed.name != self.target {
-            // Name taken meanwhile: remove our renamed folder (by identity), never the other.
-            return match status(self.host.delete(self.tree.clone(), renamed.document)) {
+            // An occupied bundle is preserved; only an actually empty folder can go.
+            return match status(self.host.delete(self.tree.clone(), renamed.document, true)) {
                 Ok(()) => Err(exists()),
                 Err(_) => Err(CoreError::new(ErrorCode::NeedsAttention, "conflicting bundle left under a provider-chosen name")),
             };

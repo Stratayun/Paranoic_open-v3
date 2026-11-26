@@ -834,6 +834,7 @@ object NoAndroidDocuments : AndroidDocuments {
     override fun finishWrite(handle: ULong) = 2u
     override fun rename(tree: String, document: String, name: String) = HostCreated(2u, "", "")
     override fun moveDocument(tree: String, document: String, sourceParent: String, targetParent: String) = HostCreated(2u, "", "")
-    override fun delete(tree: String, document: String) = 2u
+    override fun deletionSupported(tree: String) = false
+    override fun delete(tree: String, document: String, directory: Boolean) = 2u
     override fun resolve(tree: String, path: String) = HostCreated(2u, "", "")
 }

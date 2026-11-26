@@ -14,7 +14,7 @@ impl AndroidDocuments for NoDocs {
     fn write(&self, _: u64, _: Vec<u8>) -> u32 { 2 }
     fn finish_write(&self, _: u64) -> u32 { 2 }
     fn rename(&self, _: String, _: String, _: String) -> HostCreated { created() }
-    fn delete(&self, _: String, _: String) -> u32 { 2 }
+    fn delete(&self, _: String, _: String, _: bool) -> u32 { 2 }
     fn resolve(&self, _: String, _: String) -> HostCreated { created() }
     fn move_document(&self, _: String, _: String, _: String, _: String) -> HostCreated { HostCreated { error: 2, name: String::new(), document: String::new() } }
 }

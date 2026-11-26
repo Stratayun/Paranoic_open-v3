@@ -51,7 +51,7 @@ impl AndroidDocuments for Host {
         let actual = self.0.lock().unwrap().chosen_name.clone().unwrap_or(name);
         HostCreated { error: 0, document: actual.clone(), name: actual }
     }
-    fn delete(&self, _: String, document: String) -> u32 { self.0.lock().unwrap().deleted.push(document); 0 }
+    fn delete(&self, _: String, document: String, _: bool) -> u32 { self.0.lock().unwrap().deleted.push(document); 0 }
     fn resolve(&self, _: String, path: String) -> HostCreated { HostCreated { error: 0, document: path.clone(), name: path } }
     fn move_document(&self, _: String, _: String, _: String, _: String) -> HostCreated { HostCreated { error: 2, name: String::new(), document: String::new() } }
 }
@@ -59,6 +59,16 @@ fn saf(host: &Arc<Host>, writable: bool) -> android::SafStorage {
     android::SafStorage { id: StorageId(Uuid::new_v4()), tree: "content://fixture.invalid/tree/test".into(), host: host.clone(), writable }
 }
 fn path(name: &str) -> ResourcePath { ResourcePath::parse(name.to_owned()).unwrap() }
+
+#[test]
+fn saf_deletion_without_atomic_host_support_never_reaches_a_mutation() {
+    let host = Arc::new(Host::default());
+    let storage = saf(&host, true);
+    assert!(!storage.capabilities().delete);
+    assert_eq!(storage.delete_file(&path("file")).err().unwrap().code, ErrorCode::Unsupported);
+    assert_eq!(storage.delete_empty_directory(&path("folder")).err().unwrap().code, ErrorCode::Unsupported);
+    assert!(host.0.lock().unwrap().deleted.is_empty());
+}
 
 #[test]
 fn saf_display_counts_every_ambiguous_or_nonportable_entry_but_strict_operations_fail() {
@@ -274,7 +284,7 @@ fn saf_file_of_unknown_size_is_listed_and_marked() {
         fn write(&self, _: u64, _: Vec<u8>) -> u32 { 2 }
         fn finish_write(&self, _: u64) -> u32 { 2 }
         fn rename(&self, _: String, _: String, _: String) -> HostCreated { HostCreated { error: 2, name: String::new(), document: String::new() } }
-        fn delete(&self, _: String, _: String) -> u32 { 2 }
+        fn delete(&self, _: String, _: String, _: bool) -> u32 { 2 }
         fn resolve(&self, _: String, _: String) -> HostCreated { HostCreated { error: 2, name: String::new(), document: String::new() } }
         fn move_document(&self, _: String, _: String, _: String, _: String) -> HostCreated { HostCreated { error: 2, name: String::new(), document: String::new() } }
     }

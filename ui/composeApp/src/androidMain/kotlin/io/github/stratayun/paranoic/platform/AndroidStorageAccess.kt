@@ -53,6 +53,10 @@ object AndroidStorageAccess {
         if (Build.VERSION.SDK_INT >= 30) Environment.isExternalStorageManager()
         else context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
 
+    /** Deletion roots are available only with explicit direct-storage permission. */
+    internal fun deletionRoots(context: Context): Map<String, String> =
+        if (granted(context)) AndroidSafDeletion.volumeRoots(context) else emptyMap()
+
     fun settingsIntent(context: Context): Intent =
         Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}"))
 

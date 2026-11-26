@@ -5,7 +5,7 @@
 use crate::*;
 use std::{collections::HashMap, fs, io::{Read, Seek, SeekFrom, Write}, path::PathBuf};
 
-pub(crate) struct FsDocs { pub(crate) root: PathBuf, pub(crate) files: Mutex<HashMap<u64, fs::File>>, pub(crate) next: Mutex<u64> }
+pub(crate) struct FsDocs { pub(crate) root: PathBuf, pub(crate) files: Mutex<HashMap<u64, fs::File>>, pub(crate) next: Mutex<u64>, pub(crate) before_delete: Mutex<Option<u8>> }
 impl FsDocs {
     fn path(&self, rel: &str) -> PathBuf { if rel.is_empty() { self.root.clone() } else { self.root.join(rel) } }
     fn info(meta: &fs::Metadata) -> HostInfo {
@@ -70,9 +70,17 @@ impl AndroidDocuments for FsDocs {
         let rel = join(&parent, &name);
         if fs::rename(self.path(&document), self.path(&rel)).is_ok() { created(name, rel) } else { failed(3) }
     }
-    fn delete(&self, _: String, document: String) -> u32 {
+    fn deletion_supported(&self, _: String) -> bool { true }
+    fn delete(&self, _: String, document: String, directory: bool) -> u32 {
         let p = self.path(&document);
-        let r = if p.is_dir() { fs::remove_dir_all(&p) } else { fs::remove_file(&p) };
+        // Deterministic concurrent writer immediately before the typed syscall.
+        match self.before_delete.lock().unwrap().take() {
+            Some(1) => fs::write(p.join("late-child"), b"keep").unwrap(),
+            Some(2) => { fs::remove_file(&p).unwrap(); fs::create_dir(&p).unwrap(); fs::write(p.join("late-child"), b"keep").unwrap(); }
+            Some(3) => { fs::remove_dir(&p).unwrap(); fs::write(&p, b"replacement").unwrap(); }
+            _ => {}
+        }
+        let r = if directory { fs::remove_dir(&p) } else { fs::remove_file(&p) };
         r.map_or(3, |_| 0)
     }
     fn resolve(&self, _: String, path: String) -> HostCreated {
@@ -110,7 +118,7 @@ fn tree(dir: &std::path::Path) -> Vec<String> {
     let phone = root.join("phone");
     for d in ["state", "workspace", "phone/Documents"] { fs::create_dir_all(root.join(d)).unwrap(); }
     fs::write(phone.join("Documents/unrelated.txt"), "neighbour").unwrap();
-    let docs = Arc::new(FsDocs { root: phone.clone(), files: Mutex::new(HashMap::new()), next: Mutex::new(0) });
+    let docs = Arc::new(FsDocs { root: phone.clone(), files: Mutex::new(HashMap::new()), next: Mutex::new(0), before_delete: Mutex::new(None) });
     let rt = NativeRuntime::new(root.join("state").to_str().unwrap().into(), root.join("workspace").to_str().unwrap().into(),
         String::new(), String::new(), vec![], docs.clone(), Arc::new(NoSealer)).unwrap();
     let saf = android::SafStorage { id: StorageId(Uuid::new_v4()),
@@ -172,7 +180,7 @@ fn tree(dir: &std::path::Path) -> Vec<String> {
     for d in ["A", "B"] { fs::create_dir_all(root.join(d)).unwrap(); }
     fs::write(root.join("A/x"), "payload").unwrap();
     fs::write(root.join("B/taken"), "keep me").unwrap();
-    let docs = Arc::new(FsDocs { root: root.clone(), files: Mutex::new(HashMap::new()), next: Mutex::new(0) });
+    let docs = Arc::new(FsDocs { root: root.clone(), files: Mutex::new(HashMap::new()), next: Mutex::new(0), before_delete: Mutex::new(None) });
     let saf = android::SafStorage { id: StorageId(Uuid::new_v4()),
         tree: "content://com.android.externalstorage.documents/tree/primary%3A".into(), host: docs, writable: true };
     let p = |s: &str| ResourcePath::parse(s).unwrap();
@@ -192,7 +200,7 @@ fn tree(dir: &std::path::Path) -> Vec<String> {
     let root = std::env::temp_dir().join(format!("paranoic-saf-rmdir-{}", Uuid::new_v4()));
     for d in ["empty", "full"] { fs::create_dir_all(root.join(d)).unwrap(); }
     fs::write(root.join("full/.hidden"), "keep").unwrap();
-    let docs = Arc::new(FsDocs { root: root.clone(), files: Mutex::new(HashMap::new()), next: Mutex::new(0) });
+    let docs = Arc::new(FsDocs { root: root.clone(), files: Mutex::new(HashMap::new()), next: Mutex::new(0), before_delete: Mutex::new(None) });
     let saf = android::SafStorage { id: StorageId(Uuid::new_v4()),
         tree: "content://com.android.externalstorage.documents/tree/primary%3A".into(), host: docs, writable: true };
     let p = |s: &str| ResourcePath::parse(s).unwrap();
@@ -214,7 +222,7 @@ fn tree(dir: &std::path::Path) -> Vec<String> {
     fs::write(d.join("W.c9s/name.c9s"), "old-long").unwrap();
     fs::write(d.join("W.c9s/contents.c9r"), "cipher").unwrap();
     fs::create_dir_all(d.join("taken.c9s")).unwrap();
-    let docs = Arc::new(FsDocs { root: root.clone(), files: Mutex::new(HashMap::new()), next: Mutex::new(0) });
+    let docs = Arc::new(FsDocs { root: root.clone(), files: Mutex::new(HashMap::new()), next: Mutex::new(0), before_delete: Mutex::new(None) });
     let saf = android::SafStorage { id: StorageId(Uuid::new_v4()),
         tree: "content://com.android.externalstorage.documents/tree/primary%3A".into(), host: docs, writable: true };
     let p = |s: &str| ResourcePath::parse(s).unwrap();
@@ -273,4 +281,44 @@ fn tree(dir: &std::path::Path) -> Vec<String> {
     assert_eq!(fs::read(d.join("L.c9s/name.c9s")).unwrap(), b"dir-long");
     assert!(staging.join("old-mapping").exists(), "evidence is never deleted by recovery");
     let _ = fs::remove_dir_all(&root);
+}
+
+
+#[test] fn saf_deletion_preserves_late_children_and_type_substitutions() {
+    use paranoic_core::Storage;
+    for race in 1..=3 {
+        let root = std::env::temp_dir().join(format!("paranoic-saf-delete-race-{}", Uuid::new_v4()));
+        fs::create_dir(&root).unwrap();
+        let target = root.join("target");
+        if race == 2 { fs::write(&target, b"old").unwrap(); } else { fs::create_dir(&target).unwrap(); }
+        let docs = Arc::new(FsDocs { root: root.clone(), files: Mutex::new(HashMap::new()),
+            next: Mutex::new(0), before_delete: Mutex::new(Some(race)) });
+        let saf = android::SafStorage { id: StorageId(Uuid::new_v4()),
+            tree: "content://com.android.externalstorage.documents/tree/primary%3A".into(), host: docs, writable: true };
+        let path = ResourcePath::parse("target").unwrap();
+        let result = if race == 2 { saf.delete_file(&path) } else { saf.delete_empty_directory(&path) };
+        assert!(result.is_err(), "race {race} must preserve the replacement");
+        if race == 3 { assert_eq!(fs::read(&target).unwrap(), b"replacement"); }
+        else { assert_eq!(fs::read(target.join("late-child")).unwrap(), b"keep"); }
+        assert!(saf.delete_empty_directory(&ResourcePath::root()).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test] fn saf_deletion_preserves_nonempty_staging_bundles_on_abort() {
+    use paranoic_core::Storage;
+    let root = std::env::temp_dir().join(format!("paranoic-saf-bundle-cleanup-{}", Uuid::new_v4()));
+    fs::create_dir(&root).unwrap();
+    let docs = Arc::new(FsDocs { root: root.clone(), files: Mutex::new(HashMap::new()),
+        next: Mutex::new(0), before_delete: Mutex::new(None) });
+    let saf = android::SafStorage { id: StorageId(Uuid::new_v4()),
+        tree: "content://com.android.externalstorage.documents/tree/primary%3A".into(), host: docs, writable: true };
+    let stage = saf.stage_bundle(&ResourcePath::parse("target").unwrap(), JobId(Uuid::new_v4()),
+        "content", "mapping", b"mapping").unwrap();
+    let hidden = fs::read_dir(&root).unwrap().next().unwrap().unwrap().path();
+    fs::write(hidden.join("unexpected"), b"keep").unwrap();
+    assert_eq!(stage.abort().err().unwrap().code, paranoic_core::ErrorCode::NeedsAttention);
+    assert_eq!(fs::read(hidden.join("unexpected")).unwrap(), b"keep");
+    assert_eq!(fs::read(hidden.join("mapping")).unwrap(), b"mapping");
+    fs::remove_dir_all(root).unwrap();
 }

@@ -46,7 +46,8 @@ class ParanoicApplication : Application() {
                 File(applicationInfo.nativeLibraryDir, "libpdfium.so").absolutePath,
                 // Packaged as a "library" so Android installs it executable in nativeLibraryDir.
                 File(applicationInfo.nativeLibraryDir, "libparanoic_pdf_worker.so").absolutePath,
-                AndroidDocumentsHost(contentResolver), AndroidGrantStore(this@ParanoicApplication), AndroidRecordSealer(),
+                AndroidDocumentsHost(contentResolver) { AndroidStorageAccess.deletionRoots(this@ParanoicApplication) },
+                AndroidGrantStore(this@ParanoicApplication), AndroidRecordSealer(),
                 releaseGrant = { grant -> if (grant.androidTree) releaseTree(grant.reference) },
                 notesKey = AndroidNotesKey(),
                 notesQuickKey = if (Build.VERSION.SDK_INT >= 30) notesQuickKey else null,

@@ -107,6 +107,40 @@ class AndroidDocumentsHostTest {
     }
     @After fun tearDown() { if (::directory.isInitialized) directory.deleteRecursively() }
 
+    @Test fun atomicDeletionRefusesNewChildrenAndChangedTypes() {
+        val target = File(directory, "target").apply { check(mkdir()) }
+        AndroidSafDeletion.PinnedDirectory.open(directory.absolutePath, emptyList()).use { parent ->
+            File(target, "late-child").writeText("keep")
+            assertFails { parent.delete("target", directory = true) }
+            assertEquals("keep", File(target, "late-child").readText())
+            assertFails { parent.delete("target", directory = false) }
+            assertEquals("keep", File(target, "late-child").readText())
+            File(target, "late-child").delete()
+            parent.delete("target", directory = true)
+            target.writeText("replacement")
+            assertFails { parent.delete("target", directory = true) }
+            assertEquals("replacement", target.readText())
+        }
+    }
+
+    @Test fun pinnedParentSurvivesSymlinkSubstitutionWithoutTouchingOutsideFiles() {
+        val folder = File(directory, "parent").apply { check(mkdir()) }
+        val moved = File(directory, "moved")
+        val outside = File(directory, "outside").apply { check(mkdir()) }
+        File(folder, "file").writeText("original")
+        File(outside, "file").writeText("keep outside")
+        AndroidSafDeletion.PinnedDirectory.open(directory.absolutePath, listOf("parent")).use { parent ->
+            check(folder.renameTo(moved))
+            android.system.Os.symlink(outside.absolutePath, folder.absolutePath)
+            parent.delete("file", directory = false)
+            assertFalse(File(moved, "file").exists())
+            assertEquals("keep outside", File(outside, "file").readText())
+            assertFails { AndroidSafDeletion.PinnedDirectory.open(directory.absolutePath, listOf("parent")).close() }
+        }
+        // Do not let fixture cleanup follow a symlink, regardless of platform helpers.
+        java.nio.file.Files.delete(folder.toPath())
+    }
+
     @Test fun rawInvalidAndDuplicateNamesReachRustWithoutHidingWholeFolder() {
         provider.nodes["one"] = Node("one", "bad:name", byteArrayOf(1))
         provider.nodes["two"] = Node("two", "same", byteArrayOf(2))

@@ -110,7 +110,7 @@ fn serial() -> std::sync::MutexGuard<'static, ()> { SERIAL.lock().unwrap_or_else
     let root = std::env::temp_dir().join(format!("paranoic-cm-saf-{}", Uuid::new_v4()));
     for d in ["state", "workspace", "phone/Documents"] { fs::create_dir_all(root.join(d)).unwrap(); }
     let phone = root.join("phone");
-    let docs = Arc::new(crate::saf_vault_tests::FsDocs { root: phone.clone(), files: Mutex::new(std::collections::HashMap::new()), next: Mutex::new(0) });
+    let docs = Arc::new(crate::saf_vault_tests::FsDocs { root: phone.clone(), files: Mutex::new(std::collections::HashMap::new()), next: Mutex::new(0), before_delete: Mutex::new(None) });
     let rt = NativeRuntime::new(root.join("state").to_str().unwrap().into(), root.join("workspace").to_str().unwrap().into(),
         String::new(), String::new(), vec![], docs.clone(), Arc::new(NoSealer)).unwrap();
     let saf = android::SafStorage { id: StorageId(Uuid::new_v4()),

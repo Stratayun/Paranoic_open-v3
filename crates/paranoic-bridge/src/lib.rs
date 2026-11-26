@@ -1,6 +1,8 @@
 //! Single UniFFI boundary for Android and Windows. No old engine or JNI ABI.
 mod types;
 mod android;
+mod android_delete;
+pub use android_delete::saf_delete_at;
 mod android_mapped;
 mod features;
 mod attention;
@@ -123,9 +125,13 @@ pub trait AndroidDocuments: Send + Sync {
     /// DocumentsContract.renameDocument of this document; returns the actual
     /// name and the (possibly new) document URI.
     fn rename(&self, tree: String, document: String, name: String) -> HostCreated;
-    /// DocumentsContract.deleteDocument of this document (files only; Rust
-    /// never deletes SAF directories because that call is recursive).
-    fn delete(&self, tree: String, document: String) -> u32;
+    /// True only when this grant has a kernel-backed, nonrecursive deletion
+    /// path. A generic provider's deleteDocument is NOT a safe implementation.
+    fn deletion_supported(&self, tree: String) -> bool { let _ = tree; false }
+    /// Atomic unlink (directory=false) or rmdir (directory=true), through a
+    /// pinned parent. A changed type/nonempty directory must fail unchanged.
+    /// Never recurse or fall back to DocumentsContract.deleteDocument.
+    fn delete(&self, tree: String, document: String, directory: bool) -> u32;
     /// Resolve a path to its document (verified parent chain).
     fn resolve(&self, tree: String, path: String) -> HostCreated;
     /// E2.8: DocumentsContract.moveDocument of `document` from the folder

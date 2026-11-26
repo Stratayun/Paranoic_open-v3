@@ -2019,6 +2019,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "blake3",
+ "cap-std",
  "paranoic-cloud",
  "paranoic-core",
  "paranoic-crypto",
