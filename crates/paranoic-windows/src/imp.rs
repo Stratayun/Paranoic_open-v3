@@ -3,7 +3,7 @@ use std::{ffi::c_void, io, os::windows::{ffi::OsStrExt, io::{AsRawHandle, Borrow
 use windows_sys::Win32::{
     Foundation::{CloseHandle, LocalFree, ERROR_SUCCESS, GENERIC_ALL, HANDLE, HLOCAL},
     Security::{
-        Authorization::{GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW, EXPLICIT_ACCESS_W, SET_ACCESS, SE_FILE_OBJECT,
+        Authorization::{GetNamedSecurityInfoW, GetSecurityInfo, SetEntriesInAclW, SetNamedSecurityInfoW, SetSecurityInfo, EXPLICIT_ACCESS_W, SET_ACCESS, SE_FILE_OBJECT,
             TRUSTEE_IS_SID, TRUSTEE_IS_USER, TRUSTEE_W, NO_MULTIPLE_TRUSTEE},
         CreateWellKnownSid, EqualSid, GetAce, GetAclInformation, GetLengthSid, GetTokenInformation, IsValidSid, SetTokenInformation,
         TokenIntegrityLevel, TokenUser, WinBuiltinAdministratorsSid, WinLocalSystemSid, WinLowLabelSid, ACCESS_ALLOWED_ACE, ACE_HEADER,
@@ -11,7 +11,8 @@ use windows_sys::Win32::{
         PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, SECURITY_MAX_SID_SIZE, SID_AND_ATTRIBUTES,
         SUB_CONTAINERS_AND_OBJECTS_INHERIT, TOKEN_ADJUST_DEFAULT, TOKEN_MANDATORY_LABEL, TOKEN_QUERY, WELL_KNOWN_SID_TYPE,
     },
-    Storage::FileSystem::{FileIdInfo, GetFileInformationByHandleEx, MoveFileExW, FILE_ID_INFO, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH},
+    Storage::FileSystem::{FileIdInfo, GetFileInformationByHandleEx, MoveFileExW, SetFileInformationByHandle, FileRenameInfo,
+        FILE_ID_INFO, FILE_RENAME_INFO, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH},
     System::{
         JobObjects::{AssignProcessToJobObject, CreateJobObjectW, JobObjectBasicUIRestrictions, JobObjectExtendedLimitInformation,
             SetInformationJobObject, JOBOBJECT_BASIC_UI_RESTRICTIONS, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
@@ -103,14 +104,27 @@ fn current_user() -> io::Result<Sid> {
 }
 
 pub(crate) fn is_owner_only(path: &Path) -> io::Result<bool> {
-    let user = current_user()?;
-    let allowed = [Sid::well_known(WinLocalSystemSid)?, Sid::well_known(WinBuiltinAdministratorsSid)?];
     let name = wide(path);
     let (mut owner, mut dacl, mut descriptor): (PSID, *mut ACL, PSECURITY_DESCRIPTOR) = (null_mut(), null_mut(), null_mut());
     // SAFETY: name is NUL-terminated; out-pointers receive pointers into `descriptor`, which we free.
     win32(unsafe { GetNamedSecurityInfoW(name.as_ptr(), SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
         &mut owner, null_mut(), &mut dacl, null_mut(), &mut descriptor) })?;
     let _descriptor = Local(descriptor);
+    check_owner_only(owner, dacl)
+}
+
+pub(crate) fn is_owner_only_handle(handle: BorrowedHandle<'_>) -> io::Result<bool> {
+    let (mut owner, mut dacl, mut descriptor): (PSID, *mut ACL, PSECURITY_DESCRIPTOR) = (null_mut(), null_mut(), null_mut());
+    // SAFETY: the borrowed handle stays open; returned pointers belong to the owned descriptor.
+    win32(unsafe { GetSecurityInfo(handle.as_raw_handle() as HANDLE, SE_FILE_OBJECT,
+        OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION, &mut owner, null_mut(), &mut dacl, null_mut(), &mut descriptor) })?;
+    let _descriptor = Local(descriptor);
+    check_owner_only(owner, dacl)
+}
+
+fn check_owner_only(owner: PSID, dacl: *mut ACL) -> io::Result<bool> {
+    let user = current_user()?;
+    let allowed = [Sid::well_known(WinLocalSystemSid)?, Sid::well_known(WinBuiltinAdministratorsSid)?];
     // A NULL DACL grants everyone full access.
     // Owner: the user, or SYSTEM/Administrators (an elevated administrator's
     // default owner for new objects is the Administrators group). These are
@@ -143,6 +157,25 @@ pub(crate) fn is_owner_only(path: &Path) -> io::Result<bool> {
 }
 
 pub(crate) fn ensure_owner_only(path: &Path) -> io::Result<()> {
+    with_owner_acl(|owner, acl| {
+        let name = wide(path);
+        // SAFETY: name is NUL-terminated; owner SID and ACL are valid for the call.
+        win32(unsafe { SetNamedSecurityInfoW(name.as_ptr(), SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            owner, null_mut(), acl, null_mut()) })
+    })
+}
+
+pub(crate) fn ensure_owner_only_handle(handle: BorrowedHandle<'_>) -> io::Result<()> {
+    with_owner_acl(|owner, acl| {
+        // SAFETY: the borrowed handle stays open; owner and ACL live through the call.
+        win32(unsafe { SetSecurityInfo(handle.as_raw_handle() as HANDLE, SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            owner, null_mut(), acl, null_mut()) })
+    })
+}
+
+fn with_owner_acl(set: impl FnOnce(PSID, *mut ACL) -> io::Result<()>) -> io::Result<()> {
     let user = current_user()?;
     let system = Sid::well_known(WinLocalSystemSid)?;
     let admins = Sid::well_known(WinBuiltinAdministratorsSid)?;
@@ -157,11 +190,38 @@ pub(crate) fn ensure_owner_only(path: &Path) -> io::Result<()> {
     // SAFETY: entries reference SIDs that live until the end of this function; acl receives a LocalAlloc'ed ACL.
     win32(unsafe { SetEntriesInAclW(entries.len() as u32, entries.as_ptr(), null_mut(), &mut acl) })?;
     let _acl = Local(acl as *mut c_void);
-    let name = wide(path);
-    // SAFETY: name is NUL-terminated; owner SID and ACL are valid for the call.
-    win32(unsafe { SetNamedSecurityInfoW(name.as_ptr(), SE_FILE_OBJECT,
-        OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
-        user.ptr(), null_mut(), acl, null_mut()) })
+    set(user.ptr(), acl)
+}
+
+/// Fixed-size storage for a single Windows filename (255 UTF-16 units).
+/// The prefix has exactly the FILE_RENAME_INFO layout, with space for the name.
+#[repr(C)]
+struct RenameInfo {
+    flags: u32,
+    root: HANDLE,
+    length: u32,
+    name: [u16; 256],
+}
+
+pub(crate) fn rename_handle_no_replace(source: BorrowedHandle<'_>, parent: BorrowedHandle<'_>,
+    name: &std::ffi::OsStr) -> io::Result<()> {
+    let name: Vec<u16> = name.encode_wide().collect();
+    if name.is_empty() || name.len() > 255 || name.iter().any(|c| matches!(*c, 0 | 47 | 92 | 58))
+        || name == [46] || name == [46, 46] {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "expected a single filename"));
+    }
+    let mut info = RenameInfo { flags: 0, root: parent.as_raw_handle() as HANDLE,
+        length: (name.len() * 2) as u32, name: [0; 256] };
+    info.name[..name.len()].copy_from_slice(&name);
+    // Guard the ABI assumption even if windows-sys changes its struct layout.
+    if std::mem::offset_of!(RenameInfo, name) != std::mem::offset_of!(FILE_RENAME_INFO, FileName) {
+        return Err(io::Error::new(io::ErrorKind::Unsupported, "unsupported rename info layout"));
+    }
+    // SAFETY: both borrowed handles stay open. The aligned repr(C) buffer has the
+    // FILE_RENAME_INFO prefix, a byte-counted UTF-16 name, and ReplaceIfExists=false.
+    if unsafe { SetFileInformationByHandle(source.as_raw_handle() as HANDLE, FileRenameInfo,
+        &info as *const _ as *const c_void, std::mem::size_of::<RenameInfo>() as u32) } == 0 { return Err(last_error()); }
+    Ok(())
 }
 
 pub(crate) fn file_id(handle: BorrowedHandle<'_>) -> io::Result<(u64, [u8; 16])> {
@@ -262,6 +322,42 @@ mod tests {
         rename_no_replace(&dir.join("a"), &dir.join("c")).unwrap();
         assert!(!dir.join("a").exists() && std::fs::read(dir.join("c")).unwrap() == b"a");
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test] fn handle_rename_keeps_the_opened_source_after_path_rebinding() {
+        use std::os::windows::{fs::OpenOptionsExt, io::AsHandle};
+        use windows_sys::Win32::Storage::FileSystem::{DELETE, READ_CONTROL, FILE_FLAG_BACKUP_SEMANTICS};
+        let dir = temp_dir();
+        std::fs::write(dir.join("source"), b"original").unwrap();
+        std::fs::write(dir.join("occupied"), b"keep").unwrap();
+        let parent = std::fs::OpenOptions::new().read(true).custom_flags(FILE_FLAG_BACKUP_SEMANTICS).open(&dir).unwrap();
+        let source = std::fs::OpenOptions::new().access_mode(DELETE | READ_CONTROL).open(dir.join("source")).unwrap();
+        // A later lookup of the original pathname would now select another file.
+        std::fs::rename(dir.join("source"), dir.join("old-name")).unwrap();
+        std::fs::write(dir.join("source"), b"replacement").unwrap();
+        assert!(rename_handle_no_replace(source.as_handle(), parent.as_handle(), "occupied".as_ref()).is_err());
+        assert_eq!(std::fs::read(dir.join("occupied")).unwrap(), b"keep");
+        rename_handle_no_replace(source.as_handle(), parent.as_handle(), "новое имя".as_ref()).unwrap();
+        assert_eq!(std::fs::read(dir.join("новое имя")).unwrap(), b"original");
+        assert_eq!(std::fs::read(dir.join("source")).unwrap(), b"replacement");
+        assert!(!dir.join("old-name").exists());
+        assert!(rename_handle_no_replace(source.as_handle(), parent.as_handle(), "../escape".as_ref()).is_err());
+        drop((source, parent));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test] fn directory_acl_uses_the_held_handle() {
+        use std::os::windows::{fs::OpenOptionsExt, io::AsHandle};
+        use windows_sys::Win32::Storage::FileSystem::{READ_CONTROL, WRITE_DAC, WRITE_OWNER, FILE_FLAG_BACKUP_SEMANTICS};
+        let dir = temp_dir();
+        let opened = std::fs::OpenOptions::new().read(true).access_mode(READ_CONTROL | WRITE_DAC | WRITE_OWNER)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS).open(&dir).unwrap();
+        ensure_owner_only_handle(opened.as_handle()).unwrap();
+        assert!(is_owner_only_handle(opened.as_handle()).unwrap());
+        std::fs::create_dir(dir.join("child")).unwrap();
+        assert!(is_owner_only(&dir.join("child")).unwrap());
+        drop(opened);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     /// Child half of `confinement_blocks_processes_and_writes` (no-op unless re-executed).

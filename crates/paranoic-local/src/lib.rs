@@ -39,9 +39,8 @@ pub struct LocalStorage {
     /// RENAME_NOREPLACE, measured once by [`probe_noreplace`] (audit 1, 2).
     #[cfg_attr(not(any(target_os = "linux", target_os = "android")), allow(dead_code))]
     shared_noreplace: std::sync::OnceLock<bool>,
-    /// Absolute root path, needed only by Windows calls that take paths
-    /// (ACL of staging folders, no-replace rename).
-    #[cfg_attr(not(windows), allow(dead_code))]
+    /// Absolute root path, used for the shared-storage no-replace probe.
+    #[cfg_attr(not(any(target_os = "linux", target_os = "android")), allow(dead_code))]
     root_path: std::path::PathBuf,
 }
 
@@ -70,14 +69,6 @@ impl LocalStorage {
         let mut storage = Self::open(id, root, Access::ReadWrite)?;
         storage.private_root = true;
         Ok(storage)
-    }
-
-    /// OS path of a resource below the root (Windows path-based calls only).
-    #[cfg(windows)]
-    pub(crate) fn os_path(&self, path: &ResourcePath) -> std::path::PathBuf {
-        let mut out = self.root_path.clone();
-        if !path.is_root() { for part in path.as_str().split('/') { out.push(part); } }
-        out
     }
 
     /// Shared storage: true when the volume honours RENAME_NOREPLACE. Any other
@@ -382,12 +373,8 @@ impl Storage for LocalStorage {
         #[cfg(windows)]
         {
             let (source_parent, source_name) = self.parent(source)?;
-            self.parent(target)?; // target parent must exist below the root
-            let metadata = source_parent.symlink_metadata(source_name).map_err(CoreError::io)?;
-            if !metadata.is_file() && !metadata.is_dir() {
-                return Err(CoreError::new(ErrorCode::Unsupported, "only files and directories can be moved"));
-            }
-            paranoic_windows::rename_no_replace(&self.os_path(source), &self.os_path(target)).map_err(CoreError::io)
+            let (target_parent, target_name) = self.parent(target)?;
+            windows::move_no_replace(&source_parent, source_name, &target_parent, target_name)
         }
         #[cfg(not(any(target_os = "linux", target_os = "android", windows)))]
         {

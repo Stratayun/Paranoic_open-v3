@@ -398,6 +398,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cap-fs-ext"
+version = "3.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "476f0d0003a760918ed4b1e039a59e11769030416f79c8222551d22785f7f70d"
+dependencies = [
+ "cap-primitives",
+ "cap-std",
+ "io-lifetimes",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "cap-primitives"
 version = "3.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2135,11 +2147,13 @@ dependencies = [
 name = "paranoic-local"
 version = "0.1.0"
 dependencies = [
+ "cap-fs-ext",
  "cap-std",
  "paranoic-core",
  "paranoic-windows",
  "rustix 0.38.44",
  "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

@@ -38,6 +38,10 @@ fn rp(p: &str) -> ResourcePath { ResourcePath::parse(p).unwrap() }
     storage.move_no_replace(&rp("c.txt"), &rp("sub/c.txt")).unwrap();
     storage.delete_file(&rp("sub/c.txt")).unwrap();
     storage.delete_empty_directory(&rp("sub")).unwrap();
+    storage.create_directory(&rp("folder")).unwrap();
+    std::fs::write(root.join("folder/keep.txt"), b"directory contents").unwrap();
+    storage.move_no_replace(&rp("folder"), &rp("перенесённая папка")).unwrap();
+    assert_eq!(std::fs::read(root.join("перенесённая папка/keep.txt")).unwrap(), b"directory contents");
     drop(storage); // the open root handle blocks deleting the folder on Windows
     std::fs::remove_dir_all(&root).unwrap();
 }

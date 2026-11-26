@@ -1,9 +1,11 @@
 param([Parameter(Mandatory)][string]$Archive, [switch]$UnicodePaths, [switch]$UnicodeTemp, [string]$LauncherName = 'Paranoic.exe')
 $ErrorActionPreference = 'Stop'
-$report = Join-Path $PWD 'startup-results'
+$runId = [guid]::NewGuid().ToString('N')
+$variant = '{0}-unicode-{1}-temp-{2}' -f [IO.Path]::GetFileNameWithoutExtension($LauncherName), $UnicodePaths.IsPresent, $UnicodeTemp.IsPresent
+$report = Join-Path (Join-Path $PWD 'startup-results') "$variant-$runId"
 New-Item -ItemType Directory -Force $report | Out-Null
 $folder = if ($UnicodePaths) { 'Проверка portable с пробелами' } else { 'paranoic-startup-check' }
-$unpacked = Join-Path $env:RUNNER_TEMP $folder
+$unpacked = Join-Path $env:RUNNER_TEMP "$folder-$runId"
 Expand-Archive -LiteralPath $Archive -DestinationPath $unpacked -Force
 $exe = Get-ChildItem $unpacked -Recurse -Filter $LauncherName | Select-Object -First 1
 if (!$exe) { throw 'Paranoic.exe missing from portable archive' }
@@ -49,19 +51,19 @@ try {
     while ((Get-Date) -lt $deadline) {
         $process.Refresh()
         if ($process.HasExited) { throw "Portable exited before opening its window. Exit code $($process.ExitCode)" }
-        if (@(Get-Process Paranoic,Paranoic-debug -ErrorAction SilentlyContinue | Where-Object { [StartupWindow]::Exists($_.Id) }).Count -gt 0) { $visible = $true; break }
+        if ([StartupWindow]::Exists($process.Id)) { $visible = $true; break }
         Start-Sleep -Milliseconds 500
     }
     if (!$visible) { throw 'Portable did not show its application window within 60 seconds' }
     Start-Sleep -Seconds 10
     $process.Refresh()
-    if ($process.HasExited -or @(Get-Process Paranoic,Paranoic-debug -ErrorAction SilentlyContinue | Where-Object { [StartupWindow]::Exists($_.Id) }).Count -eq 0) { throw 'Application window disappeared after startup' }
+    if ($process.HasExited -or -not ([StartupWindow]::Exists($process.Id))) { throw 'Application window disappeared after startup' }
     'PASS: visible Paranoic AWT window survived startup.' | Tee-Object (Join-Path $report 'result.txt')
 } catch {
     $_ | Out-String | Tee-Object (Join-Path $report 'result.txt')
     throw
 } finally {
-    Get-Process Paranoic,Paranoic-debug -ErrorAction SilentlyContinue | Format-List Id,MainWindowTitle,MainWindowHandle,Responding |
+    $process | Format-List Id,MainWindowTitle,MainWindowHandle,Responding |
         Out-File (Join-Path $report 'processes.txt')
     try {
         Add-Type -AssemblyName System.Windows.Forms,System.Drawing

@@ -43,6 +43,20 @@ pub fn ensure_owner_only(path: &std::path::Path) -> io::Result<()> {
 #[cfg(windows)]
 pub fn file_id(handle: std::os::windows::io::BorrowedHandle<'_>) -> io::Result<(u64, [u8; 16])> { imp::file_id(handle) }
 
+/// Read/set the ACL of the already opened object, without resolving its path again.
+#[cfg(windows)]
+pub fn is_owner_only_handle(handle: std::os::windows::io::BorrowedHandle<'_>) -> io::Result<bool> { imp::is_owner_only_handle(handle) }
+#[cfg(windows)]
+pub fn ensure_owner_only_handle(handle: std::os::windows::io::BorrowedHandle<'_>) -> io::Result<()> { imp::ensure_owner_only_handle(handle) }
+
+/// Rename an opened file/directory into an opened parent, refusing an occupied name.
+/// Source must be opened with DELETE access. No ambient paths are resolved.
+#[cfg(windows)]
+pub fn rename_handle_no_replace(source: std::os::windows::io::BorrowedHandle<'_>,
+    parent: std::os::windows::io::BorrowedHandle<'_>, name: &std::ffi::OsStr) -> io::Result<()> {
+    imp::rename_handle_no_replace(source, parent, name)
+}
+
 /// Atomic rename that fails if `to` exists (MoveFileExW without
 /// MOVEFILE_REPLACE_EXISTING; same volume only; write-through).
 pub fn rename_no_replace(from: &std::path::Path, to: &std::path::Path) -> io::Result<()> {

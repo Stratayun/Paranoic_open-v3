@@ -32,5 +32,5 @@ internal object PngBounds {
 /** Cancellation while waiting is immediate; at most one native decode runs at once. */
 internal object PngDecodeBudget {
     private val permit = Semaphore(1)
-    suspend fun <T> decode(block: () -> T): T = permit.withPermit { block() }
+    suspend fun <T> decode(block: suspend () -> T): T = permit.withPermit { block() }
 }
