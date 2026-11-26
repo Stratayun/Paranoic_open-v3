@@ -2,6 +2,7 @@ package io.github.stratayun.paranoic.ui.screens.files
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -18,6 +19,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.stratayun.paranoic.bridge.*
+import io.github.stratayun.paranoic.resources.*
 import io.github.stratayun.paranoic.ui.components.*
 import io.github.stratayun.paranoic.ui.state.*
 
@@ -35,7 +37,8 @@ fun FileCategory.label(): String = when (this) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileItem) -> Unit,
-    pngImage: @Composable (ByteArray, Modifier) -> Unit, clipboard: FileClipboard? = null) {
+    pngImage: @Composable (ByteArray, Modifier) -> Unit, clipboard: FileClipboard? = null,
+    onSendToSafe: ((List<FileItem>) -> Unit)? = null) {
     val scheme = MaterialTheme.colorScheme
     var sheet by remember(state.category) { mutableStateOf<FileItem?>(null) }
     var info by remember(state.category) { mutableStateOf<FileItem?>(null) }
@@ -44,6 +47,18 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
     var renaming by remember(state.category) { mutableStateOf<FileItem?>(null) }
     var transferring by remember(state.category) { mutableStateOf<Pair<FileItem, TransferMode>?>(null) }
     var rescan by remember(state.category) { mutableStateOf(false) }
+    // Multi-select (owner 26.11): long press starts it, taps toggle, the bar acts on all selected.
+    var selected by remember(state.category, state.space.id) { mutableStateOf(setOf<String>()) }
+    var sort by remember { mutableStateOf(CategorySort.Newest) }
+    var hideSystemSounds by remember { mutableStateOf(true) }
+    var trashingMany by remember(state.category) { mutableStateOf<List<FileItem>?>(null) }
+    fun key(item: FileItem) = item.location.storageId + ":" + item.location.path
+    val shown = remember(state.items, sort, hideSystemSounds, state.category) {
+        state.items.filter { state.category != FileCategory.Music || !hideSystemSounds || !isSystemSound(it) }.sortedWith(sort.comparator)
+    }
+    val selecting = selected.isNotEmpty()
+    val selectedItems = shown.filter { key(it) in selected }
+    fun toggle(item: FileItem) { val k = key(item); selected = if (k in selected) selected - k else selected + k }
     // After a write finishes, walk again so the list shows the result (moved, renamed or deleted files).
     LaunchedEffect(session.writing, rescan) {
         if (rescan && !session.writing) { rescan = false; session.categories.open(state.space, state.category, state.query) }
@@ -56,11 +71,25 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         Surface(Modifier.fillMaxWidth().padding(vertical = 8.dp), shape = MaterialTheme.shapes.extraLarge, color = scheme.surfaceContainer) {
-            Row(Modifier.padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (selecting) Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { selected = emptySet() }, modifier = Modifier.actionDescription(tr("Снять выбор", "Clear selection"))) { AppIcon(AppSymbol.Close) }
+                Text(tr("Выбрано: ${selectedItems.size}", "Selected: ${selectedItems.size}"), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                IconButton(onClick = { selected = if (selectedItems.size == shown.size) emptySet() else shown.map(::key).toSet() },
+                    modifier = Modifier.actionDescription(tr("Выбрать все", "Select all"))) { AppIcon(AppSymbol.SelectAll) }
+                if (onSendToSafe != null) IconButton(enabled = canWrite && selectedItems.all { it.canMove(session.files.spaces) },
+                    onClick = { onSendToSafe(selectedItems); selected = emptySet() },
+                    modifier = Modifier.actionDescription(tr("В Сейф", "To the Safe"))) { BrandIcon(Res.drawable.ic_safe, size = 32.dp) }
+                if (clipboard != null) IconButton(enabled = selectedItems.all { it.canMove(session.files.spaces) },
+                    onClick = { clipboard.put(selectedItems, cut = true); selected = emptySet() },
+                    modifier = Modifier.actionDescription(tr("Вырезать", "Cut"))) { AppIcon(AppSymbol.Cut) }
+                IconButton(enabled = canWrite && selectedItems.all { it.canDelete(session.files.spaces) },
+                    onClick = { trashingMany = selectedItems },
+                    modifier = Modifier.actionDescription(tr("Удалить", "Delete"))) { AppIcon(AppSymbol.Trash) }
+            } else Row(Modifier.padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = session.categories::close, modifier = Modifier.actionDescription(tr("Закрыть", "Close"))) { AppIcon(AppSymbol.Back) }
                 Column(Modifier.weight(1f)) {
                     Text(state.category.label(), style = MaterialTheme.typography.titleMedium)
-                    Text(displayName(state.space.name) + " · " + tr("найдено ${state.items.size}", "${state.items.size} found") +
+                    Text(displayName(state.space.name) + " · " + tr("найдено ${shown.size}", "${shown.size} found") +
                         if (state.running) tr(" · ищем…", " · searching…") else if (state.truncated) tr(" · показаны первые", " · partial")
                             else if (state.incomplete) tr(" · неполный: ${state.unreadable} папок недоступно", " · incomplete: ${state.unreadable} folders unreadable") else "",
                         style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
@@ -84,26 +113,46 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
                     label = { Text(kind.label()) }, leadingIcon = { AppIcon(fileSymbolFor(kind), Modifier.size(18.dp)) })
             }
         }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            var sortMenu by remember { mutableStateOf(false) }
+            Box {
+                AssistChip(onClick = { sortMenu = true }, label = { Text(sort.label()) }, leadingIcon = { AppIcon(AppSymbol.Sort, Modifier.size(18.dp)) })
+                DropdownMenu(sortMenu, { sortMenu = false }) {
+                    CategorySort.entries.forEach { option ->
+                        DropdownMenuItem(text = { Text(option.label()) }, onClick = { sort = option; sortMenu = false },
+                            trailingIcon = { if (option == sort) Text("✓") })
+                    }
+                }
+            }
+            if (state.category == FileCategory.Music) FilterChip(selected = hideSystemSounds, onClick = { hideSystemSounds = !hideSystemSounds },
+                label = { Text(tr("Без системных звуков", "No system sounds")) })
+        }
         if (state.running) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (state.category == FileCategory.All && query.isBlank()) Text(tr("Введите часть имени файла.", "Type part of a file name."),
             Modifier.padding(16.dp), color = scheme.onSurfaceVariant)
         state.fault?.let { FaultNotice(it) }
-        if (!state.running && state.items.isEmpty() && state.fault == null && !(state.category == FileCategory.All && query.isBlank())) Column(Modifier.fillMaxWidth().padding(top = 48.dp),
+        if (!state.running && shown.isEmpty() && state.fault == null && !(state.category == FileCategory.All && query.isBlank())) Column(Modifier.fillMaxWidth().padding(top = 48.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ShapedIcon(fileSymbolFor(state.category), ExpressiveShapes.Sunny, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 96.dp)
             Text(tr("Ничего не найдено", "Nothing found"), style = MaterialTheme.typography.titleMedium)
         }
         if (state.category == FileCategory.Images) LazyVerticalGrid(GridCells.Adaptive(112.dp), Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            items(state.items, key = { it.location.storageId + ":" + it.location.path }) { item ->
+            items(shown, key = { key(it) }) { item ->
+                val picked = key(item) in selected
                 Box(Modifier.aspectRatio(1f).clip(MaterialTheme.shapes.medium)
-                    .combinedClickable(onLongClick = { sheet = item }, onClick = { onOpenFile(item) })) {
+                    .combinedClickable(onLongClick = { toggle(item) }, onClick = { if (selecting) toggle(item) else onOpenFile(item) })) {
                     Thumbnail(session.core, item, pngImage, Modifier.fillMaxSize())
+                    if (selecting) Box(Modifier.fillMaxSize().then(if (picked) Modifier.background(scheme.primary.copy(alpha = 0.35f)) else Modifier)) {
+                        Checkbox(checked = picked, onCheckedChange = { toggle(item) }, modifier = Modifier.align(Alignment.TopEnd))
+                    }
                 }
             }
         } else LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            items(state.items, key = { it.location.storageId + ":" + it.location.path }) { item ->
-                Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).combinedClickable(onLongClick = { sheet = item }, onClick = { onOpenFile(item) })
+            items(shown, key = { key(it) }) { item ->
+                val picked = key(item) in selected
+                Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).then(if (picked) Modifier.background(scheme.secondaryContainer) else Modifier)
+                    .combinedClickable(onLongClick = { toggle(item) }, onClick = { if (selecting) toggle(item) else onOpenFile(item) })
                     .heightIn(min = 64.dp).padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     FileTypeIcon(item.name, false)
@@ -113,7 +162,8 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
                             (if (item.sizeKnown) humanSize(item.bytes) else ""), style = MaterialTheme.typography.bodySmall,
                             color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    IconButton(onClick = { sheet = item }, modifier = Modifier.actionDescription(tr("Действия", "Actions"))) { AppIcon(AppSymbol.More) }
+                    if (selecting) Checkbox(checked = picked, onCheckedChange = { toggle(item) })
+                    else IconButton(onClick = { sheet = item }, modifier = Modifier.actionDescription(tr("Действия", "Actions"))) { AppIcon(AppSymbol.More) }
                 }
             }
         }
@@ -164,6 +214,17 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
                 Text(tr("Удалить", "Delete"), color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { deleting = null; permanent = false }) { Text(tr("Отмена", "Cancel")) } })
     }
+    trashingMany?.let { items ->
+        if (session.trashAvailable(items)) TrashConfirmDialog(items.size, items.singleOrNull()?.name,
+            onTrash = { trashingMany = null; selected = emptySet(); session.moveToTrash(items); rescan = true },
+            onPermanent = { trashingMany = null; deleting = items.singleOrNull(); permanent = true },
+            onDismiss = { trashingMany = null })
+        else AlertDialog(onDismissRequest = { trashingMany = null }, title = { Text(tr("Удалить: ${items.size}?", "Delete ${items.size}?")) },
+            text = { Text(tr("Корзина здесь недоступна: файлы будут удалены сразу.", "No trash here: files are deleted immediately.")) },
+            confirmButton = { TextButton(onClick = { trashingMany = null; selected = emptySet(); items.forEach { session.deleteFound(it) }; rescan = true }) {
+                Text(tr("Удалить", "Delete"), color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { trashingMany = null }) { Text(tr("Отмена", "Cancel")) } })
+    }
     info?.let { item ->
         AlertDialog(onDismissRequest = { info = null }, title = { Text(displayName(item.name)) }, text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (item.sizeKnown) Text(tr("Размер: ", "Size: ") + humanSize(item.bytes))
@@ -193,3 +254,28 @@ private fun Thumbnail(core: CoreGateway, item: FileItem, pngImage: @Composable (
         else AppIcon(AppSymbol.Photo)
     }
 }
+
+/** Sort order of a category list. */
+enum class CategorySort(val comparator: Comparator<FileItem>) {
+    Newest(compareByDescending { it.modifiedMs ?: 0uL }),
+    Oldest(compareBy { it.modifiedMs ?: 0uL }),
+    Name(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }),
+    Largest(compareByDescending { it.bytes }),
+    Smallest(compareBy { it.bytes }),
+    Folder(compareBy<FileItem, String>(String.CASE_INSENSITIVE_ORDER) { it.location.path.substringBeforeLast('/', "") }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name }),
+}
+
+@Composable
+fun CategorySort.label(): String = when (this) {
+    CategorySort.Newest -> tr("Сначала новые", "Newest first")
+    CategorySort.Oldest -> tr("Сначала старые", "Oldest first")
+    CategorySort.Name -> tr("По имени", "By name")
+    CategorySort.Largest -> tr("Сначала большие", "Largest first")
+    CategorySort.Smallest -> tr("Сначала маленькие", "Smallest first")
+    CategorySort.Folder -> tr("По папкам", "By folder")
+}
+
+/** Ringtones, notification and alarm sounds, UI sounds and messenger voice notes are not music. */
+private val systemSoundFolders = setOf("ringtones", "notifications", "alarms", "ui", "voice notes", "voicenotes", "audiorecord")
+internal fun isSystemSound(item: FileItem): Boolean =
+    item.location.path.lowercase().split('/').dropLast(1).any { it in systemSoundFolders }

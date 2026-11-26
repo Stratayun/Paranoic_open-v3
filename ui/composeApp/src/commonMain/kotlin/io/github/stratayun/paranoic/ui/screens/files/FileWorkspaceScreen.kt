@@ -27,7 +27,8 @@ private data class DroppedFile(val sourceTab: String, val source: FileItem, val 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FileWorkspaceScreen(session: AppSession, defaultView: FileView, onOpenFile: (FileItem) -> Unit,
-    pngImage: @Composable (ByteArray, Modifier) -> Unit, onOpenPlaces: (() -> Unit)? = null, onNewVault: (() -> Unit)? = null) {
+    pngImage: @Composable (ByteArray, Modifier) -> Unit, onOpenPlaces: (() -> Unit)? = null, onNewVault: (() -> Unit)? = null,
+    onSendToSafe: ((List<FileItem>) -> Unit)? = null) {
     val workspace = session.fileWorkspace
     var menu by remember(session.secretsEpoch) { mutableStateOf(false) }
     var dragged by remember(session.secretsEpoch) { mutableStateOf<DraggedFile?>(null) }
@@ -67,7 +68,7 @@ fun FileWorkspaceScreen(session: AppSession, defaultView: FileView, onOpenFile: 
     }, cancel = { dragged = null }, copyToOtherPane = { item -> prepareCopy(sourceTab, item) })
     val activeIndex = workspace.tabs.indexOfFirst { it.id == workspace.active }
     session.categories.state?.let { category ->
-        CategoryScreen(session, category, onOpenFile, pngImage, clipboard)
+        CategoryScreen(session, category, onOpenFile, pngImage, clipboard, onSendToSafe)
         return
     }
     Column(Modifier.fillMaxSize()) {

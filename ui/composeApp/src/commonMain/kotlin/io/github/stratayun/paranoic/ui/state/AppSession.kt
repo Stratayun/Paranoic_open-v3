@@ -138,6 +138,8 @@ class AppSession(val core: CoreGateway, private val scope: CoroutineScope, priva
             }
         }
     }
+    /** Files picked elsewhere (categories) waiting to be moved into the Safe's personal folder. */
+    var safeInbox by mutableStateOf<List<FileItem>>(emptyList())
     /** Places whose delete goes to the trash (device folders with atomic no-replace move). */
     var trashSpaces by mutableStateOf<Set<String>>(emptySet()); private set
     /** The trash screen is open for this place. */

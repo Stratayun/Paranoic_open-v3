@@ -139,6 +139,35 @@ internal fun PersonalFilesPane(session: AppSession, enabled: Boolean, onBusy: (B
     var copyingMany by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         fault?.let { FaultNotice(it) }
+        // Files chosen in a category ("В Сейф"): moved one by one; the source is removed only after a verified copy.
+        val inbox = session.safeInbox
+        if (inbox.isNotEmpty() && opened != null) Surface(shape = MaterialTheme.shapes.extraLarge, color = scheme.secondaryContainer) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(tr("Переместить в Сейф: ${inbox.size}", "Move into the Safe: ${inbox.size}"), style = MaterialTheme.typography.titleMedium)
+                Text(inbox.take(3).joinToString(", ") { displayName(it.name) } + if (inbox.size > 3) " …" else "",
+                    style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                Text(tr("Файлы шифруются в текущую папку Сейфа; оригинал удаляется только после проверки копии.",
+                    "Files are encrypted into the current Safe folder; each original is removed only after its copy is verified."),
+                    style = MaterialTheme.typography.bodySmall, color = scheme.onSecondaryContainer)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(enabled = ready, onClick = {
+                        write { h, p ->
+                            var result: CoreResult<Unit> = CoreResult.Value(Unit)
+                            val left = session.safeInbox.toMutableList()
+                            for (item in session.safeInbox) {
+                                when (val moved = gateway.moveIn(h, p, item.location, randomRequestId())) {
+                                    is CoreResult.Value -> { left.remove(item); importReport = moved.value }
+                                    is CoreResult.Failure -> { result = moved; break }
+                                }
+                            }
+                            session.safeInbox = left
+                            result
+                        }
+                    }) { Text(tr("Переместить", "Move")) }
+                    TextButton(onClick = { session.safeInbox = emptyList() }) { Text(tr("Отмена", "Cancel")) }
+                }
+            }
+        }
         if (completed) Text(importReport?.let { if (it.sourceRemoved) tr("Перемещено в Сейф.", "Moved into the Safe.")
             else tr("Скопировано, исходник сохранён", "Copied; source kept") } ?: tr("Готово.", "Done."), color = scheme.primary)
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())

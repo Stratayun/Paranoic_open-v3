@@ -21,6 +21,12 @@ private val videos = setOf("mp4", "mkv", "webm", "mov", "avi", "3gp", "m4v")
 private val audio = setOf("mp3", "flac", "ogg", "opus", "m4a", "wav", "aac", "wma")
 private val archives = setOf("zip", "7z", "rar", "tar", "gz", "xz", "zst", "bz2")
 private val encrypted = setOf("age", "c9r", "pnc")
+private val apks = setOf("apk", "xapk", "apks", "apkm")
+private val code = setOf("kt", "kts", "rs", "java", "py", "js", "ts", "jsx", "tsx", "c", "h", "cpp", "hpp", "cs", "go", "swift",
+    "rb", "php", "sh", "ps1", "sql", "json", "xml", "yaml", "yml", "toml", "html", "htm", "css", "gradle", "lua", "dart")
+private val programs = setOf("exe", "msi", "dll", "bat", "cmd", "ini", "cfg", "conf", "properties", "reg", "so", "bin")
+private val documents = setOf("pdf", "doc", "docx", "xls", "xlsx", "ods", "odt", "odp", "ppt", "pptx", "txt", "md", "rtf", "csv",
+    "epub", "fb2", "djvu", "mobi", "azw3", "log")
 
 /** Neon-glass type icon for a file row, with a small extension tag (PDF, ZIP, MP3…). */
 fun fileTypeIcon(name: String, folder: Boolean): DrawableResource {
@@ -29,11 +35,13 @@ fun fileTypeIcon(name: String, folder: Boolean): DrawableResource {
         in images -> Res.drawable.ic_images
         in videos -> Res.drawable.ic_video
         in audio -> Res.drawable.ic_music
-        // No archive/APK artwork in the set yet: the box of tiles stands in.
-        in archives -> Res.drawable.ic_tiles
+        in archives -> Res.drawable.ic_archive
         in encrypted -> Res.drawable.ic_lock
-        "apk" -> Res.drawable.ic_tiles
-        else -> Res.drawable.ic_documents
+        in apks -> Res.drawable.ic_apk
+        in code -> Res.drawable.ic_code
+        in programs -> Res.drawable.ic_app_settings
+        in documents -> Res.drawable.ic_documents
+        else -> Res.drawable.ic_file
     }
 }
 
