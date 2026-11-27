@@ -114,7 +114,11 @@ impl NativeRuntime {
     pub fn trash_restore(&self, storage_id: String, bucket: String) -> Result<()> {
         let storage = self.trash_storage(&storage_id)?;
         let (bucket_path, item) = self.trash_item(&storage_id, &bucket)?;
-        let original = item.original_folder.clone();
+        // Audit A07: a missing or damaged `.origin` is not "the root"; restore refuses instead of
+        // putting the entry somewhere it never was.
+        let original = if bucket.contains('~') { item.original_folder.clone() } else {
+            read_origin(storage.as_ref(), &bucket_path).ok_or(BridgeError::Invalid)?
+        };
         let folder = if original.is_empty() { ResourcePath::root() } else { ResourcePath::parse(original)? };
         storage.move_no_replace(&bucket_path.join(&item.name)?, &folder.join(&item.name)?)?;
         let _ = storage.delete_file(&bucket_path.join(ORIGIN)?);
@@ -229,8 +233,10 @@ fn remove_tree(storage: &dyn paranoic_core::Storage, path: &ResourcePath, budget
     if path.as_str().split('/').next() != Some(TRASH) { return Err(BridgeError::Invalid); }
     let metadata = storage.metadata(path)?;
     if metadata.kind == EntryKind::Directory {
+        // Audit A05: `list` fails past its limit instead of returning a page, so ask for the
+        // whole remaining budget at once (bounded by the overall trash budget).
         loop {
-            let children = storage.list(path, 1000)?;
+            let children = storage.list(path, (*budget).clamp(1, 100_000))?;
             if children.is_empty() { break; }
             for child in children {
                 *budget = budget.checked_sub(1).ok_or(BridgeError::Limit)?;

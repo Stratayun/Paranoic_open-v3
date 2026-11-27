@@ -984,6 +984,11 @@ fn copy_file_expected(shared: &Shared, id: JobId, source: &Location, target: &Lo
         if output_provider.metadata(&backup.path)? != existing {
             return Err(CoreError::new(ErrorCode::SourceChanged, "destination changed before replacement"));
         }
+        // Audit A16: the version moved aside must be the planned revision, not a newer one that
+        // another client saved with the same size and time; otherwise it is put back.
+        if !same_revision(output_provider.as_ref(), &backup.path, expect.target_revision)? {
+            return Err(CoreError::new(ErrorCode::SourceChanged, "destination revision changed before replacement"));
+        }
         if let Some(hash) = expect.target_content {
             let mut previous = output_provider.open_read(&backup.path)?;
             verify_stream(shared, id, previous.as_mut(), existing.bytes, blake3::Hash::from(hash).to_hex().as_str())

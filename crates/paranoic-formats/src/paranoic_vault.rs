@@ -564,7 +564,10 @@ impl ParanoicVault {
     /// The current manifest, checked against this device's anchor.
     fn load_manifest(&self, core: &Core) -> Result<Option<Manifest>> {
         let bytes = read_all(core, &child(&self.root, man::MANIFEST_FILE)?, man::MAX_SEALED)?;
-        let manifest = man::open(&self.keys, &bytes)
+        self.open_manifest(&bytes)
+    }
+    fn open_manifest(&self, bytes: &[u8]) -> Result<Option<Manifest>> {
+        let manifest = man::open(&self.keys, bytes)
             .map_err(|_| CoreError::new(ErrorCode::Integrity, "vault manifest failed authentication"))?;
         if let Some(anchor) = &self.anchor {
             if anchor.get(&self.keys.vault_id)?.is_some_and(|seen| manifest.sequence < seen) {
@@ -636,7 +639,11 @@ impl ParanoicVault {
     fn manifest_step(&self, core: &Core, spool: Spool<'_>, intents: &[Intent]) -> Result<Option<(Operation, u64)>> {
         let location = child(&self.root, man::MANIFEST_FILE)?;
         let expected = core.metadata(&location)?;
-        let mut manifest = self.load_manifest(core)?.ok_or_else(|| CoreError::new(ErrorCode::Internal, "vault manifest missing"))?;
+        // Audit A27: the replacement is bound to the exact bytes this change was derived from
+        // (BLAKE3), not only to size and time, so a concurrent writer's manifest is never lost.
+        let current = read_all(core, &location, man::MAX_SEALED)?;
+        let expected_blake3 = *blake3::hash(&current).as_bytes();
+        let mut manifest = self.open_manifest(&current)?.ok_or_else(|| CoreError::new(ErrorCode::Internal, "vault manifest missing"))?;
         if intents.is_empty() && !manifest.has_pending() { return Ok(None); }
         manifest.settle(|path| self.observe(core, path)).map_err(crypto)?;
         for intent in intents {
@@ -655,8 +662,8 @@ impl ParanoicVault {
         let _ = spool.storage.delete_file(&staged);
         let prepared = self.spool(Spool { storage: spool.storage, path: &staged }, location.clone(), (String::new(), String::new()),
             |out| out.write_all(&sealed).map_err(|_| CryptoError::Io))?;
-        Ok(Some((Operation::ReplaceExpected { source: prepared.spool, target: location, bytes: prepared.bytes,
-            blake3: prepared.blake3, expected_target: expected }, manifest.sequence)))
+        Ok(Some((Operation::ReplaceContentExpected { source: prepared.spool, target: location, bytes: prepared.bytes,
+            blake3: prepared.blake3, expected_target: expected, expected_target_blake3: expected_blake3 }, manifest.sequence)))
     }
 
     fn folder_location(&self, folder: &[u8; 16]) -> Result<Location> {

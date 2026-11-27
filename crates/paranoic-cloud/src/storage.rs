@@ -286,18 +286,19 @@ fn staging_name(job: JobId) -> String { format!(".paranoic-{}", job.0.simple()) 
 fn discard(provider: &dyn CloudProvider, folder: &CloudId) -> Result<()> {
     fn walk(provider: &dyn CloudProvider, folder: &CloudId, depth: usize) -> Result<()> {
         if depth > 16 { return Err(CoreError::new(ErrorCode::LimitExceeded, "staging too deep")); }
-        let mut page: Option<String> = None;
-        loop {
-            let chunk = provider.list(folder, page.as_deref(), 1000)?;
+        // Audit A14: entries are removed as we go, so an offset token would skip the next page.
+        // Always ask for the first page again, until it is empty (bounded number of rounds).
+        for _ in 0..10_000 {
+            let chunk = provider.list(folder, None, 1000)?;
+            if chunk.entries.is_empty() { return provider.trash(&provider.metadata(folder)?); }
             for entry in chunk.entries {
                 match entry.kind {
                     CloudKind::Folder => walk(provider, &entry.id, depth + 1)?,
                     _ => provider.trash(&entry)?,
                 }
             }
-            match chunk.next { Some(next) => page = Some(next), None => break }
         }
-        provider.trash(&provider.metadata(folder)?)
+        Err(CoreError::new(ErrorCode::LimitExceeded, "staging cleanup does not converge"))
     }
     walk(provider, folder, 0).map_err(|_| CoreError::new(ErrorCode::NeedsAttention, "cloud staging cleanup incomplete"))
 }
@@ -388,11 +389,25 @@ impl Spool {
         Ok(file)
     }
 }
+impl Spool {
+    /// Remove the spool file. The space is released from the process limit only once the
+    /// file is confirmed gone (audit A15); a failure stays visible to the caller.
+    fn remove(&mut self) -> std::io::Result<()> {
+        self.file.take();
+        match std::fs::remove_file(&self.path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+        let written = std::mem::take(&mut self.written);
+        let _ = SPOOL_USED.fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| Some(used.saturating_sub(written)));
+        Ok(())
+    }
+}
 impl Drop for Spool {
     fn drop(&mut self) {
-        self.file.take();
-        let _ = std::fs::remove_file(&self.path);
-        let _ = SPOOL_USED.fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| Some(used.saturating_sub(self.written)));
+        // Fallback only; a leftover keeps counting against the limit until the start-up sweep.
+        let _ = self.remove();
     }
 }
 
@@ -449,7 +464,10 @@ impl StagedWrite for CloudStage {
             Err(_) => Err(CoreError::new(ErrorCode::NeedsAttention, "cloud bundle publication outcome unknown")),
         }
     }
-    fn abort(self: Box<Self>) -> Result<()> { Ok(()) } // spool removed on drop; nothing reached the cloud
+    fn abort(mut self: Box<Self>) -> Result<()> {
+        // Nothing reached the cloud; the plaintext spool must be confirmed gone (audit A15).
+        self.spool.remove().map_err(|_| CoreError::new(ErrorCode::NeedsAttention, "cloud upload spool could not be removed"))
+    }
 }
 
 struct CloudReader { provider: Arc<dyn CloudProvider>, entry: CloudEntry, stream: Option<Box<dyn Read + Send>>, offset: u64 }

@@ -94,6 +94,8 @@ impl NativeRuntime {
         let plain = zeroize::Zeroizing::new(serde_json::to_vec(state).map_err(|_| BridgeError::Invalid)?);
         let sealed = self.sealer.seal(plain.to_vec());
         if sealed.error != 0 { return Err(BridgeError::DeviceKey); }
+        // Audit A09: never write a state that the reader would refuse.
+        if sealed.data.len() as u64 > MAX_STATE { return Err(BridgeError::Limit); }
         let path = self.state_root.join(STATE_FILE);
         let temporary = path.with_extension("tmp");
         let write = || -> std::io::Result<()> {
@@ -104,7 +106,10 @@ impl NativeRuntime {
             let mut file = options.open(&temporary)?;
             file.write_all(&sealed.data)?;
             file.sync_all()?;
-            std::fs::rename(&temporary, &path)
+            std::fs::rename(&temporary, &path)?;
+            // Audit A08: the rename itself must survive power loss (directory entry flushed).
+            #[cfg(unix)] { std::fs::File::open(&self.state_root)?.sync_all()?; }
+            Ok(())
         };
         write().map_err(|_| BridgeError::Unavailable)
     }

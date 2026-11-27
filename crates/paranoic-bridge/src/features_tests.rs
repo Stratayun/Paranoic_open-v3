@@ -483,10 +483,11 @@ impl NotesKeyHost for RegenKey {
     assert!(weak.hints.contains(&1) && weak.hints.contains(&6));
     let phrase = rt.generate_passphrase(6).unwrap();
     assert_eq!(rt.password_feedback(phrase).strength, 2, "generated passwords satisfy the rule");
-    // Owner's rule: lowercase words alone miss uppercase/digit, so a raw phrase is weak.
+    // Rule of 26.11: length over composition; a lowercase phrase is enough.
     assert_eq!(rt.password_feedback("Xq7#vRt9-Mzw2".into()).strength, 2);
-    // Audit 16: a run ("bcdefgh") keeps it acceptable but not strong.
-    assert_eq!(rt.password_feedback("Abcdefgh1!xy".into()).strength, 1);
+    assert_eq!(rt.password_feedback("лиса гора облако".into()).strength, 2);
+    // A long run ("bcdefgh") is squeezed out: too little remains.
+    assert_eq!(rt.password_feedback("Abcdefgh1!xy".into()).strength, 0);
     assert!(rt.generate_passphrase(2).is_err());
     rt.shutdown().unwrap();
 }

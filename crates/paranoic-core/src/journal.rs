@@ -410,15 +410,25 @@ impl Journal {
 
     pub fn claim(&self) -> Result<Option<JobRecord>> {
         self.transaction(|tx| {
-            let id: Option<String> = tx.query_row(
-                "SELECT id FROM jobs WHERE state='queued' ORDER BY sequence LIMIT 1", [], |row| row.get(0),
-            ).optional().map_err(CoreError::journal)?;
-            let Some(id) = id else { return Ok(None); };
-            let id = JobId(uuid::Uuid::parse_str(&id).map_err(|_| CoreError::new(ErrorCode::Journal, "invalid job id"))?);
-            let mut record = require(tx, &self.codec, id)?;
-            record.state = JobState::Running;
-            save(tx, &self.codec, &mut record)?;
-            Ok(Some(record))
+            // Audit A17: the plain `state` column only finds candidates. The sealed record decides:
+            // a record that is not Queued there is never run again; its index row is rewritten from
+            // the authenticated record and the next candidate is tried.
+            for _ in 0..64 {
+                let id: Option<String> = tx.query_row(
+                    "SELECT id FROM jobs WHERE state='queued' ORDER BY sequence LIMIT 1", [], |row| row.get(0),
+                ).optional().map_err(CoreError::journal)?;
+                let Some(id) = id else { return Ok(None); };
+                let id = JobId(uuid::Uuid::parse_str(&id).map_err(|_| CoreError::new(ErrorCode::Journal, "invalid job id"))?);
+                let mut record = require(tx, &self.codec, id)?;
+                if record.state != JobState::Queued {
+                    save(tx, &self.codec, &mut record)?;
+                    continue;
+                }
+                record.state = JobState::Running;
+                save(tx, &self.codec, &mut record)?;
+                return Ok(Some(record));
+            }
+            Err(CoreError::new(ErrorCode::Journal, "journal index disagrees with sealed records"))
         })
     }
 
