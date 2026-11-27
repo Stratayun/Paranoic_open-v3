@@ -37,7 +37,7 @@ impl paranoic_notes::DeviceKey for HostKey {
 }
 
 #[derive(Default)]
-pub(crate) struct NotesSlot { key: Option<Arc<dyn NotesKeyHost>>, quick: Option<Arc<dyn NotesKeyHost>>, store: Option<NotesStore>, session: Option<NotesSession> }
+pub(crate) struct NotesSlot { key: Option<Arc<dyn NotesKeyHost>>, quick: Option<Arc<dyn NotesKeyHost>>, store: Option<NotesStore>, pub(crate) session: Option<NotesSession> }
 
 /// A file kept inside the notes (Р-3): viewable in the notes, never exported.
 #[derive(Clone, uniffi::Record)]

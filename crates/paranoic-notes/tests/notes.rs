@@ -529,3 +529,33 @@ impl DeviceKey for FlakyDevice {
     assert_eq!(password_strength("лиса гора облако"), PasswordStrength::Strong, "a lowercase phrase is enough");
     assert_eq!(password_strength("Mz7#qwRt-9vLk"), PasswordStrength::Strong);
 }
+
+/// Audit A36: with a device key only a sealed setting arms the wipe; a plain "1" written into
+/// the app's files does not, and a damaged counter is no step towards the wipe.
+#[test] fn planted_auto_wipe_byte_does_not_arm_the_wipe() {
+    let temp = Temp::new();
+    let object = |n: u8| temp.0.join(format!("{:032x}", n));
+    let device = FakeDevice::new(0x33);
+    let store = NotesStore::open(&temp.0, Some(device.clone()), NotesLimits::default()).unwrap();
+    let session = store.create(PASSWORD).unwrap();
+    store.save_notebook(&session, &sample()).unwrap();
+    store.set_auto_wipe(&session, false).unwrap();
+    drop(session); store.lock().unwrap();
+    std::fs::write(object(6), [1u8]).unwrap(); // planted "enabled"
+    std::fs::write(object(3), b"bad").unwrap(); // damaged counter
+    for _ in 0..12 {
+        match store.unlock("Wrong horse battery staple 99") {
+            Err(NotesError::RateLimited { .. }) | Err(NotesError::WrongPassword) => {}
+            Ok(_) => panic!("a wrong password unlocked"),
+            Err(other) => panic!("unexpected: {other:?}"),
+        }
+        // Skip the delay by rewinding the stored counter's next time (test only).
+        let mut data = std::fs::read(object(3)).unwrap(); data[4..12].copy_from_slice(&0u64.to_le_bytes()); std::fs::write(object(3), data).unwrap();
+    }
+    assert_eq!(store.state().unwrap(), NotesState::Locked, "a planted setting wiped the notes");
+    let session = store.unlock(PASSWORD).unwrap();
+    assert_eq!(store.read_notebook(&session).unwrap().tabs.len(), sample().tabs.len());
+    // The legacy plain record was upgraded to the sealed form at the correct unlock.
+    assert!(std::fs::read(object(6)).unwrap().starts_with(b"PNSETS01"));
+    assert!(store.auto_wipe_enabled().unwrap(), "the user's (planted-then-honoured) setting reads back sealed");
+}

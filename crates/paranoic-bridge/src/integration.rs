@@ -101,8 +101,15 @@ impl NativeRuntime {
             let job = self.core.submit(Operation::CreateDirectory { target: Location { storage: root.storage, path } })?;
             finish(run_wait(&self.core, job.id)?, 1)
         };
+        // Audit A03: a lock (Quick Lock, background) stops the export between files. Files
+        // already written stay, as the UI warns before an unencrypted export starts.
+        let still_unlocked = || -> Result<()> {
+            if self.notes.lock().map_err(crate::lock_error)?.session.is_some() { Ok(()) } else { Err(BridgeError::Locked) }
+        };
+        still_unlocked()?;
         create(root.path.clone())?;
         for file in &export.files {
+            still_unlocked()?;
             let target = Location { storage: root.storage, path: ResourcePath::parse(format!("{}/{}", root.path.as_str(), file.path))? };
             create(target.path.parent_and_name()?.0)?;
             let spool = Self::spool_path()?;

@@ -162,6 +162,8 @@ const CTX_ATTACHMENT: &[u8] = b"paranoic/notes/v1/attachment/";
 pub const AUTO_WIPE_ATTEMPTS: u32 = 10;
 const fn id(n: u8) -> [u8; 16] { let mut b = [0u8; 16]; b[15] = n; b }
 const KEY_MAGIC: &[u8; 8] = b"PNOTEK01";
+/// Auto-wipe setting sealed by the device key (audit A36).
+const SETTINGS_SEALED: &[u8; 8] = b"PNSETS01";
 const CTX_PASSWORD: &[u8] = b"paranoic/notes/v1/password-wrap";
 const CTX_QUICK: &[u8] = b"paranoic/notes/v1/quick-wrap";
 const CTX_NOTEBOOK: &[u8] = b"paranoic/notes/v1/notebook";
@@ -598,11 +600,47 @@ impl NotesStore {
         // audit, 2026-11-14; rule 6).
         // Only the exact one-byte encodings are valid (audit 20); anything else is
         // reported as damage and never enables the wipe.
-        match self.read(SETTINGS)?.as_slice() { [0] => Ok(false), [1] => Ok(true), _ => Err(NotesError::Corrupt) }
+        let data = self.read(SETTINGS)?;
+        match data.as_slice() {
+            [0] => Ok(false), [1] => Ok(true),
+            sealed if sealed.starts_with(SETTINGS_SEALED) => self.open_settings(sealed),
+            _ => Err(NotesError::Corrupt),
+        }
+    }
+    /// Audit A36: what a wrong password may act on. With a device key only a record sealed by
+    /// it counts, so a byte written into the app's files cannot arm the wipe. A legacy plain
+    /// record is upgraded at the next correct unlock; until then it does not arm anything.
+    fn auto_wipe_armed(&self) -> Result<bool> {
+        if self.device.is_none() { return self.auto_wipe_enabled(); }
+        if !self.directory.contains(ObjectId::from_bytes(SETTINGS)).map_err(io)? { return Ok(false); }
+        let data = self.read(SETTINGS)?;
+        if !data.starts_with(SETTINGS_SEALED) { return Ok(false); }
+        self.open_settings(&data)
+    }
+    fn open_settings(&self, sealed: &[u8]) -> Result<bool> {
+        let device = self.device.as_ref().ok_or(NotesError::Corrupt)?;
+        match device.open(&sealed[SETTINGS_SEALED.len()..]).map_err(|_| NotesError::Corrupt)?.as_slice() {
+            [0] => Ok(false), [1] => Ok(true), _ => Err(NotesError::Corrupt),
+        }
+    }
+    fn write_settings(&self, enabled: bool) -> Result<()> {
+        match &self.device {
+            Some(device) => {
+                let mut record = SETTINGS_SEALED.to_vec();
+                record.extend_from_slice(&device.seal(&[u8::from(enabled)])?);
+                self.replace(SETTINGS, &record)
+            }
+            None => self.replace(SETTINGS, &[u8::from(enabled)]),
+        }
+    }
+    /// After a correct unlock: rewrite a legacy plain setting in the sealed form.
+    fn upgrade_settings(&self) -> Result<()> {
+        if self.device.is_none() || !self.directory.contains(ObjectId::from_bytes(SETTINGS)).map_err(io)? { return Ok(()); }
+        match self.read(SETTINGS)?.as_slice() { [0] => self.write_settings(false), [1] => self.write_settings(true), _ => Ok(()) }
     }
     pub fn set_auto_wipe(&self, session: &NotesSession, enabled: bool) -> Result<()> {
         self.check(session)?;
-        self.replace(SETTINGS, &[u8::from(enabled)])
+        self.write_settings(enabled)
     }
 
     fn session(&self, key: SecretKey) -> Result<NotesSession> {
@@ -638,7 +676,11 @@ impl NotesStore {
         let duress = self.is_duress(password)?;
         if !self.directory.contains(ObjectId::from_bytes(DURESS)).map_err(io)? && real.is_ok() { self.write_duress(None)?; }
         match real {
-            Ok(key) => { if attempts.total != 0 || attempts.delay_level != 0 { self.store_attempts(Attempts::default())?; } Ok(Unlocked::Key(key)) }
+            Ok(key) => {
+                if attempts.total != 0 || attempts.delay_level != 0 { self.store_attempts(Attempts::default())?; }
+                let _ = self.upgrade_settings();
+                Ok(Unlocked::Key(key))
+            }
             Err(CryptoError::Authentication) if duress => Ok(Unlocked::Duress),
             Err(CryptoError::Authentication) => {
                 let delay_level = attempts.delay_level.saturating_add(1).min(6);
@@ -647,7 +689,7 @@ impl NotesStore {
                 // Persisted before reporting: a restart resets neither the delay nor the count.
                 self.store_attempts(Attempts { delay_level, next_ms: now_ms().saturating_add(delay), total })?;
                 // Damaged settings never consent to the wipe.
-                if total >= AUTO_WIPE_ATTEMPTS && self.auto_wipe_enabled().unwrap_or(false) {
+                if total >= AUTO_WIPE_ATTEMPTS && self.auto_wipe_armed().unwrap_or(false) {
                     return match self.clear(None) { Ok(_) => Err(NotesError::Wiped), Err(error) => Err(error) };
                 }
                 Err(NotesError::WrongPassword)
@@ -723,7 +765,8 @@ impl NotesStore {
         // record is rewritten, so the delay runs out instead of restarting on
         // every read (which locked the notes out for good; external audit).
         if data.len() != 16 {
-            let reset = Attempts { delay_level: 6, next_ms: now_ms().saturating_add(30_000), total: AUTO_WIPE_ATTEMPTS - 1 };
+            // Audit A36: damage is never a step towards the wipe; only the delay applies.
+            let reset = Attempts { delay_level: 6, next_ms: now_ms().saturating_add(30_000), total: 0 };
             self.store_attempts(reset)?;
             return Ok(reset);
         }
