@@ -595,6 +595,33 @@ impl ParanoicVault {
         }
     }
     /// Hash of the header stored at `path` (relative to the root), None if absent.
+    /// Audit A26: the newest journaled job that wrote or deleted each pending path decides
+    /// whether its publication happened. Paths without a job in the journal stay Unknown.
+    fn receipts(&self, core: &Core, manifest: &Manifest) -> Result<std::collections::HashMap<String, man::Receipt>> {
+        let wanted: std::collections::HashMap<String, String> = manifest.pending_paths().into_iter()
+            .filter_map(|path| child(&self.root, &path).ok().map(|l| (l.path.as_str().to_owned(), path))).collect();
+        let mut found = std::collections::HashMap::new();
+        if wanted.is_empty() { return Ok(found); }
+        let mut after = 0;
+        for _ in 0..1000 {
+            let page = core.jobs(after, None, 1000)?;
+            for job in &page.jobs {
+                for location in job.operation.locations() {
+                    if location.storage != self.root.storage { continue; }
+                    let Some(path) = wanted.get(location.path.as_str()) else { continue };
+                    let receipt = match job.state {
+                        paranoic_core::JobState::Succeeded => man::Receipt::Published,
+                        paranoic_core::JobState::Failed | paranoic_core::JobState::Cancelled => man::Receipt::NotPublished,
+                        _ => man::Receipt::InFlight,
+                    };
+                    // Pages run oldest first: a later job overrides an earlier one.
+                    found.insert(path.clone(), receipt);
+                }
+            }
+            match page.next_cursor { Some(next) if next > after => after = next, _ => break }
+        }
+        Ok(found)
+    }
     fn observe(&self, core: &Core, path: &str) -> paranoic_crypto::Result<Option<HeaderHash>> {
         let location = child(&self.root, path).map_err(|_| CryptoError::InvalidInput)?;
         match read_header(core, &location) {
@@ -652,7 +679,9 @@ impl ParanoicVault {
         let expected_blake3 = *blake3::hash(&current).as_bytes();
         let mut manifest = self.open_manifest(&current)?.ok_or_else(|| CoreError::new(ErrorCode::Internal, "vault manifest missing"))?;
         if intents.is_empty() && !manifest.has_pending() { return Ok(None); }
-        manifest.settle(|path| self.observe(core, path)).map_err(crypto)?;
+        let receipts = self.receipts(core, &manifest)?;
+        manifest.settle_with(|path| self.observe(core, path),
+            |path| receipts.get(path).copied().unwrap_or(man::Receipt::Unknown)).map_err(crypto)?;
         for intent in intents {
             let locator = man::locator(&self.keys, &intent.folder_path, &intent.object).map_err(crypto)?;
             let path = intent.path();

@@ -125,14 +125,30 @@ impl Manifest {
     /// (`observe(path)` = hash of the object's header, or None if absent).
     /// A change that did not happen falls back to the old version; a deletion
     /// that did not happen keeps the object.
-    pub fn settle(&mut self, mut observe: impl FnMut(&str) -> Result<Option<HeaderHash>>) -> Result<()> {
+    /// Storage paths (relative to the vault root) of records still in flight.
+    pub fn pending_paths(&self) -> Vec<String> { self.pending.values().cloned().collect() }
+    pub fn settle(&mut self, observe: impl FnMut(&str) -> Result<Option<HeaderHash>>) -> Result<()> {
+        self.settle_with(observe, |_| Receipt::Unknown)
+    }
+    /// As `settle`, with what Core's journal knows about the publication at each path (audit A26):
+    /// a version the journal shows as published is never replaced by an older copy found on disk.
+    pub fn settle_with(&mut self, mut observe: impl FnMut(&str) -> Result<Option<HeaderHash>>,
+        mut receipt: impl FnMut(&str) -> Receipt) -> Result<()> {
         let pending: Vec<(Locator, String)> = self.pending.iter().map(|(l, p)| (*l, p.clone())).collect();
         for (locator, path) in pending {
             let Some(record) = self.records.get(&locator).copied() else { continue };
             let seen = observe(&path)?;
+            let known = receipt(&path);
+            // Still running: decide later.
+            if known == Receipt::InFlight { continue; }
             let next = match (record.state, seen) {
                 (RecordState::Changing, Some(h)) if h == record.current => Some(record.current),
+                // The old copy is found although the new one was published: a rollback on the
+                // medium. Keep the published version so readers refuse the old one.
+                (RecordState::Changing, Some(h)) if record.previous != ZERO && h == record.previous && known == Receipt::Published => Some(record.current),
                 (RecordState::Changing, Some(h)) if record.previous != ZERO && h == record.previous => Some(record.previous),
+                // A deletion the journal shows as done, yet the object is back: do not resurrect it.
+                (RecordState::Deleting, Some(h)) if h == record.current && known == Receipt::Published => None,
                 (RecordState::Changing, None) if record.previous == ZERO => None,
                 (RecordState::Deleting, None) => None,
                 (RecordState::Deleting, Some(h)) if h == record.current => Some(record.current),
@@ -149,6 +165,10 @@ impl Manifest {
         Ok(())
     }
 }
+
+/// What Core's journal says about the publication behind a pending manifest record.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Receipt { Published, NotPublished, InFlight, Unknown }
 
 /// Keyed identity of an entry object: storage folder path + object name.
 pub fn locator(keys: &VaultKeys, folder_path: &str, object: &str) -> Result<Locator> {
@@ -292,6 +312,16 @@ mod tests {
         m.begin_change(a, hash(3), "d/aa/x/a.f").unwrap();
         m.settle(|_| Ok(Some(hash(2)))).unwrap();
         assert_eq!(m.record(&a).unwrap().current, hash(2));
+        // Audit A26: the journal says the new version was published, yet the old copy is on the
+        // medium: the old copy is not adopted; and a running publication keeps the record pending.
+        m.begin_change(a, hash(4), "d/aa/x/a.f").unwrap();
+        m.settle_with(|_| Ok(Some(hash(2))), |_| Receipt::InFlight).unwrap();
+        assert_eq!(m.check(&a, &hash(4)), Verdict::Accepted, "in-flight change settled too early");
+        m.settle_with(|_| Ok(Some(hash(2))), |_| Receipt::Published).unwrap();
+        assert_eq!(m.record(&a).unwrap().current, hash(4), "rolled-back copy adopted over a published version");
+        assert_eq!(m.check(&a, &hash(2)), Verdict::Mismatch);
+        m.begin_change(a, hash(2), "d/aa/x/a.f").unwrap();
+        m.settle_with(|_| Ok(Some(hash(2))), |_| Receipt::Published).unwrap();
         // New object never published: the record disappears.
         m.begin_change(b, hash(5), "d/aa/x/b.f").unwrap();
         m.settle(|p| Ok(if p.ends_with("b.f") { None } else { Some(hash(2)) })).unwrap();
