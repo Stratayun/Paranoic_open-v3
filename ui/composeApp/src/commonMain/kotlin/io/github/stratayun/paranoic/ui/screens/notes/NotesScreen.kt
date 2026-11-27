@@ -41,6 +41,9 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
     incoming: IncomingDocuments = NoIncomingDocuments,
     vaultMediaPlayer: @Composable (CoreGateway, Location, PreviewInfo, Modifier) -> Unit = { _, _, _, modifier -> FaultNotice(CoreFault.Unsupported, modifier) }) {
     val core = session.core
+    val picker = if (attachmentPicker === NoNotesAttachmentPicker)
+        remember(core, session.secretsEpoch) { CoreNotesAttachmentPicker(core) }
+    else attachmentPicker
     val scope = rememberCoroutineScope()
     var status by remember { mutableStateOf<NotesStatus?>(null) }
     var fault by remember { mutableStateOf<CoreFault?>(null) }
@@ -73,7 +76,7 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
     } }
     LaunchedEffect(fault) {
         if (fault == CoreFault.Wiped) {
-            tabs = emptyList(); dirty = false; notesLoaded = false; preview = null; attachmentPicker.clear()
+            tabs = emptyList(); dirty = false; notesLoaded = false; preview = null; picker.clear()
             diagnosticCleanupFailed = !onDiagnosticsCleared()
         }
     }
@@ -219,7 +222,7 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
                     secureImage = attachmentImage, mediaPlayer = vaultMediaPlayer, onBusy = { value ->
                     personalBusy = value; exitGuard?.busy = notesBusy || value
                 }, onLock = {
-                    preview = null; attachmentPicker.clear(); biometric.cancel()
+                    preview = null; picker.clear(); biometric.cancel()
                     tabs = emptyList(); dirty = false; notesLoaded = false
                     session.pause(); session.resume()
                 })
@@ -228,7 +231,7 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
                     CircularProgressIndicator()
                     TextButton(enabled = !busy, onClick = { act { loadNotes() } }) { Text(tr("Загрузить заметки", "Load notes")) }
                 } else Notebook(tabs, dirty, busy, writeBlocked = saveUncertain || session.protectedWrite.phase != ProtectedWritePhase.Ready,
-                    pickerAvailable = attachmentPicker.available && !attachmentPicker.picking,
+                    pickerAvailable = picker.available && !picker.picking,
                     onChange = { if (!busy && !saveUncertain && session.protectedWrite.phase == ProtectedWritePhase.Ready) {
                         tabs = it; dirty = true; exitGuard?.dirty = true
                     } },
@@ -236,11 +239,11 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
                         act { persistNotes() }
                     },
                     onLock = {
-                        preview = null; attachmentPicker.clear(); biometric.cancel()
+                        preview = null; picker.clear(); biometric.cancel()
                         tabs = emptyList(); dirty = false; notesLoaded = false
                         session.pause(); session.resume()
                     },
-                    onPick = { noteId -> act { if (persistNotes()) attachmentPicker.pick(noteId) } },
+                    onPick = { noteId -> act { if (persistNotes()) picker.pick(noteId) } },
                     onPreview = { preview = it },
                     onRemoveAttachment = { noteId, attachmentId ->
                         act {
@@ -251,17 +254,18 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
                             persistNotes()
                         }
                     })
-                attachmentPicker.fault?.let { pickerFault ->
+                if (notesLoaded) (picker as? CoreNotesAttachmentPicker)?.Dialog(session.files.spaces)
+                picker.fault?.let { pickerFault ->
                     FaultNotice(pickerFault, message = if (pickerFault == CoreFault.Limit) attachmentLimitText() else pickerFault.label())
-                    TextButton(onClick = attachmentPicker::clear) { Text(tr("Закрыть сообщение", "Dismiss")) }
+                    TextButton(onClick = picker::clear) { Text(tr("Закрыть сообщение", "Dismiss")) }
                 }
-                val selected = attachmentPicker.pending
+                val selected = picker.pending
                 if (selected != null && notesLoaded) {
                     val target = tabs.flatMap { it.notes }.firstOrNull { it.id == selected.noteId }
                     if (target == null) {
                         // Applies equally to deleted notes and a new empty notebook.
                         // Never display a capability from a previous secret session.
-                        LaunchedEffect(selected) { attachmentPicker.clear() }
+                        LaunchedEffect(selected) { picker.clear() }
                     } else {
                     Text(tr("Выбран файл: ", "Selected file: ") + displayName(selected.name))
                     Text(tr("Для заметки: ", "For note: ") + displayName(target.title.ifBlank { tr("Без заголовка", "Untitled") }))
@@ -284,14 +288,14 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
                                                     if (note.id == selected.noteId) note.copy(attachments = note.attachments + added.value, modifiedMs = nowMs()) else note
                                                 }) }
                                                 dirty = true
-                                                attachmentPicker.clear()
+                                                picker.clear()
                                                 persistNotes()
                                             }
                                         }
                                     } finally { read.value.fill(0) }
                                 }
                             } }) { Text(tr("Добавить в заметку", "Add to note")) }
-                        TextButton(enabled = !busy, onClick = attachmentPicker::clear) { Text(tr("Отмена", "Cancel")) }
+                        TextButton(enabled = !busy, onClick = picker::clear) { Text(tr("Отмена", "Cancel")) }
                     }
                 }
                 }
@@ -350,7 +354,7 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
                             // A removal failure can follow successful key destruction.
                             // Drop the old model on every outcome; never repeat Clear.
                             tabs = emptyList(); dirty = false; notesLoaded = false; preview = null
-                            personalFiles = false; attachmentPicker.clear()
+                            personalFiles = false; picker.clear()
                             when (r) {
                                 is CoreResult.Value -> Unit
                                 is CoreResult.Failure -> fault = r.fault

@@ -10,7 +10,7 @@ use std::io::{Read, Write};
 
 /// A document handed to the app from outside (Android "Share" into Paranoic):
 /// read once, front to back. `read(max)`: up to `max` bytes; empty = end.
-/// Status as for AndroidDocuments (0 ok, 1 permission, 2 unsupported, 3 IO).
+/// Status: 0 ok, 1 permission, 2 unsupported, 3 IO.
 #[uniffi::export(with_foreign)]
 pub trait IncomingStream: Send + Sync {
     fn read(&self, max: u32) -> HostBytes;

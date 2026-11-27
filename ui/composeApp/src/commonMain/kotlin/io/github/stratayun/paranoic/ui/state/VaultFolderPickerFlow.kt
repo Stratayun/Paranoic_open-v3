@@ -3,7 +3,7 @@ package io.github.stratayun.paranoic.ui.state
 import io.github.stratayun.paranoic.bridge.CoreFault
 import io.github.stratayun.paranoic.bridge.VaultKind
 
-/** Explicit OS-picker handoff only. In memory, never saveable; contains no credentials.
+/** Explicit location-picker handoff only. In memory, never saveable; contains no credentials.
  * Ordinary backgrounding still discards the vault screen and its password dialogs. */
 data class VaultFolderRequest(
     val creating: Boolean,
@@ -16,7 +16,7 @@ data class VaultFolderRequest(
 
 data class VaultFolderReturn(val request: VaultFolderRequest, val fault: CoreFault? = null)
 
-/** One OS selection/attachment at a time. A completed or stale reply cannot replace
+/** One location selection/attachment at a time. A completed or stale reply cannot replace
  * a later request, even if both requests have equal contents. UI thread only. */
 class VaultFolderPickerFlow {
     var pending: VaultFolderRequest? = null

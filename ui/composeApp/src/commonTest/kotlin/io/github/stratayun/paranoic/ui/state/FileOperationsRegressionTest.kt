@@ -67,22 +67,6 @@ class FileOperationsRegressionTest {
         session.pause()
     }
 
-    @Test fun androidRestrictionsStopFolderDeletionRenameAndSameGrantMoveButAllowCrossSpaceFileMove() = runTest {
-        val android = sourceSpace.copy(androidTree = true)
-        val core = Core().apply { registered = listOf(android, targetSpace); entries = listOf(file, folder) }
-        val session = AppSession(core, backgroundScope)
-        session.loadSpaces(); session.openSpace(android); runCurrent()
-        session.delete(folder, recursive = true)
-        session.rename(file, "new.txt")
-        session.transfer(folder, targetRoot, "folder", TransferMode.Move, NameConflict.Fail)
-        session.transfer(file, Location("source", "sub"), file.name, TransferMode.Move, NameConflict.Fail)
-        runCurrent()
-        assertTrue(core.deletions.isEmpty()); assertTrue(core.renames.isEmpty()); assertTrue(core.transfers.isEmpty())
-        session.transfer(file, targetRoot, file.name, TransferMode.Move, NameConflict.Fail); runCurrent()
-        assertEquals(TransferMode.Move, core.transfers.single().mode)
-        session.pause()
-    }
-
     @Test fun readonlySourceCanBeCopiedButCannotBeRenamedMovedOrDeleted() = runTest {
         val readonly = sourceSpace.copy(writable = false)
         val core = Core().apply { registered = listOf(readonly, targetSpace); entries = listOf(file) }

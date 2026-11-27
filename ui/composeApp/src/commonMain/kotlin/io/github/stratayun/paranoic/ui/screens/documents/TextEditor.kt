@@ -29,7 +29,7 @@ private const val MAX_EDITOR_CHARS = 65_536
 @Composable
 fun TextEditor(core: CoreGateway, file: FileItem, parent: Location?, guard: DocumentExitGuard, onClose: () -> Unit) {
     key(core, file.location) {
-        var paged by remember { mutableStateOf(!file.sizeKnown || file.bytes > 262_144uL) }
+        var paged by remember { mutableStateOf(file.bytes > 262_144uL) }
         if (paged) PagedTextViewer(core, file, onClose)
         else TextEditorContent(core, file, parent, guard, onClose, onReadPaged = { paged = true })
     }

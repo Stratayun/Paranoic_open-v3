@@ -1,9 +1,5 @@
 //! Single UniFFI boundary for Android and Windows. No old engine or JNI ABI.
 mod types;
-mod android;
-mod android_delete;
-pub use android_delete::saf_delete_at;
-mod android_mapped;
 mod features;
 mod attention;
 mod crypto_files;
@@ -52,8 +48,6 @@ mod cryptomator_tests;
 mod archives_tests;
 #[cfg(test)]
 mod documents_tests;
-#[cfg(test)]
-mod saf_vault_tests;
 pub use types::*;
 use std::{io::Read, path::{Path, PathBuf}, sync::{Arc, Condvar, Mutex}, time::{Duration, Instant}};
 use paranoic_core::{Core, CoreConfig, EntryKind, JobId, Location, Metadata, Operation, ReadHandle, ResourcePath, Storage, StorageId, StorageRegistry};
@@ -102,50 +96,10 @@ fn thumbnail_cache(state_root: &Path) -> Option<paranoic_documents::ThumbnailCac
     paranoic_documents::ThumbnailCache::ephemeral(private).ok()
 }
 
-/// Callbacks are synchronous OS IO, invoked off the Kotlin UI thread. Statuses:
-/// 0=ok, 1=permission, 2=unsupported, 3=IO, 4=limit, 5=not found. No exceptions
-/// or paths in logs. Paths are '/'-separated display names below the tree root.
-#[uniffi::export(with_foreign)]
-pub trait AndroidDocuments: Send + Sync {
-    fn metadata(&self, tree: String, path: String) -> HostInfo;
-    fn list(&self, tree: String, path: String, limit: u32) -> HostListing;
-    fn open(&self, tree: String, path: String) -> HostOpened;
-    fn read(&self, handle: u64, offset: u64, size: u32) -> HostBytes;
-    fn file_metadata(&self, handle: u64) -> HostInfo;
-    fn close(&self, handle: u64);
-    /// Whether the persisted grant includes write permission.
-    fn writable(&self, tree: String) -> bool;
-    /// DocumentsContract.createDocument; returns the name the provider actually used.
-    fn create(&self, tree: String, parent: String, name: String, directory: bool) -> HostCreated;
-    /// Open the document (by URI from create/resolve) for writing ("w").
-    fn open_write(&self, tree: String, document: String) -> HostOpened;
-    fn write(&self, handle: u64, data: Vec<u8>) -> u32;
-    /// Flush, fsync where possible and close a write handle.
-    fn finish_write(&self, handle: u64) -> u32;
-    /// DocumentsContract.renameDocument of this document; returns the actual
-    /// name and the (possibly new) document URI.
-    fn rename(&self, tree: String, document: String, name: String) -> HostCreated;
-    /// True only when this grant has a kernel-backed, nonrecursive deletion
-    /// path. A generic provider's deleteDocument is NOT a safe implementation.
-    fn deletion_supported(&self, tree: String) -> bool { let _ = tree; false }
-    /// Atomic unlink (directory=false) or rmdir (directory=true), through a
-    /// pinned parent. A changed type/nonempty directory must fail unchanged.
-    /// Never recurse or fall back to DocumentsContract.deleteDocument.
-    fn delete(&self, tree: String, document: String, directory: bool) -> u32;
-    /// Resolve a path to its document (verified parent chain).
-    fn resolve(&self, tree: String, path: String) -> HostCreated;
-    /// E2.8: DocumentsContract.moveDocument of `document` from the folder
-    /// `source_parent` into the folder `target_parent` (all document URIs from
-    /// resolve/create). Keeps the name; must NOT replace an existing document
-    /// of that name (the platform storage provider refuses: error, nothing
-    /// moved). Returns the moved document's name and URI. Error 2 if the
-    /// provider cannot move.
-    fn move_document(&self, tree: String, document: String, source_parent: String, target_parent: String) -> HostCreated;
-}
-
 /// Host key bound to the device (Android Keystore AES-GCM, Windows DPAPI)
 /// used to seal Core journal records. `available` false = unsealed journal.
-/// Status as for AndroidDocuments; output must be authenticated ciphertext.
+/// Statuses: 0=ok, 1=permission, 2=unsupported, 3=IO, 4=limit, 5=not found.
+/// Output must be authenticated ciphertext.
 #[uniffi::export(with_foreign)]
 pub trait RecordSealer: Send + Sync {
     fn available(&self) -> bool;
@@ -156,14 +110,24 @@ pub trait RecordSealer: Send + Sync {
     fn established(&self) -> bool;
 }
 struct JournalKey(Arc<dyn RecordSealer>);
+fn sealed_bytes(bytes: HostBytes) -> paranoic_core::Result<Vec<u8>> {
+    use paranoic_core::{CoreError, ErrorCode};
+    let code = match bytes.error {
+        0 => return Ok(bytes.data),
+        1 => ErrorCode::PermissionDenied,
+        2 => ErrorCode::Unsupported,
+        4 => ErrorCode::LimitExceeded,
+        5 => ErrorCode::NotFound,
+        _ => ErrorCode::Io,
+    };
+    Err(CoreError::new(code, "journal record sealer failed"))
+}
 impl paranoic_core::JournalSealer for JournalKey {
     fn seal(&self, plaintext: &[u8]) -> paranoic_core::Result<Vec<u8>> {
-        let sealed = self.0.seal(plaintext.to_vec());
-        android::status(sealed.error)?; Ok(sealed.data)
+        sealed_bytes(self.0.seal(plaintext.to_vec()))
     }
     fn open(&self, sealed: &[u8]) -> paranoic_core::Result<Vec<u8>> {
-        let plain = self.0.open(sealed.to_vec());
-        android::status(plain.error)?; Ok(plain.data)
+        sealed_bytes(self.0.open(sealed.to_vec()))
     }
     fn established(&self) -> bool { self.0.established() }
 }
@@ -182,7 +146,6 @@ pub struct NativeRuntime {
     /// confirmed (U-73: size and time alone do not identify the version).
     pdf_digest: Mutex<Option<([u8; 32], Instant)>>,
     document_workers: Mutex<Option<Arc<dyn paranoic_documents::worker_process::WorkerHost>>>,
-    host: Arc<dyn AndroidDocuments>,
     grants: Mutex<Vec<NativeGrant>>,
     spaces: Mutex<Vec<NativeSpace>>,
     /// Host record key (journal, sealed cloud credentials).
@@ -215,33 +178,20 @@ fn root_path(value: String) -> Result<PathBuf> {
     Ok(path)
 }
 fn grant_id(id: &str) -> Result<StorageId> { Ok(StorageId(Uuid::parse_str(id).map_err(|_| BridgeError::Invalid)?)) }
-fn provider(grant: &NativeGrant, host: Arc<dyn AndroidDocuments>, state: &Path, workspace: &Path) -> Result<Arc<dyn Storage>> {
+fn provider(grant: &NativeGrant, state: &Path, workspace: &Path) -> Result<Arc<dyn Storage>> {
     let id = grant_id(&grant.id)?;
-    if grant.android_tree {
-        if !cfg!(target_os = "android") || !grant.reference.starts_with("content://") || grant.reference.len() > 8192 {
-            return Err(BridgeError::Invalid);
-        }
-        // Writes only where the provider's no-replace behaviour is known
-        // (AOSP ExternalStorageProvider picks a unique name instead of
-        // overwriting); every other provider is read-only.
-        let writable = host.writable(grant.reference.clone()) && android::trusted_writer(&grant.reference);
-        let provider = android::SafStorage { id, tree: grant.reference.clone(), host, writable };
-        provider.metadata(&ResourcePath::root())?;
-        Ok(Arc::new(provider))
-    } else {
-        let path = std::fs::canonicalize(&grant.reference).map_err(|_| BridgeError::Denied)?;
-        if path.starts_with(state) || state.starts_with(&path) || path.starts_with(workspace) || workspace.starts_with(&path) {
-            return Err(BridgeError::Denied);
-        }
-        // Writable: Linux stages in 0700 folders, Windows in owner-only ACL folders
-        // (register У-19). The OS still decides whether the user may write there.
-        // Android: a non-SAF grant is shared storage reached through "All
-        // files access" (FUSE, no renameat2 flags, no hard links).
-        if cfg!(target_os = "android") {
-            return Ok(Arc::new(LocalStorage::open_shared(id, path, Access::ReadWrite)?));
-        }
-        Ok(Arc::new(LocalStorage::open(id, path, Access::ReadWrite)?))
+    let path = Path::new(&grant.reference);
+    if !path.is_absolute() { return Err(BridgeError::Invalid); }
+    let path = std::fs::canonicalize(path).map_err(|_| BridgeError::Denied)?;
+    if path.starts_with(state) || state.starts_with(&path) || path.starts_with(workspace) || workspace.starts_with(&path) {
+        return Err(BridgeError::Denied);
     }
+    // Android shared storage uses the owner's direct "All files access" grant.
+    if cfg!(target_os = "android") {
+        return Ok(Arc::new(LocalStorage::open_shared(id, path, Access::ReadWrite)?));
+    }
+    // Linux stages in 0700 folders, Windows in owner-only ACL folders.
+    Ok(Arc::new(LocalStorage::open(id, path, Access::ReadWrite)?))
 }
 fn space(provider: &dyn Storage, label: String) -> NativeSpace {
     let id = provider.id().0.to_string();
@@ -252,7 +202,7 @@ fn space(provider: &dyn Storage, label: String) -> NativeSpace {
 impl NativeRuntime {
     #[uniffi::constructor]
     pub fn new(state_root: String, workspace_root: String, pdfium_library: String, pdf_worker: String,
-        saved_grants: Vec<NativeGrant>, documents: Arc<dyn AndroidDocuments>, sealer: Arc<dyn RecordSealer>) -> Result<Arc<Self>> {
+        saved_grants: Vec<NativeGrant>, sealer: Arc<dyn RecordSealer>) -> Result<Arc<Self>> {
         if saved_grants.len() > 128 { return Err(BridgeError::Limit); }
         let state_root = root_path(state_root)?;
         let workspace_root = root_path(workspace_root)?;
@@ -265,9 +215,8 @@ impl NativeRuntime {
         for grant in &saved_grants {
             // Cloud grants connect over the network: reconnect_cloud() after start.
             if features::is_cloud(grant) { continue; }
-            // Revoked grants are retained in the protected host store but not
-            // presented as available. Re-attachment uses the same stored UUID.
-            match provider(grant, Arc::clone(&documents), &state_root, &workspace_root) {
+            // Unavailable folders retain their UUID for re-attachment.
+            match provider(grant, &state_root, &workspace_root) {
                 Ok(p) => { spaces.push(space(p.as_ref(), label(grant))); registry.register(p)?; }
                 Err(BridgeError::Denied | BridgeError::Unavailable) => {},
                 Err(e) => return Err(e),
@@ -280,7 +229,7 @@ impl NativeRuntime {
         let thumbnails = thumbnail_cache(&state_root);
         Ok(Arc::new(Self { core, thumbnails, state_root, workspace_root, pdfium: PathBuf::from(pdfium_library),
             pdf_worker: PathBuf::from(pdf_worker), pdf: Mutex::new(None), pdf_digest: Mutex::new(None), document_workers: Mutex::new(None),
-            host: documents, grants: Mutex::new(saved_grants), spaces: Mutex::new(spaces), sealer, app,
+            grants: Mutex::new(saved_grants), spaces: Mutex::new(spaces), sealer, app,
             notes: Mutex::new(features::NotesSlot::default()), secrets_epoch: std::sync::atomic::AtomicU64::new(0),
             vaults: Mutex::new(Default::default()),
             cryptomator_vaults: Mutex::new(Default::default()), archive_work: archive_work::ArchiveWork::default(),
@@ -290,11 +239,11 @@ impl NativeRuntime {
     pub fn grants(&self) -> Result<Vec<NativeGrant>> { Ok(self.grants.lock().map_err(lock_error)?.clone()) }
     /// Diagnostics: does this place's filesystem honour RENAME_NOREPLACE?
     /// 0 supported, 1 rejected (fallback in use), 2 IGNORED (replaces!), 3 probe failed,
-    /// 4 not a local folder (SAF tree, cloud) or unknown place.
+    /// 4 cloud or unknown place.
     pub fn rename_probe(&self, storage_id: String) -> Result<u8> {
         let grant = self.grants.lock().map_err(lock_error)?.iter().find(|g| g.id == storage_id).cloned();
         let Some(grant) = grant else { return Ok(4) };
-        if grant.android_tree || features::is_cloud(&grant) { return Ok(4); }
+        if features::is_cloud(&grant) { return Ok(4); }
         #[cfg(any(target_os = "linux", target_os = "android"))]
         {
             use paranoic_local::NoReplaceProbe as P;
@@ -307,12 +256,12 @@ impl NativeRuntime {
     pub fn attach(&self, grant: NativeGrant) -> Result<NativeSpace> {
         let mut grants = self.grants.lock().map_err(lock_error)?;
         // An already connected folder is returned before the limit applies.
-        if let Some(existing) = grants.iter().find(|g| g.id == grant.id || (g.reference == grant.reference && g.android_tree == grant.android_tree)) {
+        if let Some(existing) = grants.iter().find(|g| g.id == grant.id || g.reference == grant.reference) {
             if let Some(space) = self.spaces.lock().map_err(lock_error)?.iter().find(|s| s.id == existing.id) { return Ok(space.clone()); }
             if existing.id != grant.id { return Err(BridgeError::Conflict); }
         }
         if grants.len() >= 128 && !grants.iter().any(|g| g.id == grant.id) { return Err(BridgeError::Limit); }
-        let p = provider(&grant, Arc::clone(&self.host), &self.state_root, &self.workspace_root)?;
+        let p = provider(&grant, &self.state_root, &self.workspace_root)?;
         let value = space(p.as_ref(), label(&grant));
         self.core.register_storage(p)?;
         grants.retain(|g| g.id != grant.id);
@@ -323,7 +272,7 @@ impl NativeRuntime {
     /// Disconnect a folder: Core refuses while a queued or running job uses
     /// it. The journal binding stays, so unresolved jobs resume only if the
     /// same folder is connected again under the same ID. Returns the removed
-    /// grant so the host can release its OS permission and update its store.
+    /// grant so the host can update its store.
     pub fn detach(&self, id: String) -> Result<NativeGrant> {
         let storage = grant_id(&id)?;
         // Audit A06: as for Core jobs, a place with trash work in progress is not withdrawn.
@@ -355,14 +304,12 @@ impl NativeRuntime {
     pub fn list(&self, location: NativeLocation) -> Result<NativeListing> {
         let listing = self.core.list_for_display(&location.core()?)?;
         let app = self.app.id();
-        let unknown: std::collections::HashSet<String> = listing.unknown_size.iter().map(|p| p.as_str().to_owned()).collect();
         let entries = listing.entries.into_iter().map(|e| {
             let name = e.location.path.parent_and_name()?.1.to_owned();
             // Service objects of the app's own folder: spools and the personal folder (plan 5.1).
             if e.location.storage == app && (features::is_spool(&name) || e.location.path.as_str() == features::SAFE_DIR) { return Ok(None); }
-            let size_known = !unknown.contains(e.location.path.as_str());
             Ok(Some(NativeEntry { location: e.location.into(), name, kind: types::kind(e.metadata.kind), bytes: e.metadata.bytes,
-                modified_ms: e.metadata.modified_unix_ms, size_known }))
+                modified_ms: e.metadata.modified_unix_ms }))
         }).collect::<Result<Vec<_>>>()?.into_iter().flatten().collect();
         Ok(NativeListing { entries, skipped: listing.skipped })
     }
@@ -424,8 +371,7 @@ impl NativeRuntime {
     }
     /// Delete a file, an empty folder, or (`recursive`) a folder with content.
     /// Cloud storages move to the provider trash; local storages delete. The
-    /// root of a space is never deleted. Storages without delete capability
-    /// (e.g. folders of an Android document tree) refuse.
+    /// root of a space is never deleted. Deletion requires the storage capability.
     pub fn delete(&self, location: NativeLocation, recursive: bool, request_id: String) -> Result<NativeJob> {
         let target = location.core()?;
         if target.path.is_root() { return Err(BridgeError::Invalid); }
@@ -549,9 +495,7 @@ impl NativeRuntime {
     }
 }
 fn label(grant: &NativeGrant) -> String {
-    if grant.android_tree { "Android SAF".into() } else {
-        Path::new(&grant.reference).file_name().map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|| "Files".into())
-    }
+    Path::new(&grant.reference).file_name().map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|| "Files".into())
 }
 type ReaderState = Option<(Box<dyn ReadHandle>, u64)>;
 #[derive(uniffi::Object)]

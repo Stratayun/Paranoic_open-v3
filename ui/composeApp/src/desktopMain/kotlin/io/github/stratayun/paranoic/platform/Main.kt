@@ -82,7 +82,7 @@ private fun runApp() = application {
                 ?: ""
             Startup.Ready(NativeCoreGateway.open(root.resolve("state").toString(), root.resolve("files").toString(),
                 pdfium, pdfWorker,
-                NoAndroidDocuments, DesktopGrantStore(root), DesktopRecordSealer))
+                DesktopGrantStore(root), DesktopRecordSealer))
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) { Startup.Failed(startupFault(error)) }
         catch (error: LinkageError) { Startup.Failed(startupFault(error)) }

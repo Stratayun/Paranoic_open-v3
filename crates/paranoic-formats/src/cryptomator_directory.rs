@@ -37,7 +37,7 @@ impl CryptomatorReader {
         let vault_id = self.session.id()?;
         let caps = self.storage.capabilities();
         if !caps.write { return Err(CryptoError::Permissions); }
-        // SAF: no directory sync; accepted by the owner (E2.8, directory_sync_waived).
+        // Windows permits this operation without a directory sync.
         if !caps.atomic_move_no_replace || !(caps.durable_directory_sync || caps.directory_sync_waived) { return Err(CryptoError::Unsupported); }
         let binding = self.storage.binding_key().map_err(storage_error)?;
         let (parent_id, parent_path) = self.resolve_directory(parent, &mut check)?;

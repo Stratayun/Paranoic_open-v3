@@ -135,7 +135,7 @@ impl TextPager {
     pub fn source(&self) -> &Metadata { &self.source }
     /// Rows `first .. first + count` (fewer at the end), without line breaks.
     /// `handle` must be a fresh open of the same file; a different version
-    /// is refused. Needs random access (SAF documents and local files have it).
+    /// is refused. Needs random access.
     pub fn read(&self, mut handle: Box<dyn ReadHandle>, first: u64, count: usize,
         mut check: impl FnMut() -> Result<()>) -> Result<Vec<Zeroizing<String>>> {
         if count > self.limits.rows_per_read { return Err(CoreError::new(ErrorCode::LimitExceeded, "too many rows at once")); }

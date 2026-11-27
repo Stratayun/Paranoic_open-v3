@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       api:
-        description: "Android API (26: minimum; 35: includes SAF fixture tests)"
+        description: "Android API (26: minimum; 35: recent device profile)"
         type: choice
         options: ["26", "35"]
         default: "35"
@@ -56,7 +56,7 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
           rm -rf target/x86_64-linux-android/release/build target/x86_64-linux-android/release/deps target/release
           df -h /
-      - name: Run Keystore, SAF and Compose tests on a fresh emulator
+      - name: Run Keystore and Compose tests on a fresh emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ inputs.api }}

@@ -21,7 +21,7 @@ data class DuplicateGroup(val hash: String, val bytes: ULong, val items: List<Fi
 enum class JunkKind { EmptyFiles, EmptyFolders, Temporary, Installers, Thumbnails }
 
 data class JunkGroup(val kind: JunkKind, val items: List<FileItem>) {
-    val bytes: ULong get() = items.fold(0uL) { sum, it -> sum + if (it.sizeKnown) it.bytes else 0uL }
+    val bytes: ULong get() = items.fold(0uL) { sum, it -> sum + it.bytes }
 }
 
 data class CleanupState(
@@ -82,13 +82,13 @@ class CleanupScanner(private val core: CoreGateway, private val scopeProvider: (
                                 }
                                 EntryKind.File -> {
                                     files++
-                                    if (item.sizeKnown && item.bytes >= LARGE_BYTES) large += item
+                                    if (item.bytes >= LARGE_BYTES) large += item
                                     if (inDownloads && (item.modifiedMs ?: ULong.MAX_VALUE) < oldBefore) oldDownloads += item
                                     when {
-                                        item.sizeKnown && item.bytes == 0uL -> emptyFiles += item
+                                        item.bytes == 0uL -> emptyFiles += item
                                         TEMP.any { lower.endsWith(it) } -> temporary += item
                                         inDownloads && lower.endsWith(".apk") -> installers += item
-                                        item.sizeKnown && item.bytes >= MIN_DUPLICATE -> bySize.getOrPut(item.bytes) { mutableListOf() } += item
+                                        item.bytes >= MIN_DUPLICATE -> bySize.getOrPut(item.bytes) { mutableListOf() } += item
                                     }
                                 }
                                 else -> Unit

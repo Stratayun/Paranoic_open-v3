@@ -40,7 +40,7 @@ fun CleanupScreen(session: AppSession, space: Space, onClose: () -> Unit) {
         state?.junk.orEmpty().filter { it.kind in junkPicked }.forEach { addAll(it.items) }
         (state?.large.orEmpty() + state?.oldDownloads.orEmpty()).filter { key(it) in reviewPicked }.forEach(::add)
     }.distinctBy(::key)
-    val selectedBytes = selectedItems.fold(0uL) { sum, it -> sum + if (it.kind == EntryKind.File && it.sizeKnown) it.bytes else 0uL }
+    val selectedBytes = selectedItems.fold(0uL) { sum, it -> sum + if (it.kind == EntryKind.File) it.bytes else 0uL }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize(), color = scheme.surface) {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -136,7 +136,7 @@ private fun ReviewRow(item: FileItem, on: Boolean, toggle: () -> Unit) {
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
             Text(displayName(item.name), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(listOfNotNull(if (item.sizeKnown) humanSize(item.bytes) else null, fileModifiedLabel(item.modifiedMs)).joinToString(" · ") +
+            Text(listOfNotNull(humanSize(item.bytes), fileModifiedLabel(item.modifiedMs)).joinToString(" · ") +
                 "  /" + displayName(item.location.path.substringBeforeLast('/', "")),
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }

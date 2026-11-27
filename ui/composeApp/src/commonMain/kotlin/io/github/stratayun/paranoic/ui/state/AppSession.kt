@@ -153,7 +153,7 @@ class AppSession(val core: CoreGateway, private val scope: CoroutineScope, priva
     var trashFilled by mutableStateOf<Set<String>>(emptySet()); private set
     private fun refreshTrashSpaces(spaces: List<Space>) {
         workScope.launch {
-            val supported = spaces.filter { it.writable && !it.cloud && !it.androidTree }.filter { core.trashSupported(it) }
+            val supported = spaces.filter { it.writable && !it.cloud }.filter { core.trashSupported(it) }
             trashSpaces = supported.map { it.root.storageId }.toSet()
             trashFilled = supported.filter { (core.trashList(it) as? CoreResult.Value)?.value?.isNotEmpty() == true }
                 .map { it.root.storageId }.toSet()

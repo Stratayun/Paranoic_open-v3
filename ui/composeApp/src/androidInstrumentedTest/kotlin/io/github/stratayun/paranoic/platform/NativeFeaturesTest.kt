@@ -41,7 +41,7 @@ class NativeFeaturesTest {
         try {
             val workspace = File(root, "files")
             val core = NativeCoreGateway.open(File(root, "state").absolutePath, workspace.absolutePath,
-                "", "", NoAndroidDocuments, store, sealer, notesKey = key)
+                "", "", store, sealer, notesKey = key)
             gateway = core
             val password = "correct horse battery staple 42"
             core.notesCreate(password).value()

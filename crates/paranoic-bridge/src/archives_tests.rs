@@ -3,7 +3,7 @@
 use crate::*;
 use std::{fs, path::PathBuf};
 
-use crate::test_support::{created, info, NoDocs, NoSealer};
+use crate::test_support::NoSealer;
 /// The archive source I/O pool is process-wide (2 slots, bounded admission
 /// wait): archive tests must not compete for it in parallel.
 static SERIAL: Mutex<()> = Mutex::new(());
@@ -48,7 +48,7 @@ fn spool_names(ws: &std::path::Path) -> std::collections::BTreeSet<String> {
     let ws = fx.0.join("workspace");
     fs::create_dir_all(&ws).unwrap();
     let open = || NativeRuntime::new(fx.0.join("state").to_str().unwrap().into(), ws.to_str().unwrap().into(),
-        String::new(), String::new(), vec![], Arc::new(NoDocs), Arc::new(NoSealer)).unwrap();
+        String::new(), String::new(), vec![], Arc::new(NoSealer)).unwrap();
     let rt = open();
     let mut held = crate::spool::PublicationSpool::new(&rt).unwrap();
     let path = held.path().clone();
@@ -77,7 +77,7 @@ fn spool_names(ws: &std::path::Path) -> std::collections::BTreeSet<String> {
     fs::write(ws.join("src/c.txt"), "top level").unwrap();
     let worker = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/paranoic-pdf-worker");
     let rt = NativeRuntime::new(fx.0.join("state").to_str().unwrap().into(), ws.to_str().unwrap().into(),
-        String::new(), worker.to_str().unwrap().into(), vec![], Arc::new(NoDocs), Arc::new(NoSealer)).unwrap();
+        String::new(), worker.to_str().unwrap().into(), vec![], Arc::new(NoSealer)).unwrap();
     let app = rt.spaces().unwrap()[0].root.clone();
     let at = |p: &str| NativeLocation { storage_id: app.storage_id.clone(), path: p.into() };
     let sources = || vec![at("src/docs"), at("src/c.txt")];
@@ -101,7 +101,7 @@ fn spool_names(ws: &std::path::Path) -> std::collections::BTreeSet<String> {
         Err(BridgeError::Conflict)), "merged into an existing folder");
     // Into another storage (a connected folder): Core checks the manifest during the move.
     fs::create_dir_all(fx.0.join("external")).unwrap();
-    let ext = rt.attach(NativeGrant { id: Uuid::new_v4().to_string(), reference: fx.0.join("external").to_str().unwrap().into(), android_tree: false }).unwrap();
+    let ext = rt.attach(NativeGrant { id: Uuid::new_v4().to_string(), reference: fx.0.join("external").to_str().unwrap().into() }).unwrap();
     rt.archive_extract(at("pack.zip"), ARCHIVE_ZIP, Some("zip password".into()), ext.root.clone(), "fromzip".into()).unwrap();
     assert_eq!(tree(&fx.0.join("external/fromzip")), expected);
 
@@ -121,80 +121,11 @@ fn spool_names(ws: &std::path::Path) -> std::collections::BTreeSet<String> {
     fs::write(ws.join(".pnc-spool-c0ffee00c0ffee00c0ffee00c0ffee00/inner/secret.txt"), "plaintext").unwrap();
     rt.shutdown().unwrap(); drop(rt);
     let _rt = NativeRuntime::new(fx.0.join("state").to_str().unwrap().into(), ws.to_str().unwrap().into(),
-        String::new(), String::new(), vec![], Arc::new(NoDocs), Arc::new(NoSealer)).unwrap();
+        String::new(), String::new(), vec![], Arc::new(NoSealer)).unwrap();
     assert!(!ws.join(".pnc-spool-c0ffee00c0ffee00c0ffee00c0ffee00").exists(), "crashed spool folder kept");
 }
 
 
-/// A pipe-backed provider stream (some cloud documents): bytes only in order;
-/// any other offset is refused like the Android host does (code 2).
-struct PipeDocs { data: Vec<u8>, position: Mutex<u64>, opened: Mutex<u32> }
-impl PipeDocs {
-    fn file(&self) -> HostInfo { HostInfo { error: 0, kind: 1, bytes: self.data.len() as u64, modified_ms: Some(1000) } }
-}
-impl AndroidDocuments for PipeDocs {
-    fn metadata(&self, _: String, _: String) -> HostInfo { self.file() }
-    fn list(&self, _: String, _: String, _: u32) -> HostListing { HostListing { error: 2, entries: vec![] } }
-    fn open(&self, _: String, _: String) -> HostOpened {
-        *self.position.lock().unwrap() = 0; *self.opened.lock().unwrap() += 1;
-        HostOpened { error: 0, id: 1, info: self.file() }
-    }
-    fn read(&self, _: u64, offset: u64, size: u32) -> HostBytes {
-        let mut position = self.position.lock().unwrap();
-        if offset != *position { return HostBytes { error: 2, data: vec![] }; }
-        let start = offset as usize;
-        let end = (start + size as usize).min(self.data.len());
-        *position = end as u64;
-        HostBytes { error: 0, data: self.data[start..end].to_vec() }
-    }
-    fn file_metadata(&self, _: u64) -> HostInfo { self.file() }
-    fn close(&self, _: u64) {}
-    fn writable(&self, _: String) -> bool { false }
-    fn create(&self, _: String, _: String, _: String, _: bool) -> HostCreated { created() }
-    fn open_write(&self, _: String, _: String) -> HostOpened { HostOpened { error: 2, id: 0, info: info() } }
-    fn write(&self, _: u64, _: Vec<u8>) -> u32 { 2 }
-    fn finish_write(&self, _: u64) -> u32 { 2 }
-    fn rename(&self, _: String, _: String, _: String) -> HostCreated { created() }
-    fn delete(&self, _: String, _: String, _: bool) -> u32 { 2 }
-    fn resolve(&self, _: String, _: String) -> HostCreated { created() }
-    fn move_document(&self, _: String, _: String, _: String, _: String) -> HostCreated { HostCreated { error: 2, name: String::new(), document: String::new() } }
-}
-
-/// У-61: an archive from a stream without random access is read through a
-/// private copy, and the copy is removed afterwards.
-#[test] fn archive_from_a_sequential_provider_stream_lists_and_extracts() {
-    let _serial = serial();
-    let fx = Fixture(std::env::temp_dir().join(format!("paranoic-archive-pipe-{}", Uuid::new_v4())));
-    for d in ["state", "workspace/src"] { fs::create_dir_all(fx.0.join(d)).unwrap(); }
-    let ws = fx.0.join("workspace");
-    fs::write(ws.join("src/a.txt"), "из потока").unwrap();
-    fs::write(ws.join("src/b.bin"), (0..400_000u32).flat_map(|i| i.to_le_bytes()).collect::<Vec<_>>()).unwrap();
-    let rt = NativeRuntime::new(fx.0.join("state").to_str().unwrap().into(), ws.to_str().unwrap().into(),
-        String::new(), String::new(), vec![], Arc::new(NoDocs), Arc::new(NoSealer)).unwrap();
-    let app = rt.spaces().unwrap()[0].root.clone();
-    let at = |p: &str| NativeLocation { storage_id: app.storage_id.clone(), path: p.into() };
-    rt.archive_create(vec![at("src")], ARCHIVE_ZIP, Some("stream password".into()), at(""), "pack.zip".into()).unwrap();
-    let docs = Arc::new(PipeDocs { data: fs::read(ws.join("pack.zip")).unwrap(), position: Mutex::new(0), opened: Mutex::new(0) });
-    let saf = android::SafStorage { id: StorageId(Uuid::new_v4()), tree: "content://fixture.invalid/tree/pipe".into(),
-        host: docs.clone(), writable: false };
-    let remote = NativeLocation { storage_id: saf.id.0.to_string(), path: "pack.zip".into() };
-    rt.core.register_storage(Arc::new(saf)).unwrap();
-
-    let mut listed: Vec<String> = rt.archive_list(remote.clone(), ARCHIVE_ZIP, None).unwrap().into_iter().map(|e| e.path).collect();
-    listed.sort();
-    assert_eq!(listed, ["src", "src/a.txt", "src/b.bin"]);
-    assert_eq!(*docs.opened.lock().unwrap(), 2, "probe, then one sequential copy");
-    assert!(no_spool(&ws), "private copy of the archive left behind after listing");
-    rt.archive_extract(remote.clone(), ARCHIVE_ZIP, Some("stream password".into()), at(""), "out".into()).unwrap();
-    assert_eq!(tree(&ws.join("out/src")), tree(&ws.join("src")));
-    assert!(no_spool(&ws), "private copy of the archive left behind after extraction");
-    // A wrong password still fails and still removes the copy.
-    assert!(rt.archive_extract(remote, ARCHIVE_ZIP, Some("wrong".into()), at(""), "bad".into()).is_err());
-    assert!(no_spool(&ws) && !ws.join("bad").exists());
-}
-
-/// E2.1 at the bridge: encrypted entries are marked; a missing password and a
-/// wrong one reach the host as PasswordRequired / WrongPassword.
 #[test] fn archive_password_outcomes_reach_the_host() {
     let _serial = serial();
     let fx = Fixture(std::env::temp_dir().join(format!("paranoic-archive-pw-{}", Uuid::new_v4())));
@@ -202,7 +133,7 @@ impl AndroidDocuments for PipeDocs {
     let ws = fx.0.join("workspace");
     fs::write(ws.join("src/a.txt"), "secret").unwrap();
     let rt = NativeRuntime::new(fx.0.join("state").to_str().unwrap().into(), ws.to_str().unwrap().into(),
-        String::new(), String::new(), vec![], Arc::new(NoDocs), Arc::new(NoSealer)).unwrap();
+        String::new(), String::new(), vec![], Arc::new(NoSealer)).unwrap();
     let app = rt.spaces().unwrap()[0].root.clone();
     let at = |p: &str| NativeLocation { storage_id: app.storage_id.clone(), path: p.into() };
     rt.archive_create(vec![at("src")], ARCHIVE_ZIP, Some("archive password".into()), at(""), "p.zip".into()).unwrap();
@@ -227,7 +158,7 @@ impl AndroidDocuments for PipeDocs {
     fs::write(ws.join("src/a.txt"), "seven secret").unwrap();
     fs::write(ws.join("src/inner/b.txt"), "inner seven secret").unwrap();
     let rt = NativeRuntime::new(fx.0.join("state").to_str().unwrap().into(), ws.to_str().unwrap().into(),
-        String::new(), worker.to_str().unwrap().into(), vec![], Arc::new(NoDocs), Arc::new(NoSealer)).unwrap();
+        String::new(), worker.to_str().unwrap().into(), vec![], Arc::new(NoSealer)).unwrap();
     let app = rt.spaces().unwrap()[0].root.clone();
     let at = |p: &str| NativeLocation { storage_id: app.storage_id.clone(), path: p.into() };
     rt.archive_create(vec![at("src")], ARCHIVE_7Z, None, at(""), "pack.7z".into()).unwrap();

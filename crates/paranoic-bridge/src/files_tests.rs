@@ -4,7 +4,7 @@
 use crate::*;
 use std::{fs, path::PathBuf, time::{Duration, Instant}};
 
-use crate::test_support::{NoDocs, NoSealer};
+use crate::test_support::NoSealer;
 
 struct Fixture(PathBuf);
 impl Drop for Fixture { fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); } }
@@ -25,9 +25,9 @@ fn at(space: &NativeSpace, path: &str) -> NativeLocation { NativeLocation { stor
     for d in ["state", "workspace", "external"] { fs::create_dir_all(fx.0.join(d)).unwrap(); }
     #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&fx.0, fs::Permissions::from_mode(0o700)).unwrap(); }
     let rt = NativeRuntime::new(fx.0.join("state").to_str().unwrap().into(), fx.0.join("workspace").to_str().unwrap().into(),
-        String::new(), String::new(), vec![], Arc::new(NoDocs), Arc::new(NoSealer)).unwrap();
+        String::new(), String::new(), vec![], Arc::new(NoSealer)).unwrap();
     let app = rt.spaces().unwrap()[0].clone();
-    let ext = rt.attach(NativeGrant { id: id(), reference: fx.0.join("external").to_str().unwrap().into(), android_tree: false }).unwrap();
+    let ext = rt.attach(NativeGrant { id: id(), reference: fx.0.join("external").to_str().unwrap().into() }).unwrap();
     let ws = |p: &str| fx.0.join("workspace").join(p);
     let ex = |p: &str| fx.0.join("external").join(p);
     fs::write(ws("a.txt"), b"first").unwrap();
@@ -101,8 +101,8 @@ fn at(space: &NativeSpace, path: &str) -> NativeLocation { NativeLocation { stor
     for d in ["state", "workspace", "external"] { fs::create_dir_all(fx.0.join(d)).unwrap(); }
     #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&fx.0, fs::Permissions::from_mode(0o700)).unwrap(); }
     let rt = NativeRuntime::new(fx.0.join("state").to_str().unwrap().into(), fx.0.join("workspace").to_str().unwrap().into(),
-        String::new(), String::new(), vec![], Arc::new(NoDocs), Arc::new(NoSealer)).unwrap();
-    let ext = rt.attach(NativeGrant { id: id(), reference: fx.0.join("external").to_str().unwrap().into(), android_tree: false }).unwrap();
+        String::new(), String::new(), vec![], Arc::new(NoSealer)).unwrap();
+    let ext = rt.attach(NativeGrant { id: id(), reference: fx.0.join("external").to_str().unwrap().into() }).unwrap();
     let ex = |p: &str| fx.0.join("external").join(p);
     fs::create_dir_all(ex("docs/deep")).unwrap();
     fs::write(ex("docs/deep/a.txt"), b"keep me").unwrap();
@@ -145,8 +145,8 @@ fn at(space: &NativeSpace, path: &str) -> NativeLocation { NativeLocation { stor
     for d in ["state", "workspace", "external"] { fs::create_dir_all(fx.0.join(d)).unwrap(); }
     #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&fx.0, fs::Permissions::from_mode(0o700)).unwrap(); }
     let rt = NativeRuntime::new(fx.0.join("state").to_str().unwrap().into(), fx.0.join("workspace").to_str().unwrap().into(),
-        String::new(), String::new(), vec![], Arc::new(NoDocs), Arc::new(NoSealer)).unwrap();
-    let ext = rt.attach(NativeGrant { id: id(), reference: fx.0.join("external").to_str().unwrap().into(), android_tree: false }).unwrap();
+        String::new(), String::new(), vec![], Arc::new(NoSealer)).unwrap();
+    let ext = rt.attach(NativeGrant { id: id(), reference: fx.0.join("external").to_str().unwrap().into() }).unwrap();
     let ex = |p: &str| fx.0.join("external").join(p);
     let base: Vec<u8> = (0..300_000u32).map(|i| (i * 7 % 251) as u8).collect();
     let mut tail = base.clone(); *tail.last_mut().unwrap() ^= 1;

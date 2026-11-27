@@ -26,7 +26,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.stratayun.paranoic.bridge.CoreGateway
 import io.github.stratayun.paranoic.bridge.CoreResult
-import io.github.stratayun.paranoic.bridge.FolderProvider
 import io.github.stratayun.paranoic.bridge.PickedFolder
 import io.github.stratayun.paranoic.ui.components.AppSymbol
 import io.github.stratayun.paranoic.ui.components.ExpressiveShapes
@@ -41,9 +40,7 @@ data class AndroidVolume(val path: String, val label: String, val removable: Boo
 /**
  * Direct access to shared storage ("All files access", API 30+; legacy
  * READ/WRITE_EXTERNAL_STORAGE below). Volumes are registered in Core as
- * ordinary native grants (FolderProvider.AndroidVolume), so listing, copying
- * and encryption run through the Rust filesystem adapter instead of SAF.
- * SAF trees remain available for cloud document providers.
+ * native file locations. Listing, copying and encryption use the Rust filesystem adapter.
  */
 object AndroidStorageAccess {
     private const val PREFS = "paranoic.storage_access"
@@ -52,10 +49,6 @@ object AndroidStorageAccess {
     fun granted(context: Context): Boolean =
         if (Build.VERSION.SDK_INT >= 30) Environment.isExternalStorageManager()
         else context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
-
-    /** Deletion roots are available only with explicit direct-storage permission. */
-    internal fun deletionRoots(context: Context): Map<String, String> =
-        if (granted(context)) AndroidSafDeletion.volumeRoots(context) else emptyMap()
 
     fun settingsIntent(context: Context): Intent =
         Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}"))
@@ -108,7 +101,7 @@ object AndroidStorageAccess {
         val attached = done.toMutableSet()
         for (volume in volumes(context)) {
             if (volume.path in done) continue
-            val result = core.attachFolder(PickedFolder(FolderProvider.AndroidVolume, volume.path, writable = true))
+            val result = core.attachFolder(PickedFolder(volume.path))
             if (result is CoreResult.Value) attached += volume.path
         }
         if (attached != done) prefs.edit().putStringSet(KEY_ATTACHED, attached).apply()
@@ -117,7 +110,7 @@ object AndroidStorageAccess {
 
 /**
  * Asks for direct storage access before the main UI, once per app start
- * until granted. "Later" continues with SAF folders only.
+ * until granted. "Later" continues without shared storage.
  */
 @Composable
 fun AndroidStorageAccessGate(core: CoreGateway, appearance: AppearanceSettings, content: @Composable () -> Unit) {
@@ -172,8 +165,8 @@ private fun StorageAccessRequest(onGrant: () -> Unit, onLater: () -> Unit) {
             Text(if (ru) "Доступ к файлам" else "File access", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
             Spacer(Modifier.height(12.dp))
             Text(
-                if (ru) "Чтобы работать с внутренней памятью и SD-картой напрямую, как в обычном файловом менеджере, разрешите Paranoic доступ ко всем файлам. Без этого доступны только папки, выбранные через системный диалог."
-                else "To work with internal storage and SD cards directly, like a regular file manager, allow Paranoic to access all files. Without it, only folders picked in the system dialog are available.",
+                if (ru) "Чтобы работать с внутренней памятью и SD-картой напрямую, как в обычном файловом менеджере, разрешите Paranoic доступ ко всем файлам. Без этого общие папки устройства будут недоступны."
+                else "To work with internal storage and SD cards directly, like a regular file manager, allow Paranoic to access all files. Without it, shared folders on this device are unavailable.",
                 style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(32.dp))
@@ -182,7 +175,7 @@ private fun StorageAccessRequest(onGrant: () -> Unit, onLater: () -> Unit) {
             }
             Spacer(Modifier.height(8.dp))
             TextButton(onLater, Modifier.fillMaxWidth().height(48.dp)) {
-                Text(if (ru) "Позже — только выбранные папки" else "Later — picked folders only")
+                Text(if (ru) "Продолжить без доступа" else "Continue without access")
             }
         }
     }

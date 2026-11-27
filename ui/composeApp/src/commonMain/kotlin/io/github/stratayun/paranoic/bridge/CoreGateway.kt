@@ -279,14 +279,12 @@ data class Location(val storageId: String, val path: String)
 /** A recovery key shown to the owner but not yet in force (audit A43). */
 data class RecoveryDraft(val id: String, val text: String)
 enum class EntryKind { File, Directory, Symlink, Other }
-/** bytes is meaningful only when sizeKnown; unknown provider metadata stays visible. */
 data class FileItem(val location: Location, val name: String, val kind: EntryKind, val bytes: ULong,
-    val modifiedMs: ULong? = null, val sizeKnown: Boolean = true)
+    val modifiedMs: ULong? = null)
 /** `hidden`: entries with non-portable or duplicate names, omitted rather than failing the folder. */
 data class FolderListing(val items: List<FileItem>, val hidden: Long = 0)
-/** androidTree is a presentation restriction from the native grant, not a permission decision. */
 data class Space(val id: String, val name: String, val root: Location, val writable: Boolean,
-    val detachable: Boolean = false, val androidTree: Boolean = false, val localContainer: Boolean = false,
+    val detachable: Boolean = false, val localContainer: Boolean = false,
     val cloud: Boolean = false)
 enum class TransferMode { Copy, Move }
 enum class NameConflict { Fail, Skip, KeepBoth, Replace }
@@ -312,13 +310,8 @@ data class JobItem(
     val outcome: JobOutcome = JobOutcome.Unknown,
     val resultTarget: Location? = null,
 )
-/** AndroidVolume: shared storage root (internal memory, SD card) under "All files access"; not SAF. */
-enum class FolderProvider { AndroidTree, DesktopDirectory, AndroidVolume }
-/** An OS selection is only a grant reference, not a registered Core storage.
- * writable is an Android grant hint; null on desktop, where Rust must inspect ACLs.
- * Space.writable comes from the registered Core capabilities, never this hint.
- */
-data class PickedFolder(val provider: FolderProvider, val reference: String, val writable: Boolean?)
+/** A platform-selected native folder. Core checks access during registration. */
+data class PickedFolder(val reference: String)
 sealed interface FolderPick {
     data class Selected(val folder: PickedFolder) : FolderPick
     data object Cancelled : FolderPick

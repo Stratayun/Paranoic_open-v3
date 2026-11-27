@@ -3,7 +3,7 @@
 use crate::*;
 use std::{fs, path::PathBuf};
 
-use crate::test_support::{NoDocs, NoSealer};
+use crate::test_support::NoSealer;
 struct Fixture(PathBuf);
 impl Drop for Fixture { fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); } }
 fn walk(p: &std::path::Path, out: &mut Vec<PathBuf>) {
@@ -21,7 +21,7 @@ fn serial() -> std::sync::MutexGuard<'static, ()> { SERIAL.lock().unwrap_or_else
     for d in ["state", "workspace/out"] { fs::create_dir_all(fx.0.join(d)).unwrap(); }
     #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&fx.0, fs::Permissions::from_mode(0o700)).unwrap(); }
     let rt = NativeRuntime::new(fx.0.join("state").to_str().unwrap().into(), fx.0.join("workspace").to_str().unwrap().into(),
-        String::new(), String::new(), vec![], Arc::new(NoDocs), Arc::new(NoSealer)).unwrap();
+        String::new(), String::new(), vec![], Arc::new(NoSealer)).unwrap();
     let app = rt.spaces().unwrap()[0].root.clone();
     let at = |p: &str| NativeLocation { storage_id: app.storage_id.clone(), path: p.into() };
     let ws = |p: &str| fx.0.join("workspace").join(p);
@@ -69,7 +69,7 @@ fn serial() -> std::sync::MutexGuard<'static, ()> { SERIAL.lock().unwrap_or_else
     for d in ["state", "workspace"] { fs::create_dir_all(fx.0.join(d)).unwrap(); }
     #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&fx.0, fs::Permissions::from_mode(0o700)).unwrap(); }
     let rt = NativeRuntime::new(fx.0.join("state").to_str().unwrap().into(), fx.0.join("workspace").to_str().unwrap().into(),
-        String::new(), String::new(), vec![], Arc::new(NoDocs), Arc::new(NoSealer)).unwrap();
+        String::new(), String::new(), vec![], Arc::new(NoSealer)).unwrap();
     let app = rt.spaces().unwrap()[0].root.clone();
     let at = |p: &str| NativeLocation { storage_id: app.storage_id.clone(), path: p.into() };
     let ws = |p: &str| fx.0.join("workspace").join(p);
@@ -102,82 +102,12 @@ fn serial() -> std::sync::MutexGuard<'static, ()> { SERIAL.lock().unwrap_or_else
     rt.shutdown().unwrap();
 }
 
-/// E2.8 / Cryptomator on phone storage: a full write cycle in a SAF folder
-/// (host behaving like ExternalStorageProvider) — create, folder, files with a
-/// short and a long name, rename, delete file and folder, password change.
-#[test] fn cryptomator_vault_is_writable_in_a_phone_storage_saf_folder() {
-    let _serial = serial();
-    let root = std::env::temp_dir().join(format!("paranoic-cm-saf-{}", Uuid::new_v4()));
-    for d in ["state", "workspace", "phone/Documents"] { fs::create_dir_all(root.join(d)).unwrap(); }
-    let phone = root.join("phone");
-    let docs = Arc::new(crate::saf_vault_tests::FsDocs { root: phone.clone(), files: Mutex::new(std::collections::HashMap::new()), next: Mutex::new(0), before_delete: Mutex::new(None) });
-    let rt = NativeRuntime::new(root.join("state").to_str().unwrap().into(), root.join("workspace").to_str().unwrap().into(),
-        String::new(), String::new(), vec![], docs.clone(), Arc::new(NoSealer)).unwrap();
-    let saf = android::SafStorage { id: StorageId(Uuid::new_v4()),
-        tree: "content://com.android.externalstorage.documents/tree/primary%3ADocuments".into(), host: docs, writable: true };
-    let saf_id = saf.id.0.to_string();
-    rt.core.register_storage(Arc::new(saf)).unwrap();
-    let at_saf = |p: &str| NativeLocation { storage_id: saf_id.clone(), path: p.into() };
-    let app = rt.spaces().unwrap()[0].root.clone();
-    let at_app = |p: &str| NativeLocation { storage_id: app.storage_id.clone(), path: p.into() };
-    let ws = root.join("workspace");
-    let long = format!("{}.txt", "long-file-name-".repeat(13));
-    fs::write(ws.join("short.txt"), "short body").unwrap();
-    fs::write(ws.join(&long), "long body").unwrap();
-
-    let (one, two) = ("first password long", "second password long");
-    let recent = |rt: &NativeRuntime| rt.diagnostics_recent().iter().rev().take(6).map(|d| format!("{} {}", d.code, d.message)).collect::<Vec<_>>();
-    let handle = rt.cryptomator_create(at_saf("Documents"), "Vault".into(), one.into()).unwrap_or_else(|e| panic!("{e:?} {:?} {:?}", recent(&rt), rt.jobs().ok().map(|j| j.iter().map(|x| (x.kind, x.error)).collect::<Vec<_>>())));
-    rt.cryptomator_mkdir(handle.clone(), vec![], "Папка".into()).unwrap_or_else(|e| panic!("{e:?} {:?}", recent(&rt)));
-    rt.cryptomator_add(handle.clone(), vec![], at_app("short.txt")).unwrap();
-    rt.cryptomator_add(handle.clone(), vec!["Папка".into()], at_app(&long)).unwrap();
-    rt.cryptomator_rename(handle.clone(), vec![], "short.txt".into(), "renamed.txt".into()).unwrap();
-    // Renames that change the shortening class (mapped rename, directory reshape).
-    let long2 = format!("{}.txt", "long-renamed-name-".repeat(12));
-    let long_dir = "long-folder-name-".repeat(13);
-    let err = |e: BridgeError| -> ! { panic!("{e:?} {:?}", rt.diagnostics_recent().iter().rev().take(6).map(|d| format!("{} {}", d.code, d.message)).collect::<Vec<_>>()) };
-    rt.cryptomator_rename(handle.clone(), vec![], "renamed.txt".into(), long2.clone()).unwrap_or_else(|e| err(e));
-    rt.cryptomator_rename(handle.clone(), vec!["Папка".into()], long.clone(), "short-again.txt".into()).unwrap_or_else(|e| err(e));
-    rt.cryptomator_rename(handle.clone(), vec![], "Папка".into(), long_dir.clone()).unwrap_or_else(|e| err(e));
-    let listed = |path: Vec<String>| -> Vec<String> { let mut n: Vec<String> = rt.cryptomator_list(handle.clone(), path).unwrap().entries.into_iter().map(|e| e.name).collect(); n.sort(); n };
-    let mut expected = vec![long2.clone(), long_dir.clone()]; expected.sort();
-    assert_eq!(listed(vec![]), expected);
-    assert_eq!(listed(vec![long_dir.clone()]), ["short-again.txt"]);
-    rt.cryptomator_rename(handle.clone(), vec![long_dir.clone()], "short-again.txt".into(), long.clone()).unwrap_or_else(|e| err(e));
-    rt.cryptomator_rename(handle.clone(), vec![], long_dir.clone(), "Папка".into()).unwrap_or_else(|e| err(e));
-    rt.cryptomator_rename(handle.clone(), vec![], long2.clone(), "renamed.txt".into()).unwrap_or_else(|e| err(e));
-    rt.cryptomator_mkdir(handle.clone(), vec![], "Пустая".into()).unwrap();
-    rt.cryptomator_delete(handle.clone(), vec![], "Пустая".into()).unwrap();
-    let names = |path: Vec<String>| -> Vec<String> { let mut n: Vec<String> = rt.cryptomator_list(handle.clone(), path).unwrap().entries.into_iter().map(|e| e.name).collect(); n.sort(); n };
-    assert_eq!(names(vec![]), ["renamed.txt", "Папка"]);
-    assert_eq!(names(vec!["Папка".into()]), [long.clone()]);
-    fs::create_dir(ws.join("out")).unwrap();
-    rt.cryptomator_export(handle.clone(), vec!["Папка".into()], long.clone(), at_app("out")).unwrap();
-    assert_eq!(fs::read_to_string(ws.join("out").join(&long)).unwrap(), "long body");
-    rt.cryptomator_delete(handle.clone(), vec![], "renamed.txt".into()).unwrap();
-    rt.cryptomator_change_password(handle.clone(), one.into(), two.into()).unwrap();
-    rt.cryptomator_lock(handle).unwrap();
-    assert!(matches!(rt.cryptomator_open(at_saf("Documents/Vault"), one.into()), Err(BridgeError::WrongPassword)));
-    let handle = rt.cryptomator_open(at_saf("Documents/Vault"), two.into()).unwrap();
-    assert_eq!(rt.cryptomator_list(handle, vec!["Папка".into()]).unwrap().entries.len(), 1);
-    fn tree(dir: &std::path::Path, out: &mut Vec<String>) {
-        for e in fs::read_dir(dir).unwrap() { let p = e.unwrap().path(); out.push(p.file_name().unwrap().to_string_lossy().into_owned()); if p.is_dir() { tree(&p, out) } }
-    }
-    let mut all = Vec::new(); tree(&phone, &mut all);
-    assert!(!all.iter().any(|n| n.starts_with(".paranoic-") || n.contains("short") || n.contains("long-file")), "{all:?}");
-    rt.shutdown().unwrap();
-    let _ = fs::remove_dir_all(&root);
-}
-
-/// E4.7 for Cryptomator: random-access stream, text open/save/create with a
-/// strong version (same size/time forgery refused), ZIP listed and extracted
-/// into the vault; no plaintext on disk; locking the vault ends its streams.
 #[test] fn work_inside_a_cryptomator_vault_without_plaintext_files() {
     let _serial = serial();
     let fx = Fixture(std::env::temp_dir().join(format!("paranoic-cm-io-{}", Uuid::new_v4())));
     for d in ["state", "workspace"] { fs::create_dir_all(fx.0.join(d)).unwrap(); }
     let rt = NativeRuntime::new(fx.0.join("state").to_str().unwrap().into(), fx.0.join("workspace").to_str().unwrap().into(),
-        String::new(), String::new(), vec![], Arc::new(NoDocs), Arc::new(NoSealer)).unwrap();
+        String::new(), String::new(), vec![], Arc::new(NoSealer)).unwrap();
     let app = rt.spaces().unwrap()[0].root.clone();
     let at = |p: &str| NativeLocation { storage_id: app.storage_id.clone(), path: p.into() };
     let ws = fx.0.join("workspace");
@@ -264,7 +194,7 @@ fn serial() -> std::sync::MutexGuard<'static, ()> { SERIAL.lock().unwrap_or_else
     for d in ["state", "workspace"] { fs::create_dir_all(fx.0.join(d)).unwrap(); }
     #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&fx.0, fs::Permissions::from_mode(0o700)).unwrap(); }
     let rt = NativeRuntime::new(fx.0.join("state").to_str().unwrap().into(), fx.0.join("workspace").to_str().unwrap().into(),
-        String::new(), String::new(), vec![], Arc::new(NoDocs), Arc::new(NoSealer)).unwrap();
+        String::new(), String::new(), vec![], Arc::new(NoSealer)).unwrap();
     let app = rt.spaces().unwrap()[0].root.clone();
     let at = |p: &str| NativeLocation { storage_id: app.storage_id.clone(), path: p.into() };
     let ws = |p: &str| fx.0.join("workspace").join(p);

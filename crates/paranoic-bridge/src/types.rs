@@ -56,19 +56,14 @@ impl From<Location> for NativeLocation {
     fn from(l: Location) -> Self { Self { storage_id: l.storage.0.to_string(), path: l.path.as_str().to_owned() } }
 }
 #[derive(Clone, uniffi::Record)]
-pub struct NativeGrant { pub id: String, pub reference: String, pub android_tree: bool }
+pub struct NativeGrant { pub id: String, pub reference: String }
 #[derive(Clone, uniffi::Record)]
 /// `detachable`: a user-connected folder (false for the app's own space).
 pub struct NativeSpace { pub id: String, pub name: String, pub root: NativeLocation, pub writable: bool, pub detachable: bool }
 #[derive(Clone, uniffi::Record)]
 pub struct NativeListing { pub entries: Vec<NativeEntry>, pub skipped: u64 }
 #[derive(Clone, uniffi::Record)]
-/// `document`: the provider's URI of the created/renamed/resolved document.
-/// Later mutations address this identity, never a re-resolved path.
-pub struct HostCreated { pub error: u32, pub name: String, pub document: String }
-#[derive(Clone, uniffi::Record)]
-/// `size_known` false: the provider did not report the size (`bytes` is 0, E2.7).
-pub struct NativeEntry { pub location: NativeLocation, pub name: String, pub kind: u8, pub bytes: u64, pub modified_ms: Option<u64>, pub size_known: bool }
+pub struct NativeEntry { pub location: NativeLocation, pub name: String, pub kind: u8, pub bytes: u64, pub modified_ms: Option<u64> }
 pub(crate) fn kind(k: EntryKind) -> u8 { match k { EntryKind::File => 1, EntryKind::Directory => 2, EntryKind::Symlink => 3, _ => 4 } }
 /// Journal snapshot for display and recovery. `kind`: 1 create folder,
 /// 2 create file, 3 copy, 4 move, 5 delete, 6 save/publish, 7 recovery,
@@ -127,14 +122,6 @@ impl From<paranoic_core::JobRecord> for NativeJob {
             result_target: j.result.and_then(|r| r.target).map(Into::into) }
     }
 }
-#[derive(Clone, uniffi::Record)]
-pub struct HostInfo { pub error: u32, pub kind: u8, pub bytes: u64, pub modified_ms: Option<u64> }
-#[derive(Clone, uniffi::Record)]
-pub struct HostEntry { pub name: String, pub info: HostInfo }
-#[derive(Clone, uniffi::Record)]
-pub struct HostListing { pub error: u32, pub entries: Vec<HostEntry> }
-#[derive(Clone, uniffi::Record)]
-pub struct HostOpened { pub error: u32, pub id: u64, pub info: HostInfo }
 #[derive(Clone, uniffi::Record)]
 pub struct HostBytes { pub error: u32, pub data: Vec<u8> }
 #[derive(Clone, uniffi::Record)]

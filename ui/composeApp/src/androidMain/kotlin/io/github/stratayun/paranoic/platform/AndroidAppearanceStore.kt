@@ -3,7 +3,7 @@ package io.github.stratayun.paranoic.platform
 import android.content.Context
 import io.github.stratayun.paranoic.ui.state.*
 
-/** UI preferences only; no passwords, Core journal or SAF grants. */
+/** UI preferences only; no passwords, Core journal or saved file locations. */
 class AndroidAppearanceStore(context: Context) : AppearanceStore {
     private val preferences = context.applicationContext.getSharedPreferences("appearance-v2", Context.MODE_PRIVATE)
     override fun read() = AppearanceCodec.decode { preferences.getString(it, null) }

@@ -1,8 +1,7 @@
 //! Capability-confined native filesystem adapter.
 //!
 //! Only open() uses ambient authority, at an explicit host permission boundary.
-//! All subsequent operations resolve through directory handles. Android SAF is
-//! a distinct future adapter; this is for actual native filesystem grants.
+//! All subsequent operations resolve through directory handles.
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 mod bootstrap;
@@ -227,7 +226,7 @@ impl Storage for LocalStorage {
             entries.push(DirectoryEntry { location: Location { storage: self.id, path: child }, metadata });
         }
         entries.sort_by(|a, b| a.location.path.as_str().cmp(b.location.path.as_str()));
-        Ok(paranoic_core::PartialListing { entries, skipped, unknown_size: Vec::new() })
+        Ok(paranoic_core::PartialListing { entries, skipped })
     }
 
     fn open_read(&self, path: &ResourcePath) -> Result<Box<dyn ReadHandle>> {

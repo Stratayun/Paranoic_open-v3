@@ -310,8 +310,7 @@ internal fun VaultLauncher(core: CoreGateway, spaces: List<Space>, catalog: Vaul
                     item { SectionLabel(tr("Где находится хранилище", "Where the vault is")) }
                     itemsIndexed(spaces, key = { _, it -> it.id }) { index, space ->
                         GroupedRow(displayName(space.name), groupPosition(index, spaces.size),
-                            subtitle = when { space.cloud -> tr("Облако или сервер", "Cloud or server"); space.androidTree -> tr("Папка через системный доступ", "Folder with system access")
-                                else -> tr("Память устройства", "Device storage") } + if (space.writable) "" else tr(" · только чтение", " · read-only"),
+                            subtitle = (if (space.cloud) tr("Облако или сервер", "Cloud or server") else tr("Память устройства", "Device storage")) + if (space.writable) "" else tr(" · только чтение", " · read-only"),
                             enabled = interactive,
                             leading = { ShapedIcon(if (space.cloud) AppSymbol.Cloud else AppSymbol.Phone, ExpressiveShapes.gallery[index % ExpressiveShapes.gallery.size],
                                 scheme.secondaryContainer, scheme.onSecondaryContainer) },
@@ -319,9 +318,9 @@ internal fun VaultLauncher(core: CoreGateway, spaces: List<Space>, catalog: Vaul
                             onClick = { trail = listOf(FolderNode(space.root, space.name)); if (creating == true) createStep = 2 })
                     }
                     item {
-                        if (spaces.isEmpty()) Text(tr("Подключённых мест нет. Подключите папку.", "No connected places. Connect a folder."), color = scheme.onSurfaceVariant)
+                        if (spaces.isEmpty()) Text(tr("Подключённых мест нет. Подключите место.", "No connected places. Connect a location."), color = scheme.onSurfaceVariant)
                         Spacer(Modifier.height(4.dp))
-                        GroupedRow(tr("Подключить другую папку", "Connect another folder"), GroupPosition.Single, enabled = interactive,
+                        GroupedRow(tr("Подключить другое место", "Connect another location"), GroupPosition.Single, enabled = interactive,
                             leading = { BrandIcon(Res.drawable.ic_folder_add, size = 52.dp) },
                             onClick = { connectFolder() })
                         if (creating == true) TextButton(enabled = interactive, onClick = { createStep = 0 }) { Text(tr("← Назад к формату", "← Back to format")) }

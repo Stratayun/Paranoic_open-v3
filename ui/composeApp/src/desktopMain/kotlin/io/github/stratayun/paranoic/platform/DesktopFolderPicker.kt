@@ -41,7 +41,7 @@ fun rememberDesktopFolderPicker(onResult: (FolderPick) -> Unit, owner: java.awt.
                         if (chooser.showOpenDialog(owner) == JFileChooser.APPROVE_OPTION) {
                             val folder = chooser.selectedFile
                             if (folder == null) FolderPick.Failed else FolderPick.Selected(
-                                PickedFolder(FolderProvider.DesktopDirectory, folder.absolutePath, writable = null))
+                                PickedFolder(folder.absolutePath))
                         } else FolderPick.Cancelled
                     }
                     callback(result)

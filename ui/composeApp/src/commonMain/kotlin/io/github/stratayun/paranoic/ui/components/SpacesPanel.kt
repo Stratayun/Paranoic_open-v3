@@ -34,7 +34,7 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
     var info by remember { mutableStateOf<Space?>(null) }
     var showHidden by remember { mutableStateOf(false) }
     val editable = catalog.loaded && !catalog.busy && !catalog.failed && !busy
-    fun appPrivate(space: Space) = space.localContainer && !space.detachable && !space.androidTree && !space.cloud
+    fun appPrivate(space: Space) = space.localContainer && !space.detachable && !space.cloud
     val privateTitle = tr("Файлы приложения", "App files")
     fun title(space: Space) = catalog.title(space.id, if (appPrivate(space)) privateTitle else space.name)
     val places = spaces.userPlaces()
@@ -44,22 +44,19 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
     fun symbol(space: Space) = when {
         appPrivate(space) -> AppSymbol.Vault
         space.cloud -> AppSymbol.Cloud
-        space.androidTree -> AppSymbol.Folder
         else -> AppSymbol.Phone
     }
     val kindPrivate = tr("На этом устройстве · данные Paranoic", "On this device · Paranoic data")
     val kindCloud = tr("Сервер WebDAV", "WebDAV server")
-    val kindTree = tr("Папка через системный доступ", "Folder with system access")
     val kindDevice = tr("Память устройства", "Device storage")
     val readOnly = tr(" · только чтение", " · read-only")
     fun kind(space: Space) = when {
         appPrivate(space) -> kindPrivate
         space.cloud -> kindCloud
-        space.androidTree -> kindTree
         else -> kindDevice
     } + if (space.writable) "" else readOnly
     Column(modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        val device = visible.firstOrNull { !appPrivate(it) && !it.cloud && !it.androidTree }
+        val device = visible.firstOrNull { !appPrivate(it) && !it.cloud }
         if (device == null || onOpenPath == null) SectionLabel(tr("Места", "Places"))
         if (catalog.busy) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -107,14 +104,13 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
             val index = visible.indexOf(space)
             var menu by remember(space.id) { mutableStateOf(false) }
             // Owner 27.11: SD cards and USB drives show their free space too.
-            val spaceUsage = if (appPrivate(space) || space.cloud || space.androidTree) null
+            val spaceUsage = if (appPrivate(space) || space.cloud) null
                 else volumeUsage(space.name)?.takeIf { it.totalBytes > 0 }
             val subtitle = spaceUsage?.let { tr("Свободно ", "Free ") + gb(it.freeBytes) + tr(" из ", " of ") + gb(it.totalBytes) } ?: kind(space)
             GroupedRow(displayName(title(space)), position, subtitle = subtitle, enabled = connected && !busy,
                 leading = { BrandIcon(when {
                     appPrivate(space) -> Res.drawable.ic_shield
                     space.cloud -> Res.drawable.ic_cloud
-                    space.androidTree -> Res.drawable.ic_folder
                     space.name.contains("SD", ignoreCase = true) || space.name.contains("USB", ignoreCase = true) -> Res.drawable.ic_external_disk
                     else -> Res.drawable.ic_tiles
                 }, size = 52.dp) },
@@ -138,7 +134,7 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
         }
         SectionLabel(tr("Подключить", "Connect"))
         val connectRows = buildList {
-            add(Triple(tr("Добавить папку", "Add folder"), Res.drawable.ic_folder_add, onConnect))
+            add(Triple(tr("Подключить место", "Connect location"), Res.drawable.ic_folder_add, onConnect))
             if (onConnectServer != null) add(Triple(tr("Свой сервер", "Own server"), Res.drawable.ic_cloud, { serverDialog = true }))
         }
         GroupedList(connectRows) { (label, icon, action), position ->

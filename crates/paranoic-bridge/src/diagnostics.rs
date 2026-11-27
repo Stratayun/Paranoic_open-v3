@@ -29,7 +29,7 @@ pub(crate) fn clear() {
 }
 
 /// One connected place in the report: no name, no path. `kind`: "app" (the
-/// app's own folder), "android" (SAF), "server" (WebDAV), "local" (folder).
+/// app's own folder), "server" (WebDAV), "local" (folder).
 #[derive(Clone, uniffi::Record)]
 pub struct NativeSpaceReport {
     pub kind: String, pub reachable: bool, pub read: bool, pub write: bool, pub delete: bool,
@@ -55,7 +55,6 @@ impl NativeRuntime {
         spaces.iter().map(|space| {
             let kind = match grants.iter().find(|g| g.id == space.id) {
                 None => "app",
-                Some(g) if g.android_tree => "android",
                 Some(g) if g.reference.starts_with("webdav:") => "server",
                 Some(_) => "local",
             };

@@ -52,7 +52,6 @@ class MainActivity : FragmentActivity() {
             val context = this@MainActivity
             CompositionLocalProvider(LocalUiLanguage provides language,
                 io.github.stratayun.paranoic.ui.state.LocalVolumeUsage provides { label -> AndroidStorageAccess.usage(context, label) }) {
-            val attachmentPicker = rememberAndroidNotesAttachmentPicker()
             val authenticate = rememberAndroidAuthentication(this)
             val notesBiometric = rememberAndroidNotesBiometric(this, app.notesQuickKey)
             var attempt by remember { mutableIntStateOf(0) }
@@ -83,10 +82,9 @@ class MainActivity : FragmentActivity() {
                         diagnosticEnvironment = app.diagnostics,
                         onLanguageChange = { language = it },
                         notesBiometric = notesBiometric,
-                        notesAttachmentPicker = attachmentPicker,
                         incomingDocuments = incoming,
                         notesImage = { bytes, modifier -> AndroidNoteImage(bytes, modifier) },
-                        folderPicker = { onResult -> rememberAndroidFolderPicker(onResult) },
+                        folderPicker = { onResult -> rememberAndroidVolumePicker(onResult) },
                         pngImage = { bytes, modifier -> AndroidPng(bytes, modifier) },
                         mediaPlayer = { gateway, location, info, modifier -> AndroidMediaPlayer(gateway, location, info, modifier) },
                         securitySettings = {

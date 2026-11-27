@@ -7,7 +7,7 @@ import kotlin.test.*
 /** These exercise Kotlin routing and ownership, not Rust crypto or platform IO. */
 class EncryptedFolderBridgeTest {
     @Test fun moveKeepsTheConfirmedCopyResultWithoutDeletingOrRetryingTheSource() = runBlocking {
-        val expectedSource = Location("saf", "source.txt")
+        val expectedSource = Location("device", "source.txt")
         val reply = VaultMoveInReport(123uL, sourceRemoved = false)
         var calls = 0
         val core = object : CoreGateway by DisconnectedCoreGateway {

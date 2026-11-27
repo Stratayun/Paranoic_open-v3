@@ -103,7 +103,6 @@ class FileBatchTest {
         assertTrue(copy().copy(parent = Location("disk", "from"), conflict = NameConflict.KeepBoth).allowed(listOf(space)))
         val folder = FileItem(Location("disk", "from/folder"), "folder", EntryKind.Directory, 0uL)
         assertFalse(FileBatchPlan(FileBatchKind.Copy, listOf(folder), Location("disk", "from/folder/sub")).allowed(listOf(space)))
-        assertFalse(FileBatchPlan(FileBatchKind.Delete, listOf(folder)).allowed(listOf(space.copy(androidTree = true))))
     }
     @Test fun recursiveDeletionIsSentOnlyForDirectories() = runBlocking {
         val gateway = Gateway()

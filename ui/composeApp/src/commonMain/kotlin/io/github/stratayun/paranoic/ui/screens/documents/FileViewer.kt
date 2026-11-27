@@ -90,7 +90,7 @@ private fun ImageViewer(core: CoreGateway, file: FileItem, onClose: () -> Unit,
         }
     }
     DisposableEffect(Unit) { onDispose { png?.fill(0); png = null } }
-    MediaFrame(file.name, listOfNotNull(if (file.sizeKnown) io.github.stratayun.paranoic.ui.screens.files.humanSize(file.bytes) else null,
+    MediaFrame(file.name, listOfNotNull(io.github.stratayun.paranoic.ui.screens.files.humanSize(file.bytes),
         if (zoom.scale > 1f) "${(zoom.scale * 100).toInt()}%" else null).joinToString(" · ").ifEmpty { null }, onClose,
         actions = { if (zoom.scale > 1f) TextButton(onClick = zoom::reset) { Text(tr("Сбросить", "Reset"), color = Color.White) } }) {
         ZoomableDocument(zoom) {

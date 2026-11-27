@@ -180,7 +180,7 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
                     Column(Modifier.weight(1f)) {
                         Text(displayName(item.name), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text("/" + displayName(item.location.path.substringBeforeLast('/', "")) + " · " +
-                            (if (item.sizeKnown) humanSize(item.bytes) else ""), style = MaterialTheme.typography.bodySmall,
+                            humanSize(item.bytes), style = MaterialTheme.typography.bodySmall,
                             color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (selecting) Checkbox(checked = picked, onCheckedChange = { toggle(item) })
@@ -264,7 +264,7 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
     }
     info?.let { item ->
         AlertDialog(onDismissRequest = { info = null }, title = { Text(displayName(item.name)) }, text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (item.sizeKnown) Text(tr("Размер: ", "Size: ") + humanSize(item.bytes))
+            Text(tr("Размер: ", "Size: ") + humanSize(item.bytes))
             fileModifiedLabel(item.modifiedMs)?.let { Text(tr("Изменён: ", "Modified: ") + it) }
             Text(tr("Путь: /", "Path: /") + displayName(item.location.path))
         } }, confirmButton = { TextButton(onClick = { info = null }) { Text(tr("Закрыть", "Close")) } })

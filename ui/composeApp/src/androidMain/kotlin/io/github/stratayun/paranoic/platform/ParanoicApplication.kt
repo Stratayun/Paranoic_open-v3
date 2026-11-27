@@ -2,8 +2,6 @@ package io.github.stratayun.paranoic.platform
 
 import android.app.Application
 import android.os.Build
-import android.content.Intent
-import android.net.Uri
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -62,23 +60,12 @@ class ParanoicApplication : Application() {
                 File(applicationInfo.nativeLibraryDir, "libpdfium.so").absolutePath,
                 // Packaged as a "library" so Android installs it executable in nativeLibraryDir.
                 File(applicationInfo.nativeLibraryDir, "libparanoic_pdf_worker.so").absolutePath,
-                AndroidDocumentsHost(contentResolver) { AndroidStorageAccess.deletionRoots(this@ParanoicApplication) },
                 AndroidGrantStore(this@ParanoicApplication), AndroidRecordSealer(),
-                releaseGrant = { grant -> if (grant.androidTree) releaseTree(grant.reference) },
                 notesKey = AndroidNotesKey(),
                 notesQuickKey = if (Build.VERSION.SDK_INT >= 30) notesQuickKey else null,
                 documentWorkers = AndroidDocumentWorkers(this@ParanoicApplication),
                 spaceLabel = { reference -> AndroidStorageAccess.labelFor(this@ParanoicApplication, reference) },
             )
         }.also { started = it }
-    }
-
-    /** Release exactly the persisted modes still held for this tree. */
-    private fun releaseTree(reference: String) {
-        val uri = Uri.parse(reference)
-        val held = contentResolver.persistedUriPermissions.firstOrNull { it.uri == uri } ?: return
-        val flags = (if (held.isReadPermission) Intent.FLAG_GRANT_READ_URI_PERMISSION else 0) or
-            (if (held.isWritePermission) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0)
-        if (flags != 0) try { contentResolver.releasePersistableUriPermission(uri, flags) } catch (_: SecurityException) {}
     }
 }

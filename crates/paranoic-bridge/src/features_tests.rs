@@ -4,7 +4,6 @@
 use crate::*;
 use std::{fs, path::PathBuf, sync::Mutex, time::Duration};
 
-use crate::test_support::NoDocs;
 
 /// Test record key: XOR with a marker (stands in for Keystore / DPAPI).
 struct XorSealer;
@@ -34,7 +33,7 @@ impl Fixture {
     }
     fn runtime(&self, grants: Vec<NativeGrant>) -> Arc<NativeRuntime> {
         NativeRuntime::new(self.0.join("state").to_str().unwrap().into(), self.0.join("workspace").to_str().unwrap().into(),
-            String::new(), String::new(), grants, Arc::new(NoDocs), Arc::new(XorSealer)).unwrap()
+            String::new(), String::new(), grants, Arc::new(XorSealer)).unwrap()
     }
 }
 impl Drop for Fixture { fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); } }
@@ -298,7 +297,7 @@ fn book(body: &str) -> NativeNotebook {
     fs::write(local_dir.join(".paranoic-stage/part"), b"decrypted secret").unwrap();
     let rt = fx.runtime(vec![]);
     let cloud = rt.attach_webdav(format!("http://127.0.0.1:{port}"), "me".into(), token.into()).unwrap();
-    let local_grant = NativeGrant { id: Uuid::new_v4().to_string(), reference: local_dir.to_string_lossy().into_owned(), android_tree: false };
+    let local_grant = NativeGrant { id: Uuid::new_v4().to_string(), reference: local_dir.to_string_lossy().into_owned() };
     let local = rt.attach(local_grant.clone()).unwrap();
     assert!(rt.sync_pair_add(cloud.space.root.clone(), local.root.clone(), 2, false).is_err(), "cloud accepted as the local side");
     let app = rt.spaces().unwrap()[0].root.clone();

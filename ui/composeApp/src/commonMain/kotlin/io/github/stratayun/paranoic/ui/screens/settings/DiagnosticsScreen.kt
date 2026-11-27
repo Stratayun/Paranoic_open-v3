@@ -119,7 +119,7 @@ fun DiagnosticsScreen(session: AppSession, environment: DiagnosticEnvironment, o
 @Composable
 private fun RenameProbeSection(session: AppSession) {
     val scope = rememberCoroutineScope()
-    val places = session.files.spaces.userPlaces().filter { !it.cloud && !it.androidTree }
+    val places = session.files.spaces.userPlaces().filter { !it.cloud }
     val results = remember { mutableStateMapOf<String, RenameProbe?>() }
     var running by remember { mutableStateOf<String?>(null) }
     val scheme = MaterialTheme.colorScheme

@@ -21,8 +21,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
-/** Activity-lifetime, temporary read grants only. Never saves an Intent/URI or
- * calls takePersistableUriPermission; accepting a share does not import it. */
+/** Temporary, activity-scoped read access for files shared from other apps. */
 class AndroidIncomingDocuments(private val resolver: ContentResolver, private val scope: CoroutineScope) : IncomingDocuments {
     override var documents by mutableStateOf<List<IncomingDocument>>(emptyList())
         private set

@@ -5,14 +5,14 @@
 use crate::*;
 use std::{fs, path::PathBuf, time::{Duration, Instant}};
 
-use crate::test_support::{NoDocs, NoSealer};
+use crate::test_support::NoSealer;
 
 struct Fixture(PathBuf);
 impl Drop for Fixture { fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); } }
 impl Fixture {
     fn runtime(&self) -> Arc<NativeRuntime> {
         NativeRuntime::new(self.0.join("state").to_str().unwrap().into(), self.0.join("workspace").to_str().unwrap().into(),
-            String::new(), String::new(), vec![], Arc::new(NoDocs), Arc::new(NoSealer)).unwrap()
+            String::new(), String::new(), vec![], Arc::new(NoSealer)).unwrap()
     }
     fn ws(&self, p: &str) -> PathBuf { self.0.join("workspace").join(p) }
     /// Rewrite a finished job as Core leaves an unresolved one.

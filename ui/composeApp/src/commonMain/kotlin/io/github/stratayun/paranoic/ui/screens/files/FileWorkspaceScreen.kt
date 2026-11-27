@@ -46,7 +46,7 @@ fun FileWorkspaceScreen(session: AppSession, defaultView: FileView, onOpenFile: 
     var autoOpened by remember(session.secretsEpoch) { mutableStateOf(false) }
     LaunchedEffect(spaces, autoOpened) {
         if (autoOpened || session.files.trail.isNotEmpty()) return@LaunchedEffect
-        val device = spaces.firstOrNull { it.detachable && !it.cloud && !it.androidTree } ?: return@LaunchedEffect
+        val device = spaces.firstOrNull { it.detachable && !it.cloud } ?: return@LaunchedEffect
         autoOpened = true
         session.openSpace(device)
     }

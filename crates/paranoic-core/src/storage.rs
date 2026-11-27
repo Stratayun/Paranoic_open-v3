@@ -19,8 +19,7 @@ pub struct Capabilities {
     pub conditional_move_source: bool,
     #[serde(default)]
     pub pinned_destination: bool,
-    /// The provider offers no directory sync, and the owner accepted writing
-    /// vaults there anyway (E2.8: Android SAF folders, decision 2026-11-14).
+    /// Windows folders can publish vault changes without a directory sync.
     /// Core waives `durable_directory_sync` for publishing NEW trees
     /// (`PublishTree`, `PublishLinkedTrees`, `CopyExpectedBundle`) and for
     /// mapped renames / directory reshapes, whose staging keeps the former
@@ -123,7 +122,7 @@ pub trait Storage: Send + Sync {
     /// Display-only listing that omits (and counts) entries a strict `list`
     /// would reject: non-portable or non-UTF-8 names, ambiguous duplicates.
     fn list_for_display(&self, path: &ResourcePath, limit: usize) -> Result<PartialListing> {
-        Ok(PartialListing { entries: self.list(path, limit)?, skipped: 0, unknown_size: Vec::new() })
+        Ok(PartialListing { entries: self.list(path, limit)?, skipped: 0 })
     }
     fn open_read(&self, path: &ResourcePath) -> Result<Box<dyn ReadHandle>>;
     fn stage(&self, target: &ResourcePath, job: JobId) -> Result<Box<dyn StagedWrite>>;
@@ -196,10 +195,7 @@ pub trait Storage: Send + Sync {
 
 /// Directory listing for display with the number of omitted entries.
 #[derive(Clone, Debug)]
-/// `unknown_size`: entries listed although the provider did not report their
-/// size (display only; their `bytes` is 0 and operations needing the exact
-/// size refuse them). E2.7.
-pub struct PartialListing { pub entries: Vec<DirectoryEntry>, pub skipped: u64, pub unknown_size: Vec<ResourcePath> }
+pub struct PartialListing { pub entries: Vec<DirectoryEntry>, pub skipped: u64 }
 
 /// IDs are append-only: an existing grant can never be replaced or rebound.
 #[derive(Default)]

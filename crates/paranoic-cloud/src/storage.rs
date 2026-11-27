@@ -119,7 +119,7 @@ impl CloudStorage {
             entries.push(DirectoryEntry { location: Location { storage: self.id, path: joined? }, metadata: to_meta(&entry) });
         }
         entries.sort_by(|a, b| a.location.path.as_str().cmp(b.location.path.as_str()));
-        Ok(paranoic_core::PartialListing { entries, skipped, unknown_size: Vec::new() })
+        Ok(paranoic_core::PartialListing { entries, skipped })
     }
     fn atomic(&self) -> Result<()> {
         if self.provider.capabilities().atomic_relocate { Ok(()) }

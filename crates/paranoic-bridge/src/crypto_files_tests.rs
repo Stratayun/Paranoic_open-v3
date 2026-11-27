@@ -3,7 +3,7 @@
 use crate::*;
 use std::{fs, path::PathBuf};
 
-use crate::test_support::{NoDocs, NoSealer};
+use crate::test_support::NoSealer;
 struct Fixture(PathBuf);
 impl Drop for Fixture { fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); } }
 
@@ -12,7 +12,7 @@ impl Drop for Fixture { fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0)
     for d in ["state", "workspace/out"] { fs::create_dir_all(fx.0.join(d)).unwrap(); }
     #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&fx.0, fs::Permissions::from_mode(0o700)).unwrap(); }
     let rt = NativeRuntime::new(fx.0.join("state").to_str().unwrap().into(), fx.0.join("workspace").to_str().unwrap().into(),
-        String::new(), String::new(), vec![], Arc::new(NoDocs), Arc::new(NoSealer)).unwrap();
+        String::new(), String::new(), vec![], Arc::new(NoSealer)).unwrap();
     let app = rt.spaces().unwrap()[0].root.clone();
     let at = |p: &str| NativeLocation { storage_id: app.storage_id.clone(), path: p.into() };
     let ws = |p: &str| fx.0.join("workspace").join(p);

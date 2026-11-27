@@ -21,6 +21,6 @@ Paranoic: Rust-ядро (`crates/`) + Kotlin Multiplatform/Compose (`ui/`), Andr
 
 ## Граница Rust ↔ Kotlin
 
-- Rust: форматы, файлы, криптография, облако, политика; API — UniFFI в `crates/paranoic-bridge`. Kotlin: экраны, состояние, адаптеры ОС (SAF, Keystore, DPAPI).
+- Rust: форматы, файлы, криптография, облако, политика; API — UniFFI в `crates/paranoic-bridge`. Kotlin: экраны, состояние, адаптеры ОС (Keystore, DPAPI).
 - Блокирующие вызовы моста — через IO gateway, не на UI-потоке. Пароли и тексты передаются аргументами и не хранятся.
 - Изменение API: сначала Rust-метод, затем Kotlin gateway и экран; заглушка не считается готовой интеграцией.

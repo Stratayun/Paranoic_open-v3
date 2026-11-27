@@ -205,7 +205,7 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                     }
                     Spacer(Modifier.height(8.dp))
                     DrawerFooter(enabled = !documentExit.busy,
-                        showFiles = session.files.spaces.userPlaces().none { !it.cloud && !it.androidTree && !(it.localContainer && !it.detachable) },
+                        showFiles = session.files.spaces.userPlaces().none { !it.cloud && !(it.localContainer && !it.detachable) },
                         runningTasks = session.jobs.count { it.phase == JobPhase.Queued || it.phase == JobPhase.Running },
                         onSafe = { go(Destination.Notes) }, onVaults = { go(Destination.Encryption) }, onFiles = { go(Destination.Files) },
                         current = destination,
@@ -246,7 +246,7 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                 if (incomingDocuments.documents.isNotEmpty()) TextButton(onClick = {
                                     leaveDocument { destination = Destination.Notes }
                                 }) { Text(tr("Входящие (${incomingDocuments.documents.size})", "Incoming (${incomingDocuments.documents.size})")) }
-                                val searchPlace = session.files.spaces.userPlaces().firstOrNull { it.detachable && !it.cloud && !it.androidTree }
+                                val searchPlace = session.files.spaces.userPlaces().firstOrNull { it.detachable && !it.cloud }
                                 if (destination == Destination.Files && searchPlace != null && session.categories.state == null)
                                     IconButton(onClick = { session.categories.open(searchPlace, FileCategory.All) },
                                         modifier = Modifier.actionDescription(tr("Поиск по всем файлам", "Search all files"))) { AppIcon(AppSymbol.Search) }
@@ -401,8 +401,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                 io.github.stratayun.paranoic.ui.screens.files.TrashScreen(session, space, onClose = { session.trashView = null })
             }
             if (pickerFailed) AlertDialog(onDismissRequest = { pickerFailed = false },
-                title = { Text(tr("Выбор папки недоступен", "Folder selection unavailable")) },
-                text = { Text(tr("Не удалось получить доступ к выбранной папке.", "Access to the selected folder could not be obtained.")) },
+                title = { Text(tr("Выбор места недоступен", "Location selection unavailable")) },
+                text = { Text(tr("Не удалось получить доступ к выбранному месту.", "Could not access the selected location.")) },
                 confirmButton = { TextButton(onClick = { pickerFailed = false }) { Text(tr("Понятно", "OK")) } })
         }
     }

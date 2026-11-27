@@ -20,7 +20,7 @@ class AndroidGrantStoreTest {
     private val keys get() = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
     private val encrypted get() = File(directory, "grants-v1.enc")
     private val fixture = listOf(NativeGrant("7b4b2f90-5de5-4df8-b5a5-04b674955e02",
-        "content://fixture.invalid/tree/test-only", true))
+        "/storage/fixture/test-only"))
 
     @Before fun setUp() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -50,7 +50,6 @@ class AndroidGrantStoreTest {
         val loaded = AndroidGrantStore(directory, alias).read().single()
         assertEquals(fixture.single().id, loaded.id)
         assertEquals(fixture.single().reference, loaded.reference)
-        assertTrue(loaded.androidTree)
     }
 
     @Test fun ciphertextTamperingFailsWithoutReplacingEvidence() {

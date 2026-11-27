@@ -235,7 +235,7 @@ impl NativeRuntime {
         if storage.domain() != paranoic_core::StorageDomain::Files || !caps.write || !caps.delete || !caps.atomic_move_no_replace {
             return Err(BridgeError::Unsupported);
         }
-        if self.grants.lock().map_err(crate::lock_error)?.iter().any(|g| g.id == storage_id && (g.android_tree || crate::features::is_cloud(g))) {
+        if self.grants.lock().map_err(crate::lock_error)?.iter().any(|g| g.id == storage_id && crate::features::is_cloud(g)) {
             return Err(BridgeError::Unsupported);
         }
         Ok(storage)

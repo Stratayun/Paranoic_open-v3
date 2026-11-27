@@ -31,15 +31,13 @@ fun visibleFiles(entries: List<FileItem>, options: FileListOptions): List<FileIt
     val ordered = when (options.order) {
         FileOrder.NameAscending -> filtered.sortedBy { it.name.lowercase() }
         FileOrder.NameDescending -> filtered.sortedByDescending { it.name.lowercase() }
-        FileOrder.SizeAscending -> filtered.sortedWith(compareBy<FileItem> { !it.sizeKnown }
-            .thenBy { it.bytes }.thenBy { it.name.lowercase() })
-        FileOrder.SizeDescending -> filtered.sortedWith(compareBy<FileItem> { !it.sizeKnown }
-            .thenByDescending { it.bytes }.thenBy { it.name.lowercase() })
+        FileOrder.SizeAscending -> filtered.sortedWith(compareBy<FileItem> { it.bytes }.thenBy { it.name.lowercase() })
+        FileOrder.SizeDescending -> filtered.sortedWith(compareByDescending<FileItem> { it.bytes }.thenBy { it.name.lowercase() })
     }
     return ordered.sortedBy { if (it.kind == EntryKind.Directory) 0 else 1 }
 }
 
 
 /** Paranoic's own app-data folder (Core workspace). Not shown as a user place: the encrypted personal folder replaces it. */
-fun io.github.stratayun.paranoic.bridge.Space.isAppPrivate() = localContainer && !detachable && !androidTree && !cloud
+fun io.github.stratayun.paranoic.bridge.Space.isAppPrivate() = localContainer && !detachable && !cloud
 fun List<io.github.stratayun.paranoic.bridge.Space>.userPlaces() = filterNot { it.isAppPrivate() }

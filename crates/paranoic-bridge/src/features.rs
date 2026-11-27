@@ -436,7 +436,7 @@ pub(crate) fn remove_tree(app: &paranoic_local::LocalStorage, path: &ResourcePat
     }
     let _ = app.delete_empty_directory(path);
 }
-pub(crate) fn is_cloud(grant: &NativeGrant) -> bool { !grant.android_tree && grant.reference.starts_with(CLOUD_PREFIX) }
+pub(crate) fn is_cloud(grant: &NativeGrant) -> bool { grant.reference.starts_with(CLOUD_PREFIX) }
 
 /// Result of connecting a server: persist `grant` in the protected grant store
 /// (its token is sealed with the device record key), show `space`.
@@ -518,7 +518,7 @@ impl NativeRuntime {
         if sealed.error != 0 { return Err(BridgeError::DeviceKey); }
         let reference = serde_json::to_string(&CloudReference { url: webdav_base(&url)?, user, token: STANDARD.encode(&sealed.data) })
             .map_err(|_| BridgeError::Invalid)?;
-        let grant = NativeGrant { id: id.to_string(), reference: format!("{CLOUD_PREFIX}{reference}"), android_tree: false };
+        let grant = NativeGrant { id: id.to_string(), reference: format!("{CLOUD_PREFIX}{reference}") };
         let mut grants = self.grants.lock().map_err(lock_error)?;
         if grants.len() >= 128 { return Err(BridgeError::Limit); }
         let label = cloud_label(&url);

@@ -137,8 +137,8 @@ fun TransferDestinationDialog(core: CoreGateway, source: FileItem, spaces: List<
                 } else Text(tr("Без перезаписи. При совпадении выберите другое имя или папку.",
                     "No overwriting. Choose another name or folder if it already exists."))
                 if (mode == TransferMode.Move) Text(tr(
-                    "Между пространствами: сначала проверенная копия, затем удаление исходника. Перенос внутри Android-подключения не поддерживается.",
-                    "Between spaces: verified copy, then source deletion. Moves within an Android folder connection are unsupported."))
+                    "Между пространствами: сначала проверенная копия, затем удаление исходника.",
+                    "Between spaces: verified copy, then source deletion."))
                 if (mode == TransferMode.Copy && conflictChoices) Text(tr(
                     "Журнал покажет пропуск или результат, включая новое имя при сохранении обоих.",
                     "The journal shows skips and results, including the new name when keeping both."))

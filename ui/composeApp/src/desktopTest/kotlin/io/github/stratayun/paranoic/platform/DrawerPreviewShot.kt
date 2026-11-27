@@ -30,8 +30,8 @@ class DrawerPreviewShot {
     @Test fun drawer() {
         val out = System.getenv("PARANOIC_PREVIEW_OUT") ?: return
         val places = runBlocking { PlaceCatalog(MemoryPlaceCatalogStore(), kotlinx.coroutines.CoroutineScope(Dispatchers.Unconfined)) }
-        fun space(id: String, name: String, detachable: Boolean = true, cloud: Boolean = false, tree: Boolean = false, local: Boolean = false) =
-            Space(id, name, Location(id, ""), true, detachable = detachable, androidTree = tree, localContainer = local, cloud = cloud)
+        fun space(id: String, name: String, detachable: Boolean = true, cloud: Boolean = false, local: Boolean = false) =
+            Space(id, name, Location(id, ""), true, detachable = detachable, localContainer = local, cloud = cloud)
         val spaces = listOf(space("app", "App", detachable = false, local = true), space("dev", "Внутренняя память"),
             space("sd", "SD-карта"), space("cloud", "Nextcloud", cloud = true))
         val scene = ImageComposeScene(1080, 3900, Density(2.625f)) {

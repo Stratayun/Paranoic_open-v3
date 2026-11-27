@@ -670,8 +670,7 @@ fn preflight(shared: &Shared, operation: &Operation) -> Result<()> {
         }
         Operation::ReshapeDirectory { .. } | Operation::RecoverReshape { .. } | Operation::RecoverMapped { .. } | Operation::RenameMapped { .. } => {
             require_capability(capabilities.read && capabilities.write && capabilities.delete)?;
-            // SAF (E2.8): the wrapper is staged and the former mapping kept as
-            // evidence until success, so inspection/recovery work without sync.
+            // The staged wrapper and former mapping provide recovery evidence.
             require_atomic(capabilities.atomic_move_no_replace && (capabilities.durable_directory_sync || capabilities.directory_sync_waived))?;
         }
         Operation::Move { .. } => {
@@ -691,9 +690,7 @@ fn preflight(shared: &Shared, operation: &Operation) -> Result<()> {
 fn require_capability(enabled: bool) -> Result<()> {
     if enabled { Ok(()) } else { Err(CoreError::new(ErrorCode::PermissionDenied, "storage grant does not permit this operation")) }
 }
-/// The grant allows writing, but the storage cannot do it safely (e.g. SAF:
-/// no atomic rename without replacement, no directory sync). This is not a
-/// permission problem and must not be shown as "access denied" (phone, У-64).
+/// Report missing publication guarantees as unsupported (У-64).
 fn require_atomic(enabled: bool) -> Result<()> {
     if enabled { Ok(()) } else { Err(CoreError::new(ErrorCode::Unsupported, "storage cannot publish atomically (no rename without replacement or directory sync)")) }
 }

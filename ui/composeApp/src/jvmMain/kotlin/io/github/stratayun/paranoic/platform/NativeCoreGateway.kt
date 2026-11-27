@@ -29,7 +29,6 @@ interface NativeGrantStore {
 class NativeCoreGateway private constructor(
     private val runtime: NativeRuntime,
     private val grants: NativeGrantStore,
-    private val releaseGrant: (NativeGrant) -> Unit,
     private val quickNotesKey: NotesKeyHost? = null,
     private val spaceLabel: (reference: String) -> String? = { null },
 ) : CoreGateway, ArchiveGateway {
@@ -45,10 +44,9 @@ class NativeCoreGateway private constructor(
     companion object {
         /** pdfWorker: absolute path of the out-of-process PDF renderer shipped with the app. */
         /** sealer: device-bound key for Core journal records (paths and names). */
-        /** releaseGrant: drop the OS permission of a disconnected folder (Android persistable URI). */
         suspend fun open(stateRoot: String, workspaceRoot: String, pdfiumLibrary: String, pdfWorker: String,
-            documents: AndroidDocuments, store: NativeGrantStore, sealer: RecordSealer,
-            releaseGrant: (NativeGrant) -> Unit = {}, notesKey: NotesKeyHost? = null, notesQuickKey: NotesKeyHost? = null,
+            store: NativeGrantStore, sealer: RecordSealer,
+            notesKey: NotesKeyHost? = null, notesQuickKey: NotesKeyHost? = null,
             documentWorkers: DocumentWorkers? = null,
             spaceLabel: (reference: String) -> String? = { null }): NativeCoreGateway {
             var acquired: NativeRuntime? = null
@@ -57,7 +55,7 @@ class NativeCoreGateway private constructor(
                     val saved = try { store.read() }
                     catch (error: Exception) { throw StartupException(StartupFault.GrantStore, error) }
                     val runtime = try {
-                        NativeRuntime(stateRoot, workspaceRoot, pdfiumLibrary, pdfWorker, saved, documents, sealer)
+                        NativeRuntime(stateRoot, workspaceRoot, pdfiumLibrary, pdfWorker, saved, sealer)
                     } catch (error: LinkageError) { throw StartupException(StartupFault.NativeLibrary, error) }
                     catch (cancelled: CancellationException) { throw cancelled }
                     catch (error: Exception) { throw StartupException(StartupFault.Core, error) }
@@ -69,7 +67,7 @@ class NativeCoreGateway private constructor(
                     catch (error: Exception) { throw StartupException(StartupFault.Core, error) }
                     try { runtime.notesConfigureQuick(notesQuickKey) }
                     catch (error: Exception) { throw StartupException(StartupFault.Core, error) }
-                    NativeCoreGateway(runtime, store, releaseGrant, notesQuickKey, spaceLabel)
+                    NativeCoreGateway(runtime, store, notesQuickKey, spaceLabel)
                 }
             } catch (cancelled: CancellationException) {
                 withContext(NonCancellable + Dispatchers.IO) {
@@ -91,14 +89,13 @@ class NativeCoreGateway private constructor(
     }
     private fun Location.native() = NativeLocation(storageId, path)
     private fun NativeLocation.ui() = Location(storageId, path)
-    private fun NativeSpace.ui(androidTree: Boolean = false, localContainer: Boolean = false, cloud: Boolean = false) =
-        Space(id, name, root.ui(), writable, detachable, androidTree, localContainer, cloud)
+    private fun NativeSpace.ui(localContainer: Boolean = false, cloud: Boolean = false) =
+        Space(id, name, root.ui(), writable, detachable, localContainer, cloud)
     /** Host label for a grant (e.g. "Внутренняя память" for /storage/emulated/0); the reference itself never reaches common UI. */
     private fun Space.labelled(grant: NativeGrant?): Space =
-        grant?.takeUnless { it.androidTree }?.let { spaceLabel(it.reference) }?.let { copy(name = it) } ?: this
+        grant?.let { spaceLabel(it.reference) }?.let { copy(name = it) } ?: this
     /** Presentation hint mirrors local_only in the bridge; Rust still enforces it. Never expose grant references to common UI. */
-    private fun NativeGrant.localContainer(): Boolean = if (androidTree)
-        reference.startsWith("content://com.android.externalstorage.documents/") else !reference.startsWith("webdav:")
+    private fun NativeGrant.localContainer(): Boolean = !reference.startsWith("webdav:")
     private fun NativeJob.ui() = JobItem(id, when (phase.toInt()) {
         1 -> JobPhase.Queued; 2 -> JobPhase.Running; 3 -> JobPhase.Succeeded
         4 -> JobPhase.Failed; 5 -> JobPhase.Cancelled; else -> JobPhase.NeedsAttention
@@ -120,9 +117,9 @@ class NativeCoreGateway private constructor(
         val index = PlatformMediaIndex.query ?: return null
         return withContext(Dispatchers.IO) {
             try {
-                // Only native volume grants have an absolute root; trees, clouds and app folders walk.
+                // Only native volume grants have an absolute root; clouds and app folders walk.
                 val grant = runtime.grants().firstOrNull { it.id == space.id } ?: return@withContext null
-                if (grant.androidTree || grant.reference.startsWith("webdav:") || !space.detachable) return@withContext null
+                if (grant.reference.startsWith("webdav:") || !space.detachable) return@withContext null
                 val root = grant.reference.trimEnd('/')
                 val entries = index(root, extensions, limit) ?: return@withContext null
                 val base = space.root.path.trim('/')
@@ -142,31 +139,26 @@ class NativeCoreGateway private constructor(
         val saved = runtime.grants().associateBy { it.id }
         runtime.spaces().map { space ->
             val grant = saved[space.id]
-            space.ui(androidTree = grant?.androidTree == true,
-                localContainer = !space.detachable || grant?.localContainer() == true,
+            space.ui(localContainer = !space.detachable || grant?.localContainer() == true,
                 cloud = grant?.reference?.startsWith("webdav:") == true).labelled(grant)
         }
     }
     override suspend fun attachFolder(folder: PickedFolder): CoreResult<Space> = attaching.withLock {
         call(write = true) {
             val saved = grants.read()
-            val android = folder.provider == FolderProvider.AndroidTree
-            val grant = saved.firstOrNull { it.reference == folder.reference && it.androidTree == android }
-                ?: NativeGrant(UUID.randomUUID().toString(), folder.reference, android)
+            val grant = saved.firstOrNull { it.reference == folder.reference }
+                ?: NativeGrant(UUID.randomUUID().toString(), folder.reference)
             // Persist identity BEFORE native registration. An uncertain reply must
             // never assign a fresh UUID to the same grant on the next startup.
             val updated = saved.filterNot { it.id == grant.id } + grant
             val isNew = saved.none { it.id == grant.id }
-            // Audit A40: a grant this request created must not outlive a definite failure
-            // (the OS permission was taken by the picker before this call).
             fun rollback() {
                 if (!isNew) return
                 try { grants.write(saved) } catch (_: Exception) {}
-                if (android) try { releaseGrant(grant) } catch (_: Exception) {}
             }
-            try { grants.write(updated) } catch (error: Exception) { if (isNew && android) try { releaseGrant(grant) } catch (_: Exception) {}; throw error }
+            grants.write(updated)
             try {
-                runtime.attach(grant).ui(androidTree = android, localContainer = grant.localContainer()).labelled(grant)
+                runtime.attach(grant).ui(localContainer = grant.localContainer()).labelled(grant)
             } catch (error: Exception) {
                 // Only refusals are rolled back; a lost or uncertain reply keeps the grant for reconciliation.
                 if (error.javaClass.simpleName in setOf("Invalid", "Unsupported", "Denied", "Conflict", "Limit", "Changed")) rollback()
@@ -174,12 +166,8 @@ class NativeCoreGateway private constructor(
             }
         }
     }
-    /** Idempotent (У-17): 1. withdraw from Core (refused while jobs use it; nothing
-     * changes then); 2. remove from the saved grants; 3. release the OS permission.
-     * If step 2 failed earlier, the native side no longer knows the grant
-     * ("Invalid") while the store still has it: the retry finishes steps 2–3
-     * instead of failing forever, and the permission is never released before
-     * the grant is gone from Core and from the store. */
+    /** Withdraw from Core first, then remove the saved grant. A retry can
+     * finish the store update if Core already withdrew the folder. */
     override suspend fun detach(space: Space): CoreResult<Unit> = attaching.withLock {
         call(write = true) {
             val saved = grants.read()
@@ -188,8 +176,6 @@ class NativeCoreGateway private constructor(
                 saved.firstOrNull { it.id == space.id } ?: throw error
             }
             grants.write(saved.filterNot { it.id == removed.id })
-            // Permission last: a failed release leaves an unused grant, never a broken one.
-            try { releaseGrant(removed) } catch (_: Exception) {}
         }
     }
     override suspend fun list(folder: Location) = call {
@@ -197,7 +183,7 @@ class NativeCoreGateway private constructor(
         FolderListing(listing.entries.map {
             FileItem(it.location.ui(), it.name, when (it.kind.toInt()) {
                 1 -> EntryKind.File; 2 -> EntryKind.Directory; 3 -> EntryKind.Symlink; else -> EntryKind.Other
-            }, it.bytes, it.modifiedMs, it.sizeKnown)
+            }, it.bytes, it.modifiedMs)
         }, listing.skipped.coerceAtMost(Long.MAX_VALUE.toULong()).toLong())
     }
     override suspend fun createDirectory(parent: Location, name: String, requestId: String) = call(write = true) {
@@ -874,25 +860,4 @@ private fun fault(error: Exception, write: Boolean): CoreFault = if (error is Te
     "Locked" -> CoreFault.Locked
     "DeviceKey" -> CoreFault.DeviceKey
     else -> if (write) CoreFault.OutcomeUnknown else CoreFault.Unavailable
-}
-
-/** Native Unix/Windows grants do not use Android callbacks. */
-object NoAndroidDocuments : AndroidDocuments {
-    private fun info() = HostInfo(2u, 0u, 0uL, null)
-    override fun metadata(tree: String, path: String) = info()
-    override fun list(tree: String, path: String, limit: UInt) = HostListing(2u, emptyList())
-    override fun open(tree: String, path: String) = HostOpened(2u, 0uL, info())
-    override fun read(handle: ULong, offset: ULong, size: UInt) = HostBytes(2u, byteArrayOf())
-    override fun fileMetadata(handle: ULong) = info()
-    override fun close(handle: ULong) = Unit
-    override fun writable(tree: String) = false
-    override fun create(tree: String, parent: String, name: String, directory: Boolean) = HostCreated(2u, "", "")
-    override fun openWrite(tree: String, document: String) = HostOpened(2u, 0uL, info())
-    override fun write(handle: ULong, data: ByteArray) = 2u
-    override fun finishWrite(handle: ULong) = 2u
-    override fun rename(tree: String, document: String, name: String) = HostCreated(2u, "", "")
-    override fun moveDocument(tree: String, document: String, sourceParent: String, targetParent: String) = HostCreated(2u, "", "")
-    override fun deletionSupported(tree: String) = false
-    override fun delete(tree: String, document: String, directory: Boolean) = 2u
-    override fun resolve(tree: String, path: String) = HostCreated(2u, "", "")
 }

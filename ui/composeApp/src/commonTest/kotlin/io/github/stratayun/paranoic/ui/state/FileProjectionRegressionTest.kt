@@ -5,17 +5,6 @@ import kotlin.test.*
 
 /** Cases adapted from v1.5 FileListProjectionTest; no legacy file engine. */
 class FileProjectionRegressionTest {
-    @Test fun unknownSizeIsVisibleAndSortsAfterKnownSizesInBothDirections() {
-        val unknown = FileItem(Location("s", "unknown.txt"), "unknown.txt", EntryKind.File, 0uL, sizeKnown = false)
-        val empty = item("s", "empty.txt", EntryKind.File, 0uL)
-        val full = item("s", "full.txt", EntryKind.File, 20uL)
-        val folder = item("s", "folder", EntryKind.Directory, 0uL)
-        val input = listOf(unknown, full, empty, folder)
-        assertEquals(listOf(folder, empty, full, unknown), visibleFiles(input, FileListOptions(order = FileOrder.SizeAscending)))
-        assertEquals(listOf(folder, full, empty, unknown), visibleFiles(input, FileListOptions(order = FileOrder.SizeDescending)))
-        assertFalse(unknown.sizeKnown)
-        assertTrue(empty.sizeKnown)
-    }
     private fun item(storage: String, name: String, kind: EntryKind, size: ULong) =
         FileItem(Location(storage, name), name, kind, size)
 

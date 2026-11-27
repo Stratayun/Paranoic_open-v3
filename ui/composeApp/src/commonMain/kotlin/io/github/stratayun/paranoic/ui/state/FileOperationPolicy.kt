@@ -14,20 +14,16 @@ fun FileItem.canCopy(spaces: List<Space>): Boolean =
         spaces.spaceOf(location)?.let { it.root != location } == true
 
 fun FileItem.canMove(spaces: List<Space>): Boolean = canCopy(spaces) &&
-    spaces.spaceOf(location)?.let { it.writable && !(it.androidTree && kind == EntryKind.Directory) } == true
+    spaces.spaceOf(location)?.writable == true
 
-fun FileItem.canRename(spaces: List<Space>): Boolean = canCopy(spaces) &&
-    spaces.spaceOf(location)?.let { it.writable && !it.androidTree } == true
+fun FileItem.canRename(spaces: List<Space>): Boolean = canMove(spaces)
 
 fun FileItem.canDelete(spaces: List<Space>): Boolean = canMove(spaces)
 
 /** Component boundary comparison, never an OS lookup or native operation path. */
 fun FileItem.canTransferTo(parent: Location, mode: TransferMode, spaces: List<Space>): Boolean {
     if (!canCopy(spaces) || spaces.spaceOf(parent)?.writable != true) return false
-    if (mode == TransferMode.Move) {
-        if (!canMove(spaces)) return false
-        if (location.storageId == parent.storageId && spaces.spaceOf(location)?.androidTree == true) return false
-    }
+    if (mode == TransferMode.Move && !canMove(spaces)) return false
     return kind != EntryKind.Directory || location.storageId != parent.storageId ||
         (parent.path != location.path && !parent.path.startsWith(location.path + "/"))
 }
@@ -37,4 +33,4 @@ fun FileItem.isTarget(parent: Location, name: String): Boolean = location.storag
 
 fun FileItem.canReplace(target: FileItem?, parent: Location, name: String, spaces: List<Space>): Boolean =
     kind == EntryKind.File && target?.kind == EntryKind.File && target.location != location &&
-        target.isTarget(parent, name) && spaces.spaceOf(parent)?.let { it.writable && !it.androidTree } == true
+        target.isTarget(parent, name) && spaces.spaceOf(parent)?.writable == true

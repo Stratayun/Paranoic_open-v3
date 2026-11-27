@@ -36,8 +36,8 @@ import kotlinx.coroutines.ensureActive
  */
 @Composable
 fun MarkdownViewer(core: CoreGateway, file: FileItem, parent: Location?, guard: DocumentExitGuard, onClose: () -> Unit) {
-    var editing by remember(file.location) { mutableStateOf(!file.sizeKnown || file.bytes > 262_144uL) }
-    if (editing) TextEditor(core, file, parent, guard, onClose = { if (file.sizeKnown && file.bytes <= 262_144uL) guard.request { editing = false } else onClose() })
+    var editing by remember(file.location) { mutableStateOf(file.bytes > 262_144uL) }
+    if (editing) TextEditor(core, file, parent, guard, onClose = { if (file.bytes <= 262_144uL) guard.request { editing = false } else onClose() })
     else MarkdownReader(core, file, onClose, onEdit = { editing = true })
 }
 

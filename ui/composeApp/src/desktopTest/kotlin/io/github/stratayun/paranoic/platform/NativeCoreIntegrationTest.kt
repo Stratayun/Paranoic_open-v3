@@ -30,7 +30,7 @@ class NativeCoreIntegrationTest {
         try {
             val workspace = root.resolve("files")
             val core = NativeCoreGateway.open(root.resolve("state").absolutePath, workspace.absolutePath,
-                "", "", NoAndroidDocuments, store, sealer)
+                "", "", store, sealer)
             gateway = core
             val password = "Correct horse battery staple 42!"
             // Policy: lower, upper, digit and symbol. A phrase without them is refused before any state exists.

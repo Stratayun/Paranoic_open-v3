@@ -162,7 +162,7 @@ impl CryptomatorReader {
     fn require_mutable(&self) -> Result<()> {
         let caps = self.storage.capabilities();
         if !caps.write || !caps.delete || !caps.read { return Err(CryptoError::Permissions); }
-        // SAF: no directory sync; accepted by the owner (E2.8, directory_sync_waived).
+        // Windows permits this operation without a directory sync.
         if !caps.atomic_move_no_replace || !(caps.durable_directory_sync || caps.directory_sync_waived) { return Err(CryptoError::Unsupported); }
         Ok(())
     }

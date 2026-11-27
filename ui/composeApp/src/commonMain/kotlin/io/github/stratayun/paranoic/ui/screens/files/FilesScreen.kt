@@ -96,9 +96,6 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
         }
         if (visible.size > MAX_FILE_SELECTION) Text(tr("За один раз можно выбрать до $MAX_FILE_SELECTION объектов. Уточните фильтр или выберите вручную.",
             "Select up to $MAX_FILE_SELECTION entries at a time. Narrow the filter or select entries individually."))
-        if (selected?.let { state.spaces.spaceOf(it.location)?.androidTree } == true) Text(tr(
-            "Это подключение Android не поддерживает переименование и перенос внутри него. Удаление и перенос папок отключены.",
-            "This Android connection does not support renaming or moves within it. Folder deletion and moving are disabled."))
         if (state.folder != null) FileListControls(options, view, visible.size, state.entries.size,
             onOptions = { session.fileOptions(tabId, it) }, onView = { next -> session.fileView(tabId, next); onView(next) })
         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -233,9 +230,7 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
                     if (selectedItems.size > 1) batchAction = FileBatchKind.Move to selectedItems.toList()
                     else selected?.let { transferring = it to TransferMode.Move }
                 }
-                // SAF folder deletion is deliberately absent: deleteDocument can remove new children in a race.
-                val deletable = selectedItems.none { it.kind == EntryKind.Directory && state.spaces.spaceOf(it.location)?.androidTree == true }
-                if (deletable) Action(AppSymbol.Trash, tr("Удалить…", "Delete…"), canAct && selectedItems.all { it.canDelete(state.spaces) }) {
+                Action(AppSymbol.Trash, tr("Удалить…", "Delete…"), canAct && selectedItems.all { it.canDelete(state.spaces) }) {
                     if (session.trashAvailable(selectedItems.toList())) trashing = selectedItems.toList()
                     else if (selectedItems.size > 1) batchAction = FileBatchKind.Delete to selectedItems.toList() else deleting = selected
                 }
@@ -280,7 +275,7 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
         val crypto = single && isFile && session.directWrite?.phase != DirectWritePhase.Unknown
         fun act(run: () -> Unit): () -> Unit = { sheetFor = null; inTab(run) }
         FileActionSheet(item.name, if (item.kind == EntryKind.Directory) tr("Папка", "Folder")
-            else listOfNotNull(fileModifiedLabel(item.modifiedMs), if (item.sizeKnown) humanSize(item.bytes) else null).joinToString(" · "),
+            else listOfNotNull(fileModifiedLabel(item.modifiedMs), humanSize(item.bytes)).joinToString(" · "),
             fileSymbol(item), listOf(
             SheetGroup(tr("Открыть", "Open"), listOfNotNull(
                 SheetAction(tr("Открыть", "Open"), AppSymbol.Forward, item.kind == EntryKind.Directory || isFile,
@@ -302,9 +297,8 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
                     run = act { transferring = item to TransferMode.Move }),
                 SheetAction(tr("Переименовать", "Rename"), AppSymbol.Edit, single && item.canRename(state.spaces),
                     run = act { renaming = item }),
-                if (!(item.kind == EntryKind.Directory && state.spaces.spaceOf(item.location)?.androidTree == true))
-                    SheetAction(tr("Удалить", "Delete"), AppSymbol.Trash, single && item.canDelete(state.spaces), danger = true,
-                        run = act { if (session.trashAvailable(listOf(item))) trashing = listOf(item) else deleting = item }) else null,
+                SheetAction(tr("Удалить", "Delete"), AppSymbol.Trash, single && item.canDelete(state.spaces), danger = true,
+                    run = act { if (session.trashAvailable(listOf(item))) trashing = listOf(item) else deleting = item }),
             )),
             SheetGroup(tr("Инструменты", "Tools"), listOfNotNull(
                 if (!isArchive(item)) SheetAction(tr("Сжать…", "Compress…"), AppSymbol.Archive, single && item.canCopy(state.spaces),
@@ -323,7 +317,7 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
                 Text(tr("Тип: ", "Type: ") + when (item.kind) {
                     EntryKind.Directory -> tr("папка", "folder"); EntryKind.File -> tr("файл", "file")
                     EntryKind.Symlink -> tr("ссылка", "link"); EntryKind.Other -> tr("другое", "other") })
-                if (item.kind == EntryKind.File) Text(tr("Размер: ", "Size: ") + if (item.sizeKnown) "${humanSize(item.bytes)} (${item.bytes} " + tr("байт", "bytes") + ")" else tr("неизвестен", "unknown"))
+                if (item.kind == EntryKind.File) Text(tr("Размер: ", "Size: ") + "${humanSize(item.bytes)} (${item.bytes} " + tr("байт", "bytes") + ")")
                 fileModifiedLabel(item.modifiedMs)?.let { Text(tr("Изменён: ", "Modified: ") + it) }
                 Text(tr("Путь: /", "Path: /") + displayName(item.location.path))
             } }, confirmButton = { TextButton(onClick = { properties = null }) { Text(tr("Закрыть", "Close")) } })
@@ -417,7 +411,7 @@ private fun FileRow(core: CoreGateway, pngImage: @Composable (ByteArray, Modifie
                 val modified = fileModifiedLabel(item.modifiedMs)
                 val size = when (item.kind) {
                     EntryKind.Directory -> null
-                    EntryKind.File -> if (item.sizeKnown) humanSize(item.bytes) else tr("размер неизвестен", "size unknown")
+                    EntryKind.File -> humanSize(item.bytes)
                     EntryKind.Symlink -> tr("ссылка", "symbolic link")
                     EntryKind.Other -> tr("другой тип", "other type")
                 }
