@@ -447,15 +447,23 @@ class NativeCoreGateway private constructor(
         incomingReads.forEach { try { it.cancel() } catch (_: Exception) {} }
         val done = CompletableDeferred<Unit>()
         pendingSecretsLock = done
-        Thread {
+        // Audit A50: locks run one after another on one thread, so the latest pending lock
+        // finishing means every earlier one has finished too.
+        lockQueue.execute {
             try { runtime.lockAllSecrets(); done.complete(Unit) }
             catch (error: Exception) { done.completeExceptionally(error) }
-        }.apply { isDaemon = true; name = "paranoic-quick-lock" }.start()
+        }
     }
+    private val lockQueue = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
+        Thread(task, "paranoic-quick-lock").apply { isDaemon = true }
+    }
+    /** The newest secret epoch any secret call has started in. */
+    private val newestCallEpoch = java.util.concurrent.atomic.AtomicLong()
 
     /** Resume cannot authenticate before the background lock has finished. */
     private suspend fun <T> secretCall(write: Boolean = false, block: () -> T): CoreResult<T> {
         val epoch = secretEpoch.get()
+        newestCallEpoch.accumulateAndGet(epoch) { a, b -> maxOf(a, b) }
         try { pendingSecretsLock?.await() }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { return CoreResult.Failure(CoreFault.Locked) }
@@ -463,7 +471,15 @@ class NativeCoreGateway private constructor(
             if (epoch != secretEpoch.get()) throw SecretRevoked()
             val value = block()
             if (epoch != secretEpoch.get()) {
-                runtime.lockAllSecrets()
+                // A late reply of a revoked generation: lock again (ordered after the user's lock)
+                // only while no call of a newer generation has started; otherwise that newer
+                // session would be revoked too (audit A50). Anything this late call opened is
+                // then closed by the next lock.
+                if (newestCallEpoch.get() <= epoch) {
+                    val again = CompletableDeferred<Unit>()
+                    pendingSecretsLock = again
+                    lockQueue.execute { try { runtime.lockAllSecrets(); again.complete(Unit) } catch (e: Exception) { again.completeExceptionally(e) } }
+                }
                 throw SecretRevoked()
             }
             value
@@ -804,13 +820,13 @@ class NativeCoreGateway private constructor(
     override suspend fun vaultAnchorsDamaged() = (call { runtime.vaultAnchorsDamaged() } as? CoreResult.Value)?.value == true
     override suspend fun vaultAnchorsReset() = call { runtime.vaultAnchorsReset() }
     override suspend fun trashSupported(space: Space) = (call { runtime.trashSupported(space.root.storageId) } as? CoreResult.Value)?.value == true
-    override suspend fun trashPut(source: Location) = call { runtime.trashPut(source.native()) }
+    override suspend fun trashPut(source: Location) = call(write = true) { runtime.trashPut(source.native()) }
     override suspend fun trashList(space: Space) = call {
         runtime.trashList(space.root.storageId).map { TrashItem(it.bucket, it.name, it.originalFolder, it.deletedMs.toLong(), it.folder, it.bytes.toLong()) }
     }
-    override suspend fun trashRestore(space: Space, bucket: String) = call { runtime.trashRestore(space.root.storageId, bucket) }
-    override suspend fun trashPurge(space: Space, bucket: String) = call { runtime.trashPurge(space.root.storageId, bucket) }
-    override suspend fun trashEmpty(space: Space) = call { runtime.trashEmpty(space.root.storageId).toInt() }
+    override suspend fun trashRestore(space: Space, bucket: String) = call(write = true) { runtime.trashRestore(space.root.storageId, bucket) }
+    override suspend fun trashPurge(space: Space, bucket: String) = call(write = true) { runtime.trashPurge(space.root.storageId, bucket) }
+    override suspend fun trashEmpty(space: Space) = call(write = true) { runtime.trashEmpty(space.root.storageId).toInt() }
     override suspend fun renameProbe(space: Space) = call {
         when (runtime.renameProbe(space.id).toInt()) {
             0 -> RenameProbe.Supported; 1 -> RenameProbe.Unsupported; 2 -> RenameProbe.Ignored

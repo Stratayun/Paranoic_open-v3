@@ -326,6 +326,8 @@ impl NativeRuntime {
     /// grant so the host can release its OS permission and update its store.
     pub fn detach(&self, id: String) -> Result<NativeGrant> {
         let storage = grant_id(&id)?;
+        // Audit A06: as for Core jobs, a place with trash work in progress is not withdrawn.
+        if crate::trash::busy(&id) { return Err(BridgeError::Busy); }
         let mut grants = self.grants.lock().map_err(lock_error)?;
         let index = grants.iter().position(|g| g.id == id).ok_or(BridgeError::Invalid)?;
         match self.core.unregister_storage(storage) {

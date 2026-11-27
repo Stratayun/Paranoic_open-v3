@@ -13,6 +13,24 @@ use uuid::Uuid;
 use crate::{features::now_ms, BridgeError, NativeLocation, NativeRuntime, Result};
 
 pub(crate) const TRASH: &str = ".Trash-Paranoic";
+
+/// Audit A06: trash work in progress per storage. Detaching a storage waits for none to run, as it
+/// does for Core jobs; each trash call holds a guard for its whole duration.
+static ACTIVE: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+pub(crate) struct Active(String);
+impl Active {
+    fn begin(storage_id: &str) -> Result<Self> {
+        ACTIVE.lock().map_err(crate::lock_error)?.push(storage_id.to_owned());
+        Ok(Self(storage_id.to_owned()))
+    }
+}
+impl Drop for Active {
+    fn drop(&mut self) {
+        if let Ok(mut active) = ACTIVE.lock() { if let Some(i) = active.iter().position(|s| *s == self.0) { active.remove(i); } }
+    }
+}
+/// Whether any trash call is running on this storage.
+pub(crate) fn busy(storage_id: &str) -> bool { ACTIVE.lock().map(|a| a.iter().any(|s| s == storage_id)).unwrap_or(true) }
 const ORIGIN: &str = ".origin";
 const MAX_ITEMS: usize = 10_000;
 
@@ -51,6 +69,7 @@ impl NativeRuntime {
     pub fn trash_put(&self, location: NativeLocation) -> Result<()> {
         let location = location.core()?;
         if location.path.is_root() || location.path.as_str().split('/').next() == Some(TRASH) { return Err(BridgeError::Invalid); }
+        let _active = Active::begin(&location.storage.0.to_string())?;
         let storage = self.trash_storage(&location.storage.0.to_string())?;
         let (parent, name) = location.path.parent_and_name()?;
         let trash = ResourcePath::parse(TRASH)?;
@@ -99,6 +118,13 @@ impl NativeRuntime {
             let Some((deleted_ms, mut original_folder)) = parse_bucket(bucket_name) else { continue };
             let Ok(inside) = storage.list(&bucket.location.path, 3) else { continue };
             let entries: Vec<_> = inside.iter().filter(|e| e.location.path.parent_and_name().map(|(_, n)| n != ORIGIN).unwrap_or(false)).collect();
+            // Audit A06: a crash between writing `.origin` and the move leaves a bucket with
+            // nothing in it; remove that leftover (only `.origin`, nothing of the owner's).
+            if entries.is_empty() && !bucket_name.contains('~') && !busy(&storage_id) {
+                let _ = storage.delete_file(&bucket.location.path.join(ORIGIN)?);
+                let _ = storage.delete_empty_directory(&bucket.location.path);
+                continue;
+            }
             let [entry] = entries.as_slice() else { continue };
             if !bucket_name.contains('~') { original_folder = read_origin(storage.as_ref(), &bucket.location.path).unwrap_or_default(); }
             let Ok((_, name)) = entry.location.path.parent_and_name() else { continue };
@@ -112,6 +138,7 @@ impl NativeRuntime {
     /// Put an entry back where it was. Conflict if that name is taken now;
     /// NotFound-like Invalid if the original folder is gone.
     pub fn trash_restore(&self, storage_id: String, bucket: String) -> Result<()> {
+        let _active = Active::begin(&storage_id)?;
         let storage = self.trash_storage(&storage_id)?;
         let (bucket_path, item) = self.trash_item(&storage_id, &bucket)?;
         // Audit A07: a missing or damaged `.origin` is not "the root"; restore refuses instead of
@@ -128,6 +155,7 @@ impl NativeRuntime {
 
     /// Erase one trashed entry for good.
     pub fn trash_purge(&self, storage_id: String, bucket: String) -> Result<()> {
+        let _active = Active::begin(&storage_id)?;
         let storage = self.trash_storage(&storage_id)?;
         let (bucket_path, _) = self.trash_item(&storage_id, &bucket)?;
         let mut budget = 100_000usize;
