@@ -716,6 +716,11 @@ class NativeCoreGateway private constructor(
         protectedCall(write = true) { runtime.vaultChangePassword(handle, oldPassword, newPassword) }
     override suspend fun vaultSetRecovery(handle: String, password: String) =
         protectedCall(write = true) { runtime.vaultSetRecovery(handle, password) }
+    override suspend fun vaultRecoveryPrepare(handle: String, password: String) =
+        protectedCall { runtime.vaultRecoveryPrepare(handle, password).let { RecoveryDraft(it.id, it.text) } }
+    override suspend fun vaultRecoveryCommit(id: String, indices: List<Int>, answers: List<String>) =
+        protectedCall(write = true) { runtime.vaultRecoveryCommit(id, indices.map { it.toUInt() }, answers) }
+    override suspend fun vaultRecoveryDiscard(id: String) { call { runtime.vaultRecoveryDiscard(id) } }
     override suspend fun vaultOpenRecovery(root: Location, recovery: String) =
         protectedAccess.withLock { openedFolder(write = false, release = { runtime.vaultLock(it) }) { runtime.vaultOpenRecovery(root.native(), recovery) } }
 

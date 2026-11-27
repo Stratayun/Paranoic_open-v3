@@ -90,6 +90,10 @@ fun rememberAndroidAuthentication(activity: FragmentActivity): ((Boolean) -> Uni
 fun AndroidAppGate(activity: FragmentActivity, state: AndroidSecurityState,
     authenticate: ((Boolean) -> Unit) -> Unit, content: @Composable () -> Unit) {
     var unlocked by remember { mutableStateOf(!state.enabled) }
+    // Audit A39: nothing of the app is composed (no listings, no effects) before the first
+    // successful sign-in of this activity. After a later re-lock the screen stays underneath the
+    // gate; its secrets were already cleared when the app left the foreground.
+    var everUnlocked by remember { mutableStateOf(!state.enabled) }
     var busy by remember { mutableStateOf(false) }
     var generation by remember { mutableStateOf(0) }
     DisposableEffect(activity, state) {
@@ -102,7 +106,7 @@ fun AndroidAppGate(activity: FragmentActivity, state: AndroidSecurityState,
         activity.lifecycle.addObserver(observer)
         onDispose { activity.lifecycle.removeObserver(observer) }
     }
-    content()
+    if (everUnlocked) content()
     if (state.enabled && !unlocked) Dialog(onDismissRequest = {},
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false,
             usePlatformDefaultWidth = false, securePolicy = SecureFlagPolicy.SecureOn)) {
@@ -116,7 +120,7 @@ fun AndroidAppGate(activity: FragmentActivity, state: AndroidSecurityState,
                     authenticate { success ->
                         busy = false
                         val onScreen = activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
-                        if (success && attempt == generation && onScreen) unlocked = true
+                        if (success && attempt == generation && onScreen) { unlocked = true; everUnlocked = true }
                     }
                 }) { Text(tr("Разблокировать", "Unlock")) }
             }

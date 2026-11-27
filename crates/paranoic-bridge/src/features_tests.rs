@@ -157,8 +157,24 @@ fn book(body: &str) -> NativeNotebook {
     assert_eq!(rt.vault_list(recovered, vec!["Папка".into()]).unwrap().entries[0].name, "doc.txt");
     let second = rt.vault_set_recovery(reopened, new.into()).unwrap();
     assert!(rt.vault_open_recovery(at("Vault"), first).is_err());
-    assert!(rt.vault_open_recovery(at("Vault"), second).is_ok());
+    assert!(rt.vault_open_recovery(at("Vault"), second.clone()).is_ok());
     assert!(matches!(rt.vault_open_recovery(at("Vault"), "not a key".into()), Err(BridgeError::Invalid)));
+    // Audit A43: a prepared key is not in force until the typed groups match.
+    let reopened2 = rt.vault_open(at("Vault"), new.into()).unwrap();
+    let draft = rt.vault_recovery_prepare(reopened2.clone(), new.into()).unwrap();
+    assert!(rt.vault_open_recovery(at("Vault"), draft.text.clone()).is_err(), "prepared key active before confirmation");
+    assert!(rt.vault_open_recovery(at("Vault"), second.clone()).is_ok(), "previous key lost before confirmation");
+    let groups: Vec<&str> = draft.text.split('-').collect();
+    assert!(!rt.vault_recovery_commit(draft.id.clone(), vec![0, 5, 9], vec!["zzzz".into(), "zzzz".into(), "zzzz".into()]).unwrap());
+    assert!(rt.vault_recovery_commit(draft.id.clone(), vec![0, 5, 9], vec![groups[0].into(), groups[5].into(), groups[9].into()]).unwrap());
+    assert!(rt.vault_open_recovery(at("Vault"), draft.text.clone()).is_ok());
+    assert!(rt.vault_open_recovery(at("Vault"), second).is_err());
+    // A draft discarded by a lock never takes effect.
+    let reopened3 = rt.vault_open(at("Vault"), new.into()).unwrap();
+    let dropped = rt.vault_recovery_prepare(reopened3, new.into()).unwrap();
+    rt.lock_all_secrets();
+    assert!(rt.vault_recovery_commit(dropped.id, vec![0, 1, 2], vec!["a".into(), "b".into(), "c".into()]).is_err());
+    assert!(rt.vault_open_recovery(at("Vault"), draft.text).is_ok());
     assert!(!fs::read_dir(fx.0.join("workspace")).unwrap().any(|e| e.unwrap().file_name().to_string_lossy().starts_with(".pnc-spool")));
     rt.shutdown().unwrap();
 }

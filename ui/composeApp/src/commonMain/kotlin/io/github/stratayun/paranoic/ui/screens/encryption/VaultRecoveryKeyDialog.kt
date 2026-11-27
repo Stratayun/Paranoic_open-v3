@@ -24,8 +24,14 @@ import kotlinx.coroutines.launch
 
 /** The key was already published. Only successful Core verification closes
  * this dialog; backgrounding/Quick Lock still revokes the entire secret screen. */
+@OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
 @Composable
-internal fun VaultRecoveryKeyDialog(core: CoreGateway, keyText: String, onClose: () -> Unit) {
+internal fun VaultRecoveryKeyDialog(core: CoreGateway, draft: RecoveryDraft, onClose: (published: Boolean) -> Unit) {
+    val keyText = draft.text
+    // Audit A43: the key is published only by a successful check below; leaving without it
+    // (lock, back, process end) keeps the previous key in force.
+    var published by remember(draft.id) { mutableStateOf(false) }
+    DisposableEffect(draft.id) { onDispose { if (!published) kotlinx.coroutines.GlobalScope.launch { core.vaultRecoveryDiscard(draft.id) } } }
     var indices by remember(keyText) { mutableStateOf<List<Int>>(emptyList()) }
     var answers by remember(keyText) { mutableStateOf<List<String>>(emptyList()) }
     var checking by remember(keyText) { mutableStateOf(false) }
@@ -91,15 +97,15 @@ internal fun VaultRecoveryKeyDialog(core: CoreGateway, keyText: String, onClose:
                 answers = List(indices.size) { "" }; busy = true; fault = null; mismatch = false
                 scope.launch {
                     try {
-                        val result = core.vaultRecoveryCheck(keyText, indices, submitted)
+                        val result = core.vaultRecoveryCommit(draft.id, indices, submitted)
                         currentCoroutineContext().ensureActive()
                         when (result) {
-                            is CoreResult.Value -> if (result.value) onClose() else mismatch = true
+                            is CoreResult.Value -> if (result.value) { published = true; onClose(true) } else mismatch = true
                             is CoreResult.Failure -> fault = result.fault
                         }
                     } catch (cancelled: CancellationException) { throw cancelled }
                     catch (_: Exception) { fault = CoreFault.Unavailable }
                     finally { busy = false }
                 }
-            }) { Text(if (checking) tr("Проверить и закрыть", "Verify and close") else tr("Записал(а), проверить", "Recorded, verify")) } })
+            }) { Text(if (checking) tr("Проверить и включить", "Verify and activate") else tr("Записал(а), проверить", "Recorded, verify")) } })
 }

@@ -197,6 +197,11 @@ interface CoreGateway {
     suspend fun vaultChangePassword(handle: String, oldPassword: String, newPassword: String): CoreResult<Unit> = unsupported()
     /** Creates or replaces the recovery key after checking `password`; show the returned text ONCE, never store it (B11). */
     suspend fun vaultSetRecovery(handle: String, password: String): CoreResult<String> = unsupported()
+    /** Audit A43: prepare a new recovery key (nothing published yet). */
+    suspend fun vaultRecoveryPrepare(handle: String, password: String): CoreResult<RecoveryDraft> = unsupported()
+    /** Publish the prepared key once the typed groups match; false = mismatch, nothing changed. */
+    suspend fun vaultRecoveryCommit(id: String, indices: List<Int>, answers: List<String>): CoreResult<Boolean> = unsupported()
+    suspend fun vaultRecoveryDiscard(id: String) {}
     /** Opens with the recovery key text (case, dashes and spaces ignored) (B11). */
     suspend fun vaultOpenRecovery(root: Location, recovery: String): CoreResult<String> = unsupported()
     /** Core chooses zero-based group indices; no UI random generator or key comparison. */
@@ -271,6 +276,8 @@ interface MediaSource {
 
 /** Typed identity from Core, never an absolute OS path assembled by the UI. */
 data class Location(val storageId: String, val path: String)
+/** A recovery key shown to the owner but not yet in force (audit A43). */
+data class RecoveryDraft(val id: String, val text: String)
 enum class EntryKind { File, Directory, Symlink, Other }
 /** bytes is meaningful only when sizeKnown; unknown provider metadata stays visible. */
 data class FileItem(val location: Location, val name: String, val kind: EntryKind, val bytes: ULong,

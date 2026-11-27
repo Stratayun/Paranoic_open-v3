@@ -71,7 +71,7 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
     var reading by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<Dialog?>(null) }
     var viewing by remember { mutableStateOf<Pair<VaultEntry, List<String>>?>(null) }
-    var recoveryText by remember { mutableStateOf<String?>(null) }
+    var recoveryText by remember { mutableStateOf<RecoveryDraft?>(null) }
     var recoveryAccess by remember { mutableStateOf(false) }
     var completed by remember { mutableStateOf<FolderWriteNotice?>(null) }
     var importReports by remember { mutableStateOf<List<VaultMoveInReport>>(emptyList()) }
@@ -155,6 +155,7 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
             FolderWriteNotice.Password -> tr("Пароль изменён. При следующем открытии используйте новый пароль.", "Password changed. Use the new password on the next open.")
             FolderWriteNotice.Move -> tr("Объект перенесён. Имя сохранено.", "Entry moved. Its name is unchanged.")
             FolderWriteNotice.Replace -> tr("Содержимое заменено. Исходный файл сохранён.", "Contents replaced. The source file is kept.")
+            FolderWriteNotice.Recovery -> tr("Новый ключ восстановления действует. Прежний больше не подходит.", "The new recovery key is in force. The previous one no longer works.")
         }) }
         if (importReports.isNotEmpty()) {
             val removed = importReports.count { it.sourceRemoved }
@@ -531,7 +532,10 @@ fun EncryptionScreen(session: AppSession, exitGuard: DocumentExitGuard,
             dismissButton = { TextButton(onClick = { dialog = null }) { Text(tr("Отмена", "Cancel")) } })
     }
     recoveryText?.let { text ->
-        if (vault != null) VaultRecoveryKeyDialog(core, text) { recoveryText = null }
+        if (vault != null) VaultRecoveryKeyDialog(core, text) { published ->
+            recoveryText = null
+            if (published) completed = FolderWriteNotice.Recovery
+        }
     }
     viewing?.let { selected -> vault?.let { opened ->
         VaultFileWindow(session, gateway, opened.handle, selected.second, selected.first, opened.writable,
@@ -558,7 +562,7 @@ private sealed interface Dialog {
 private fun unknownOutcome(fault: CoreFault) = fault in setOf(CoreFault.OutcomeUnknown, CoreFault.Unavailable,
     CoreFault.Cancelled, CoreFault.Disconnected)
 
-private enum class FolderWriteNotice { Password, Move, Replace }
+private enum class FolderWriteNotice { Password, Move, Replace, Recovery }
 
 private suspend fun <T> safe(block: suspend () -> CoreResult<T>): CoreResult<T> = try { block() }
     catch (cancelled: CancellationException) { throw cancelled }

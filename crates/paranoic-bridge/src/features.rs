@@ -36,6 +36,12 @@ impl paranoic_notes::DeviceKey for HostKey {
     }
 }
 
+/// A recovery key shown but not yet published (audit A43).
+struct RecoveryDraft { id: String, handle: String, plan: VaultPlan, spool: ResourcePath, text: zeroize::Zeroizing<String> }
+static RECOVERY_DRAFTS: std::sync::Mutex<Vec<RecoveryDraft>> = std::sync::Mutex::new(Vec::new());
+#[derive(uniffi::Record)]
+pub struct NativeRecoveryDraft { pub id: String, pub text: String }
+
 #[derive(Default)]
 pub(crate) struct NotesSlot { key: Option<Arc<dyn NotesKeyHost>>, quick: Option<Arc<dyn NotesKeyHost>>, store: Option<NotesStore>, pub(crate) session: Option<NotesSession> }
 
@@ -124,6 +130,8 @@ impl NativeRuntime {
             if let Some(store) = &slot.store { let _ = store.lock(); }
         }
         if let Ok(mut vaults) = self.vaults.lock() { vaults.clear(); }
+        let drafts = RECOVERY_DRAFTS.lock().map(|mut d| std::mem::take(&mut *d)).unwrap_or_default();
+        for draft in drafts { self.drop_spool(&draft.spool); }
         crate::vault_io::forget_streams();
         self.forget_vault_pdf(None);
         if let Ok(mut readers) = self.cryptomator_vaults.lock() {
@@ -789,7 +797,50 @@ impl NativeRuntime {
         self.drop_spool(&spool);
         result
     }
-    pub fn vault_lock(&self, handle: String) -> Result<()> { crate::vault_io::forget_streams_of(&handle); self.forget_vault_pdf(Some(&handle)); self.vaults.lock().map_err(lock_error)?.remove(&handle); Ok(()) }
+    /// Audit A43, step 1: a new recovery key is prepared and shown, nothing is published. The
+    /// current key keeps working until `vault_recovery_commit` succeeds.
+    pub fn vault_recovery_prepare(&self, handle: String, password: String) -> Result<NativeRecoveryDraft> {
+        let password = zeroize::Zeroizing::new(password);
+        let vault = self.vault(&handle)?;
+        let spool = Self::spool_path()?;
+        let prepared = vault.plan_set_recovery(&self.core, password.as_bytes(), Spool { storage: self.app.as_ref(), path: &spool }, &mut ok)
+            .map_err(vault_error);
+        let (plan, text) = match prepared { Ok(value) => value, Err(error) => { self.drop_spool(&spool); return Err(error); } };
+        let id = Uuid::new_v4().to_string();
+        let shown = text.to_string();
+        let mut drafts = RECOVERY_DRAFTS.lock().map_err(lock_error)?;
+        // One pending key per vault: a newer draft replaces an older one.
+        let stale: Vec<RecoveryDraft> = { let (old, keep): (Vec<_>, Vec<_>) = std::mem::take(&mut *drafts).into_iter().partition(|d| d.handle == handle); *drafts = keep; old };
+        drafts.push(RecoveryDraft { id: id.clone(), handle, plan, spool, text: zeroize::Zeroizing::new(shown.clone()) });
+        drop(drafts);
+        for draft in stale { self.drop_spool(&draft.spool); }
+        Ok(NativeRecoveryDraft { id, text: shown })
+    }
+    /// Audit A43, step 2: publish the prepared key only after the owner typed the requested groups
+    /// back. `false`: the groups did not match, nothing changed, the draft stays.
+    pub fn vault_recovery_commit(&self, id: String, indices: Vec<u32>, answers: Vec<String>) -> Result<bool> {
+        let mut drafts = RECOVERY_DRAFTS.lock().map_err(lock_error)?;
+        let position = drafts.iter().position(|d| d.id == id).ok_or(BridgeError::Locked)?;
+        let indices: Vec<usize> = indices.into_iter().map(|i| i as usize).collect();
+        let typed: Vec<&str> = answers.iter().map(String::as_str).collect();
+        if !paranoic_formats::paranoic_v1::recovery_check(&drafts[position].text, &indices, &typed) { return Ok(false); }
+        let draft = drafts.remove(position);
+        drop(drafts);
+        // The vault must still be open in this session.
+        self.vault(&draft.handle)?;
+        let result = self.run(&draft.plan);
+        self.drop_spool(&draft.spool);
+        result.map(|_| true)
+    }
+    /// Drop a prepared key that was never confirmed (the current key stays).
+    pub fn vault_recovery_discard(&self, id: String) {
+        let removed = RECOVERY_DRAFTS.lock().ok().and_then(|mut d| d.iter().position(|x| x.id == id).map(|p| d.remove(p)));
+        if let Some(draft) = removed { self.drop_spool(&draft.spool); }
+    }
+    pub fn vault_lock(&self, handle: String) -> Result<()> {
+        let stale: Vec<RecoveryDraft> = RECOVERY_DRAFTS.lock().map(|mut d| { let (old, keep): (Vec<_>, Vec<_>) = std::mem::take(&mut *d).into_iter().partition(|x| x.handle == handle); *d = keep; old }).unwrap_or_default();
+        for draft in stale { self.drop_spool(&draft.spool); }
+        crate::vault_io::forget_streams_of(&handle); self.forget_vault_pdf(Some(&handle)); self.vaults.lock().map_err(lock_error)?.remove(&handle); Ok(()) }
     pub fn vault_list(&self, handle: String, path: Vec<String>) -> Result<NativeVaultListing> {
         let vault = self.vault(&handle)?;
         let folder = vault.resolve(&self.core, &path)?;

@@ -17,8 +17,8 @@ class EncryptedFolderGateway(private val core: CoreGateway, val format: FolderFo
     suspend fun open(root: Location, password: String) = if (compatible) core.cryptomatorOpen(root, password) else core.vaultOpen(root, password)
     suspend fun changePassword(handle: String, old: String, new: String) =
         write(handle) { if (compatible) core.cryptomatorChangePassword(handle, old, new) else core.vaultChangePassword(handle, old, new) }
-    suspend fun setRecovery(handle: String, password: String): CoreResult<String> =
-        write(handle) { if (compatible) CoreResult.Failure(CoreFault.Unsupported) else core.vaultSetRecovery(handle, password) }
+    suspend fun setRecovery(handle: String, password: String): CoreResult<RecoveryDraft> =
+        write(handle) { if (compatible) CoreResult.Failure(CoreFault.Unsupported) else core.vaultRecoveryPrepare(handle, password) }
     suspend fun openRecovery(root: Location, recovery: String): CoreResult<String> =
         if (compatible) CoreResult.Failure(CoreFault.Unsupported) else core.vaultOpenRecovery(root, recovery)
     suspend fun resetPassword(handle: String, recovery: String, newPassword: String): CoreResult<Unit> =
