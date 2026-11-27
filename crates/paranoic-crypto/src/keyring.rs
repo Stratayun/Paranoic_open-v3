@@ -189,7 +189,13 @@ impl PasswordKeyring {
         // (secure_delete). Copies outside this database (backups, exports,
         // flash remapping) are not reached: a password change is not a
         // remedy for a compromised key — that needs key rotation.
-        db.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(())).map_err(store_error)?;
+        // Audit A18: the first column is 1 when the checkpoint was blocked; retry briefly. The new
+        // password is already in force either way; a blocked checkpoint is retried at the next change.
+        for attempt in 0..5u64 {
+            let busy: i64 = db.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| row.get(0)).map_err(store_error)?;
+            if busy == 0 { break; }
+            std::thread::sleep(Duration::from_millis(20 * (attempt + 1)));
+        }
         Ok(KeyRecord { id: expected.id, revision: next })
     }
 

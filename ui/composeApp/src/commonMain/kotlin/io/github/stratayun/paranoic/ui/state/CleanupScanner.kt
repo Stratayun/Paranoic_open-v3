@@ -47,14 +47,14 @@ data class CleanupState(
  * Skips Android/ (app data), dot folders (except .thumbnails, reported as junk)
  * and the trash itself. Bounded in folders, files and bytes hashed.
  */
-class CleanupScanner(private val core: CoreGateway, private val scope: CoroutineScope) {
+class CleanupScanner(private val core: CoreGateway, private val scopeProvider: () -> CoroutineScope) {
     var state by mutableStateOf<CleanupState?>(null); private set
     private var job: Job? = null
 
     fun scan(space: Space) {
         job?.cancel()
         state = CleanupState(space)
-        job = scope.launch {
+        job = scopeProvider().launch {
             val queue = ArrayDeque(listOf(space.root))
             val bySize = HashMap<ULong, MutableList<FileItem>>()
             val emptyFiles = mutableListOf<FileItem>(); val emptyFolders = mutableListOf<FileItem>()

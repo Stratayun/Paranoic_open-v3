@@ -17,10 +17,31 @@ import kotlinx.coroutines.launch
  * it is emptied at start and at exit, so a played vault video cannot linger there.
  */
 internal object DesktopPrivateTemp {
+    /** This process's own folder; removed at exit. */
+    @Volatile var current: Path? = null
+    private var lock: java.nio.channels.FileLock? = null
+
+    /**
+     * Audit A53: every process gets its own `tmp/<random>` folder, held by a lock file. At start
+     * only folders whose lock is free (their process has ended) are removed, so a second launch
+     * never deletes files of a running one.
+     */
     fun install(appRoot: Path): Path? = try {
-        val dir = appRoot.resolve("tmp")
+        val base = appRoot.resolve("tmp")
+        Files.createDirectories(base)
+        Files.list(base).use { entries -> entries.toList() }.forEach { stale ->
+            if (!Files.isDirectory(stale)) return@forEach
+            val channel = try { java.nio.channels.FileChannel.open(stale.resolve(".lock"),
+                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE) } catch (_: Exception) { null }
+            val free = try { channel?.tryLock() } catch (_: Exception) { null }
+            if (free != null) { free.release(); channel?.close(); wipe(stale); try { Files.deleteIfExists(stale) } catch (_: Exception) {} }
+            else channel?.close()
+        }
+        val dir = base.resolve(java.util.UUID.randomUUID().toString())
         Files.createDirectories(dir)
-        wipe(dir)
+        lock = java.nio.channels.FileChannel.open(dir.resolve(".lock"), java.nio.file.StandardOpenOption.CREATE,
+            java.nio.file.StandardOpenOption.WRITE).tryLock()
+        current = dir
         System.setProperty("java.io.tmpdir", dir.toString())
         if (System.getProperty("os.name").startsWith("Windows")) {
             // Native code (GLib/GStreamer in JavaFX) reads TMP/TEMP from the process environment.
@@ -30,7 +51,15 @@ internal object DesktopPrivateTemp {
         dir
     } catch (_: Throwable) { null }
 
-    /** Best effort: files still open (a loaded DLL) stay until the next start. */
+    /** At exit: this process's folder only. */
+    fun release() {
+        val dir = current ?: return
+        try { lock?.release(); lock?.channel()?.close() } catch (_: Exception) {}
+        wipe(dir)
+        try { Files.deleteIfExists(dir) } catch (_: Exception) {}
+    }
+
+    /** Best effort: files still open (a loaded DLL) stay until a later start. */
     fun wipe(dir: Path) {
         try {
             Files.walk(dir).use { paths ->

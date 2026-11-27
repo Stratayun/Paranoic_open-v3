@@ -71,7 +71,7 @@ internal fun VaultRecoveryKeyDialog(core: CoreGateway, keyText: String, onClose:
                         }
                     }, singleLine = true, enabled = !busy,
                         label = { Text(tr("Группа ${group.toLong() + 1}", "Group ${group.toLong() + 1}")) },
-                        visualTransformation = peek("VaultRecoveryKeyDialog:19"), trailingIcon = { PeekToggle("VaultRecoveryKeyDialog:19") },
+                        visualTransformation = peek("VaultRecoveryKeyDialog:19:$position"), trailingIcon = { PeekToggle("VaultRecoveryKeyDialog:19:$position") },
                         keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
                 }
                 if (mismatch) Text(tr("Группы не совпали. Проверьте свою запись.", "The groups did not match. Check your recorded copy."),

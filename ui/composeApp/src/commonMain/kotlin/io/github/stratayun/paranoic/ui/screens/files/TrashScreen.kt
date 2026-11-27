@@ -109,14 +109,14 @@ fun TrashScreen(session: AppSession, space: Space, onClose: () -> Unit) {
 
 /** Delete prompt where the trash is available: trash by default, permanent deletion on request. */
 @Composable
-fun TrashConfirmDialog(count: Int, name: String?, onTrash: () -> Unit, onPermanent: () -> Unit, onDismiss: () -> Unit) {
+fun TrashConfirmDialog(count: Int, name: String?, onTrash: () -> Unit, onPermanent: (() -> Unit)?, onDismiss: () -> Unit) {
     AlertDialog(onDismissRequest = onDismiss,
         title = { Text(if (name != null) tr("Удалить «${displayName(name)}»?", "Delete \"${displayName(name)}\"?") else tr("Удалить объекты: $count?", "Delete $count items?")) },
         text = { Text(tr("Файлы будут перемещены в корзину этой памяти — их можно вернуть.", "Items go to this storage's trash and can be restored.")) },
         confirmButton = { TextButton(onClick = onTrash) { Text(tr("В корзину", "Move to trash")) } },
         dismissButton = {
             Row {
-                TextButton(onClick = onPermanent) { Text(tr("Навсегда…", "Forever…"), color = MaterialTheme.colorScheme.error) }
+                if (onPermanent != null) TextButton(onClick = onPermanent) { Text(tr("Навсегда…", "Forever…"), color = MaterialTheme.colorScheme.error) }
                 TextButton(onClick = onDismiss) { Text(tr("Отмена", "Cancel")) }
             }
         })

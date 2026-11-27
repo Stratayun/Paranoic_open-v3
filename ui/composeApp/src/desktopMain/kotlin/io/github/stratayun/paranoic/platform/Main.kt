@@ -26,7 +26,13 @@ fun main() {
     try { runApp() } catch (error: Throwable) {
         val text = buildString {
             appendLine("Paranoic could not start (${System.getProperty("os.name")}, Java ${System.getProperty("java.version")}).")
-            appendLine(error.stackTraceToString().take(6000))
+            // Audit A49: class names and code locations only; exception messages can hold paths.
+            var cause: Throwable? = error; var depth = 0
+            while (cause != null && depth < 5) {
+                appendLine((if (depth == 0) "" else "Caused by: ") + cause.javaClass.name)
+                cause.stackTrace.take(25).forEach { appendLine("    at ${it.className}.${it.methodName}(${it.fileName}:${it.lineNumber})") }
+                cause = cause.cause; depth++
+            }
         }
         // Next to Paranoic.exe first (easy to find), then the user's app data.
         val besideExe = System.getProperty("jpackage.app-path")?.let { Paths.get(it).toAbsolutePath().parent?.resolve("startup-error.txt") }
@@ -91,7 +97,7 @@ private fun runApp() = application {
             closing = true
             scope.launch {
                 try { (core as? NativeCoreGateway)?.shutdown() }
-                finally { DesktopPrivateTemp.wipe(root.resolve("tmp")); exitApplication() }
+                finally { DesktopPrivateTemp.release(); exitApplication() }
             }
         }
     }, title = "Paranoic", state = rememberWindowState(width = 1100.dp, height = 760.dp)) {

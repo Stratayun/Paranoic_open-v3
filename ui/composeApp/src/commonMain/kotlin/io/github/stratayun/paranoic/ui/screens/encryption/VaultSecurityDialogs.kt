@@ -122,7 +122,8 @@ internal fun VaultRecoveryOpenDialog(core: CoreGateway, name: String, canReset: 
 @Composable
 private fun SecretField(value: String, onChange: (String) -> Unit, label: String, error: String? = null) {
     OutlinedTextField(value = value, onValueChange = onChange, modifier = Modifier.fillMaxWidth().fieldError(error.orEmpty(), error != null), singleLine = true,
-        label = { Text(label) }, visualTransformation = peek("VaultSecurityDialogs:18"), trailingIcon = { PeekToggle("VaultSecurityDialogs:18") },
+        // Audit A44: each field has its own eye; the label is unique within a dialog.
+        label = { Text(label) }, visualTransformation = peek("VaultSecurityDialogs:" + label), trailingIcon = { PeekToggle("VaultSecurityDialogs:" + label) },
         keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password),
         isError = error != null, supportingText = { error?.let { Text(it) } })
 }

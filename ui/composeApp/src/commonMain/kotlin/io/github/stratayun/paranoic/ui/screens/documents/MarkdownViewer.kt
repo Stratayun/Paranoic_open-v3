@@ -51,7 +51,9 @@ private fun MarkdownReader(core: CoreGateway, file: FileItem, onClose: () -> Uni
         val result = core.textOpen(file.location)
         currentCoroutineContext().ensureActive()
         when (result) {
-            is CoreResult.Value -> blocks = parseMarkdown(result.value.text)
+            // Audit A42: the real text size decides (not the listed one), and parsing runs off the UI thread.
+            is CoreResult.Value -> if (result.value.text.length > 262_144) onEdit()
+                else blocks = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { parseMarkdown(result.value.text) }
             is CoreResult.Failure -> if (result.fault == CoreFault.Limit) onEdit() else fault = result.fault
         }
     }
@@ -166,11 +168,20 @@ private fun cells(row: String): List<String> = row.trim().removePrefix("|").remo
 /** Inline emphasis, code, strike-through and links (link text only, the address is shown dimmed). */
 internal fun inline(text: String): AnnotatedString = buildAnnotatedString {
     var i = 0
+    // Audit A42: once a delimiter has no later occurrence, never search for it again
+    // (unclosed `*`, `[`… made the scan quadratic).
+    val absentFrom = HashMap<String, Int>()
+    fun find(what: String, from: Int): Int {
+        if (absentFrom[what]?.let { from >= it } == true) return -1
+        val at = text.indexOf(what, from)
+        if (at < 0) absentFrom[what] = minOf(absentFrom[what] ?: Int.MAX_VALUE, from)
+        return at
+    }
     // snake_case words are not emphasis: "_" opens only at a word start.
     fun wordStart(at: Int) = at == 0 || !text[at - 1].isLetterOrDigit()
     fun styled(open: String, style: SpanStyle): Boolean {
         if (!text.startsWith(open, i)) return false
-        val end = text.indexOf(open, i + open.length)
+        val end = find(open, i + open.length)
         if (end <= i + open.length) return false
         withStyle(style) { append(inline(text.substring(i + open.length, end))) }
         i = end + open.length
@@ -181,7 +192,7 @@ internal fun inline(text: String): AnnotatedString = buildAnnotatedString {
         when {
             c == '\\' && i + 1 < text.length -> { append(text[i + 1]); i += 2 }
             c == '`' -> {
-                val end = text.indexOf('`', i + 1)
+                val end = find("`", i + 1)
                 if (end > i) { withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = Paper.code, fontSize = 13.sp)) { append(text.substring(i + 1, end)) }; i = end + 1 }
                 else { append(c); i++ }
             }
@@ -192,8 +203,8 @@ internal fun inline(text: String): AnnotatedString = buildAnnotatedString {
             (c == '[' || (c == '!' && text.startsWith("![", i))) -> {
                 val image = c == '!'
                 val open = if (image) i + 1 else i
-                val close = text.indexOf("](", open)
-                val end = if (close > 0) text.indexOf(')', close) else -1
+                val close = find("](", open)
+                val end = if (close > 0) find(")", close) else -1
                 if (close > open && end > close) {
                     val label = text.substring(open + 1, close)
                     if (image) withStyle(SpanStyle(color = Paper.muted, fontStyle = FontStyle.Italic)) { append("[" + label.ifEmpty { "image" } + "]") }

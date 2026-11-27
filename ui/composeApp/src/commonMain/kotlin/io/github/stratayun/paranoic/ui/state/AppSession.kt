@@ -96,6 +96,7 @@ class AppSession(val core: CoreGateway, private val scope: CoroutineScope, priva
         core.lockSecrets()
         archives.close()
         categories.close()
+        cleanup.close()
         if (directWrite?.phase == DirectWritePhase.Running) directWrite = directWrite?.copy(phase = DirectWritePhase.Unknown)
         ++secretsEpoch
         ++epoch
@@ -139,7 +140,8 @@ class AppSession(val core: CoreGateway, private val scope: CoroutineScope, priva
         }
     }
     /** Duplicate/junk scan of a device place (owner 26.11); [cleanupView] opens its screen. */
-    val cleanup by lazy { CleanupScanner(core, workScope) }
+    // Audit A46: the scanner asks for the current work scope each time (pause replaces it).
+    val cleanup by lazy { CleanupScanner(core) { workScope } }
     var cleanupView by mutableStateOf<Space?>(null)
     /** Files picked elsewhere (categories) waiting to be moved into the Safe's personal folder. */
     var safeInbox by mutableStateOf<List<FileItem>>(emptyList())
@@ -163,20 +165,26 @@ class AppSession(val core: CoreGateway, private val scope: CoroutineScope, priva
     fun moveToTrash(items: List<FileItem>, onDone: () -> Unit = {}) {
         if (writing || !core.connected || !trashAvailable(items)) { writeFault = CoreFault.Unsupported; return }
         writing = true
+        val requestEpoch = epoch
         workScope.launch {
             var failure: CoreFault? = null
             try {
                 for (item in items) {
+                    // Audit A47: stop between items once the session was paused (lock, background).
+                    if (requestEpoch != epoch) break
                     val result = core.trashPut(item.location)
                     if (result is CoreResult.Failure) { failure = result.fault; break }
                 }
             } finally {
-                writing = false
-                writeFault = failure
-                clearSelection()
-                refresh()
-                refreshTrash()
-                onDone()
+                // A late result of a paused session must not touch the new session's state.
+                if (requestEpoch == epoch) {
+                    writing = false
+                    writeFault = failure
+                    clearSelection()
+                    refresh()
+                    refreshTrash()
+                    onDone()
+                }
             }
         }
     }

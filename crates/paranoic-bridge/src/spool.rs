@@ -39,6 +39,10 @@ pub(crate) fn referenced(core: &Core, storage: StorageId) -> paranoic_core::Resu
     loop {
         let page = core.jobs(after, None, 1000)?;
         for job in page.jobs {
+            // Audit A04: a publication that Core recorded as Succeeded no longer needs its spool
+            // (the result is published); keeping it would keep a plaintext copy after a crash.
+            // Unfinished, failed and NeedsAttention jobs still keep theirs for recovery.
+            if job.state == paranoic_core::JobState::Succeeded { continue; }
             for location in job.operation.locations() {
                 if location.storage != storage { continue; }
                 let name = location.path.as_str().split('/').next().unwrap_or("");

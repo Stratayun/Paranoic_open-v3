@@ -251,13 +251,16 @@ fun CategoryScreen(session: AppSession, state: CategoryState, onOpenFile: (FileI
     trashingMany?.let { items ->
         if (session.trashAvailable(items)) TrashConfirmDialog(items.size, items.singleOrNull()?.name,
             onTrash = { trashingMany = null; selected = emptySet(); session.moveToTrash(items); rescan = true },
-            onPermanent = { trashingMany = null; deleting = items.singleOrNull(); permanent = true },
+            // Audit A45: "Forever" only for one file; for several the trash is the way here.
+            onPermanent = items.singleOrNull()?.let { one -> { trashingMany = null; deleting = one; permanent = true } },
             onDismiss = { trashingMany = null })
+        else if (items.size == 1) LaunchedEffect(items) { deleting = items.single(); trashingMany = null }
+        // Audit A45: one delete at a time runs here; several without a trash were silently cut to
+        // the first file. Say so instead of pretending.
         else AlertDialog(onDismissRequest = { trashingMany = null }, title = { Text(tr("Удалить: ${items.size}?", "Delete ${items.size}?")) },
-            text = { Text(tr("Корзина здесь недоступна: файлы будут удалены сразу.", "No trash here: files are deleted immediately.")) },
-            confirmButton = { TextButton(onClick = { trashingMany = null; selected = emptySet(); items.forEach { session.deleteFound(it) }; rescan = true }) {
-                Text(tr("Удалить", "Delete"), color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { trashingMany = null }) { Text(tr("Отмена", "Cancel")) } })
+            text = { Text(tr("Здесь нет корзины, а безвозвратно удалить сразу несколько файлов из раздела нельзя. Удалите по одному или из папки в «Файлах».",
+                "No trash here, and several files cannot be deleted for good from a category at once. Delete one by one or from the folder in Files.")) },
+            confirmButton = { TextButton(onClick = { trashingMany = null }) { Text(tr("Понятно", "Got it")) } })
     }
     info?.let { item ->
         AlertDialog(onDismissRequest = { info = null }, title = { Text(displayName(item.name)) }, text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
