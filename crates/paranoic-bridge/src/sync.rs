@@ -36,6 +36,7 @@ struct State { version: u8, pairs: Vec<Pair> }
 
 const STATE_FILE: &str = "sync-state";
 const MAX_STATE: u64 = 64 << 20;
+const SYNC_PURPOSE: &[u8] = b"paranoic/sync-state/v1\0";
 const MAX_PAIRS: usize = 64;
 /// One sync operation at a time (state read-modify-write, long runs).
 static SYNC: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -84,7 +85,7 @@ impl NativeRuntime {
         };
         let opened = self.sealer.open(sealed);
         if opened.error != 0 { return Err(BridgeError::DeviceKey); }
-        let plain = zeroize::Zeroizing::new(opened.data);
+        let plain = zeroize::Zeroizing::new(match opened.data.strip_prefix(SYNC_PURPOSE) { Some(rest) => rest.to_vec(), None => opened.data });
         let state: State = serde_json::from_slice(&plain).map_err(|_| BridgeError::Changed)?;
         if state.version != 1 { return Err(BridgeError::Unsupported); }
         Ok(state)
@@ -92,7 +93,9 @@ impl NativeRuntime {
     /// Sealed, written to a temporary file and renamed over the old state.
     fn sync_store(&self, state: &State) -> Result<()> {
         let plain = zeroize::Zeroizing::new(serde_json::to_vec(state).map_err(|_| BridgeError::Invalid)?);
-        let sealed = self.sealer.seal(plain.to_vec());
+        // Audit A41: purpose tag inside the sealed bytes (older states without it are still read).
+        let mut tagged = zeroize::Zeroizing::new(SYNC_PURPOSE.to_vec()); tagged.extend_from_slice(&plain);
+        let sealed = self.sealer.seal(tagged.to_vec());
         if sealed.error != 0 { return Err(BridgeError::DeviceKey); }
         // Audit A09: never write a state that the reader would refuse.
         if sealed.data.len() as u64 > MAX_STATE { return Err(BridgeError::Limit); }

@@ -34,7 +34,8 @@ class AndroidDocumentsHost(private val resolver: ContentResolver,
     private val handles = ConcurrentHashMap<ULong, Opened>()
     private val next = AtomicLong(1)
     /** (tree, path) -> document. Verified by display name on every use. */
-    private val resolved = ConcurrentHashMap<String, Uri>()
+    // Audit A13: no URI cache. Every path is resolved again from the provider (resolveUri),
+    // so a map of names/URIs only grew without ever being read.
     private val projection = arrayOf(
         DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME,
         DocumentsContract.Document.COLUMN_MIME_TYPE, DocumentsContract.Document.COLUMN_SIZE,
@@ -64,7 +65,6 @@ class AndroidDocumentsHost(private val resolver: ContentResolver,
         val bytes = if (!directory && size < 0) ULong.MAX_VALUE else size.coerceAtLeast(0).toULong()
         return HostInfo(0u, if (directory) 2u else 1u, bytes, modified)
     }
-    private fun key(tree: String, path: String) = "$tree\u0000$path"
     private fun root(tree: Uri) = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
     private fun queryInfo(uri: Uri): HostInfo =
         resolver.query(uri, projection, null, null, null)?.use { if (it.moveToFirst()) info(it) else null }
@@ -98,20 +98,14 @@ class AndroidDocumentsHost(private val resolver: ContentResolver,
         for (part in path.split('/')) {
             require(validPart(part))
             prefix = if (prefix.isEmpty()) part else "$prefix/$part"
-            val cacheKey = key(treeText, prefix)
-            resolved.remove(cacheKey)
             val matches = children(tree, current, 100000).filter { it.first == part }
             current = when (matches.size) {
                 0 -> throw FileNotFoundException("document unavailable")
-                1 -> matches[0].second.first.also { resolved[cacheKey] = it }
+                1 -> matches[0].second.first
                 else -> throw java.io.IOException("ambiguous document name")
             }
         }
         return current
-    }
-    private fun forget(tree: String, path: String) {
-        val exact = key(tree, path); val below = "$exact/"
-        resolved.keys.removeIf { it == exact || it.startsWith(below) }
     }
     private fun child(parent: String, name: String) = if (parent.isEmpty()) name else "$parent/$name"
 
@@ -120,7 +114,6 @@ class AndroidDocumentsHost(private val resolver: ContentResolver,
     override fun list(tree: String, path: String, limit: UInt): HostListing = try {
         val treeUri = Uri.parse(tree)
         val rows = children(treeUri, resolveUri(tree, path), limit.toInt())
-        rows.forEach { (name, value) -> if (validPart(name)) resolved[key(tree, child(path, name))] = value.first }
         HostListing(0u, rows.map { HostEntry(it.first, it.second.second) })
     } catch (e: Exception) { HostListing(error(e), emptyList()) }
 
@@ -205,7 +198,6 @@ class AndroidDocumentsHost(private val resolver: ContentResolver,
         val uri = DocumentsContract.createDocument(resolver, resolveUri(tree, parent), mime, name)
             ?: throw java.io.IOException("create failed")
         val actual = displayName(uri) ?: throw java.io.IOException("created document unreadable")
-        resolved[key(tree, child(parent, actual))] = uri
         HostCreated(0u, actual, uri.toString())
     } catch (e: Exception) { HostCreated(error(e), "", "") }
     /** `document` is the URI returned by create/resolve/rename: no path lookup. */
@@ -267,7 +259,6 @@ class AndroidDocumentsHost(private val resolver: ContentResolver,
         require(validPart(name))
         val uri = document(tree, document)
         val renamed = DocumentsContract.renameDocument(resolver, uri, name) ?: uri
-        resolved.clear() // paths under the old name are stale; rebuild lazily
         val actual = displayName(renamed) ?: throw java.io.IOException("renamed document unreadable")
         HostCreated(0u, actual, renamed.toString())
     } catch (e: Exception) { HostCreated(error(e), "", "") }
@@ -295,8 +286,7 @@ class AndroidDocumentsHost(private val resolver: ContentResolver,
             throw UnsupportedOperationException("target already exists")
         // No copy/delete fallback and no automatic retry: a failed reply can
         // follow a completed move. Rust owns reconciliation and rename/rollback.
-        val moved = try { DocumentsContract.moveDocument(resolver, source, from, to) }
-            finally { resolved.clear() }
+        val moved = DocumentsContract.moveDocument(resolver, source, from, to)
             ?: throw java.io.IOException("move result unavailable")
         val verified = document(tree, moved.toString())
         val actual = displayName(verified) ?: throw java.io.IOException("moved document unreadable")
@@ -309,7 +299,6 @@ class AndroidDocumentsHost(private val resolver: ContentResolver,
         if (!writable(tree)) throw SecurityException("write grant unavailable")
         val uri = document(tree, document)
         deletion.delete(Uri.parse(tree), uri, directory)
-        resolved.clear()
         0u
     } catch (e: Exception) { error(e) }
 }

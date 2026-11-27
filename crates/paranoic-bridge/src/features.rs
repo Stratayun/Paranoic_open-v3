@@ -147,7 +147,11 @@ impl NativeRuntime {
     pub fn lock_all_secrets(&self) { self.lock_secrets(); }
     pub fn notes_status(&self) -> Result<NativeNotesStatus> {
         let mut slot = self.notes.lock().map_err(lock_error)?;
-        let unlocked = slot.session.is_some();
+        let unlocked = match (&slot.session, &slot.store) {
+            (Some(session), Some(store)) => store.is_current(session),
+            (Some(_), None) => true,
+            _ => false,
+        };
         let quick_available = slot.quick.is_some();
         let store = self.notes_store(&mut slot)?;
         let set_up = store.state().map_err(notes_error)? == NotesState::Locked;
@@ -297,7 +301,12 @@ impl NativeRuntime {
         let result = self.notes_store(&mut slot).and_then(|store| store.change_password(&session, &old, &new).map_err(notes_error));
         match result {
             Ok(fresh) => { slot.session = Some(fresh); Ok(()) }
-            Err(error) => { slot.session = Some(session); Err(error) }
+            Err(error) => {
+                // Audit A12: the store may already have revoked the old session; keep it only if valid.
+                let valid = slot.store.as_ref().is_some_and(|store| store.is_current(&session));
+                if valid { slot.session = Some(session); }
+                Err(error)
+            }
         }
     }
     pub fn notes_set_auto_wipe(&self, enabled: bool) -> Result<()> {

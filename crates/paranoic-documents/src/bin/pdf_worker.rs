@@ -145,7 +145,8 @@ mod sandbox {
 }
 #[cfg(not(any(target_os = "linux", target_os = "android", windows)))]
 mod sandbox {
-    /// No confinement on this platform; the app process is still separated.
-    pub fn enter(_cpu_seconds: u64) -> Result<(), ()> { Ok(()) }
+    /// Audit A23: no confinement exists for this platform, so the worker refuses to run and the
+    /// app reports PDF/7z as unavailable instead of decoding hostile files unconfined.
+    pub fn enter(_cpu_seconds: u64) -> Result<(), ()> { Err(()) }
 }
 

@@ -75,6 +75,10 @@ impl<R: Read + Seek> ZipService<R> {
     /// so the CRC/HMAC confirms the password — the one-byte ZipCrypto check
     /// value alone passes 1 wrong password in 256.
     pub fn check_password(&mut self, password: Option<&Zeroizing<String>>) -> Result<()> {
+        self.check_password_with(password, &mut || Ok(()))
+    }
+    /// As `check_password`, asking `check` between blocks so a large entry can be cancelled (audit A20).
+    pub fn check_password_with(&mut self, password: Option<&Zeroizing<String>>, check: &mut dyn FnMut() -> Result<()>) -> Result<()> {
         if password.is_some_and(|p| p.len() > 4096) { return Err(invalid()); }
         let Some(first) = self.entries.iter().enumerate().filter(|(_, e)| e.encrypted).min_by_key(|(_, e)| e.bytes).map(|(i, _)| i)
             else { return Ok(()) };
@@ -87,6 +91,7 @@ impl<R: Read + Seek> ZipService<R> {
         let mut buffer = Zeroizing::new(vec![0u8; 65536]);
         let mut total = 0u64;
         loop {
+            check()?;
             let n = input.read(&mut buffer).map_err(|_| wrong_password())?;
             if n == 0 { break; }
             total += n as u64;
@@ -135,7 +140,7 @@ impl<R: Read + Seek> ZipService<R> {
         password: Option<Zeroizing<String>>, mut check: impl FnMut(u64) -> Result<()>,
         record: &mut crate::extraction::Recorder) -> Result<u64> {
         if target.is_root() || storage.domain() != StorageDomain::Files || !storage.capabilities().write { return Err(invalid()); }
-        self.check_password(password.as_ref())?;
+        self.check_password_with(password.as_ref(), &mut || check(0))?;
         // Resolve every final path before first mutation.
         let paths = self.entries.iter().map(|e| ResourcePath::parse(format!("{}/{}", target.as_str(), e.path.as_str())))
             .collect::<Result<Vec<_>>>()?;

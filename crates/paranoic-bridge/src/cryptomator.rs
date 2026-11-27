@@ -15,7 +15,11 @@ const LIFETIME: Duration = Duration::from_secs(4 * 3600);
 const LIST_LIMIT: usize = 4096;
 /// Unfinished Cryptomator password changes, in the app's private state (B11).
 const PENDING_DIR: &str = "cryptomator-pending";
-const PENDING_LIMIT: usize = 64;
+const PENDING_LIMIT: usize = 4096;
+/// A pending plan sealed by the device record key (audit A24): written only by this app.
+const PENDING_SEALED: &[u8; 8] = b"PNCPLAN1";
+const PENDING_MAX: u64 = 1 << 20;
+const PLAN_PURPOSE: &[u8] = b"paranoic/cryptomator-plan/v1\0";
 
 /// An entry of a Cryptomator listing.
 #[derive(Clone, uniffi::Record)]
@@ -57,7 +61,19 @@ impl NativeRuntime {
         builder.create(&dir).map_err(|e| BridgeError::from(paranoic_core::CoreError::io(e)))?;
         let path = dir.join(format!("{}.json", plan.plan_id().simple()));
         let temporary = path.with_extension("tmp");
-        let bytes = plan.to_json().map_err(crypto_error)?;
+        let json = zeroize::Zeroizing::new(plan.to_json().map_err(crypto_error)?);
+        // Audit A24: sealed, so a plan planted in the app's files is never executed.
+        // Without a device record key (some desktops, tests) the plain format remains.
+        let bytes = if self.sealer.available() {
+            // Audit A41: the purpose travels inside the sealed bytes, so a sealed record of another
+            // kind (journal, sync state) is never taken for a plan.
+            let mut tagged = zeroize::Zeroizing::new(PLAN_PURPOSE.to_vec()); tagged.extend_from_slice(&json);
+            let sealed = self.sealer.seal(tagged.to_vec());
+            if sealed.error != 0 { return Err(BridgeError::DeviceKey); }
+            let mut bytes = PENDING_SEALED.to_vec();
+            bytes.extend_from_slice(&sealed.data);
+            bytes
+        } else { json.to_vec() };
         let write = || -> std::io::Result<()> {
             let mut options = std::fs::OpenOptions::new();
             options.write(true).create(true).truncate(true);
@@ -72,21 +88,45 @@ impl NativeRuntime {
         write().map_err(|e| BridgeError::from(paranoic_core::CoreError::io(e)))?;
         Ok(path)
     }
-    /// Recorded plans for the vault at `root` (unreadable records are kept for
-    /// the owner, never deleted).
-    fn pending_for(&self, root: &Location) -> Vec<(std::path::PathBuf, CryptomatorPlan)> {
-        let Ok(entries) = std::fs::read_dir(self.pending_dir()) else { return Vec::new() };
-        entries.flatten().take(PENDING_LIMIT).filter_map(|entry| {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("json") { return None; }
-            let plan = CryptomatorPlan::from_json(&std::fs::read(&path).ok()?).ok()?;
+    /// Recorded plans for the vault at `root`. Audit A10: every record is looked at (not the
+    /// first 64 directory entries), reads are bounded, and a record that cannot be read or
+    /// opened is an error (Attention) instead of being skipped silently. Audit A24: only plans
+    /// sealed by this device are run; an unsealed or foreign record is never executed.
+    fn pending_for(&self, root: &Location) -> Result<Vec<(std::path::PathBuf, CryptomatorPlan)>> {
+        use std::io::Read;
+        let entries = match std::fs::read_dir(self.pending_dir()) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(_) => return Err(BridgeError::Attention),
+        };
+        let mut found = Vec::new();
+        for (count, entry) in entries.enumerate() {
+            if count >= PENDING_LIMIT { return Err(BridgeError::Limit); }
+            let path = entry.map_err(|_| BridgeError::Attention)?.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") { continue; }
+            let mut bytes = Vec::new();
+            std::fs::File::open(&path).and_then(|f| f.take(PENDING_MAX + 1).read_to_end(&mut bytes)).map_err(|_| BridgeError::Attention)?;
+            if bytes.len() as u64 > PENDING_MAX { return Err(BridgeError::Attention); }
+            let json = if bytes.starts_with(PENDING_SEALED) {
+                let opened = self.sealer.open(bytes[PENDING_SEALED.len()..].to_vec());
+                if opened.error != 0 || !opened.data.starts_with(PLAN_PURPOSE) { return Err(BridgeError::Attention); }
+                zeroize::Zeroizing::new(opened.data[PLAN_PURPOSE.len()..].to_vec())
+            } else if self.sealer.available() {
+                // Unsealed while this device can seal (earlier version or planted): never executed,
+                // and it does not block other vaults.
+                continue;
+            } else { zeroize::Zeroizing::new(bytes) };
+            let plan = CryptomatorPlan::from_json(&json).map_err(|_| BridgeError::Attention)?;
+            // The file name is the plan's own id: a record copied under another name is refused.
+            if path.file_stem().and_then(|s| s.to_str()) != Some(plan.plan_id().simple().to_string().as_str()) { return Err(BridgeError::Attention); }
             let on_root = plan.root() == &root.path && plan.steps().iter().all(|s| s.target().storage == root.storage);
-            on_root.then_some((path, plan))
-        }).collect()
+            if on_root { found.push((path, plan)); }
+        }
+        Ok(found)
     }
     /// Before opening: finish interrupted password changes of this vault.
     fn finish_pending(&self, root: &Location) -> Result<()> {
-        for (_, plan) in self.pending_for(root) {
+        for (_, plan) in self.pending_for(root)? {
             drive(&self.core, || plan.advance_detached(&self.core, root.storage))?;
         }
         Ok(())
@@ -95,7 +135,7 @@ impl NativeRuntime {
     /// masterkey backup that still opens the vault with the old one. The format
     /// first checks that the new file opens this vault with `password`.
     fn remove_old_backups(&self, reader: &CryptomatorReader, root: &Location, password: &Zeroizing<String>) -> Result<()> {
-        for (record, plan) in self.pending_for(root) {
+        for (record, plan) in self.pending_for(root)? {
             let backup = root.path.join(&format!("masterkey.cryptomator.{}.bkup", plan.plan_id().simple()))?;
             let gone = matches!(self.core.metadata(&Location { storage: root.storage, path: backup }),
                 Err(ref e) if e.code == paranoic_core::ErrorCode::NotFound);

@@ -73,7 +73,9 @@ impl PdfSession {
             let mut head = [0u8; 5];
             if stdout.read_exact(&mut head).is_err() { let _ = sender.send(None); return; }
             let len = u32::from_le_bytes([head[1], head[2], head[3], head[4]]);
-            if len > MAX_REPLY { let _ = sender.send(None); return; }
+            // Audit A22: only a success reply may be large; error replies carry no payload of note.
+            let limit = match head[0] { 0 => MAX_REPLY, 1 | 2 => 64, _ => { let _ = sender.send(None); return; } };
+            if len > limit { let _ = sender.send(None); return; }
             let mut payload = vec![0u8; len as usize];
             if stdout.read_exact(&mut payload).is_err() || sender.send(Some((head[0], payload))).is_err() { return; }
         }).map_err(|_| { let _ = child.kill(); unavailable() })?;

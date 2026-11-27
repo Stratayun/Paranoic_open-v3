@@ -56,6 +56,9 @@ internal object AndroidClipboardHygiene {
             generation++
             if (rewriting || !foreground) return@addPrimaryClipChangedListener
             val clip = try { clipboard.primaryClip } catch (_: Exception) { null } ?: return@addPrimaryClipChangedListener
+            // Audit A52: Compose copies with the label "plain text"; anything else (another app in
+            // split screen, a share target) is not ours and is left alone.
+            if (clip.description.label?.toString() != "plain text") return@addPrimaryClipChangedListener
             if (Build.VERSION.SDK_INT >= 33 && clip.description.extras?.getBoolean(EXTRA_IS_SENSITIVE) != true) {
                 val marked = ClipData(clip.description, clip.getItemAt(0)).apply {
                     for (i in 1 until clip.itemCount) addItem(clip.getItemAt(i))

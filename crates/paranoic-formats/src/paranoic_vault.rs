@@ -72,7 +72,9 @@ pub trait ManifestAnchor: Send + Sync {
 }
 
 /// Open vault: location of its root folder and the unlocked keys.
-pub struct ParanoicVault { root: Location, keys: VaultKeys, anchor: Option<std::sync::Arc<dyn ManifestAnchor>> }
+pub struct ParanoicVault { root: Location, keys: VaultKeys, anchor: Option<std::sync::Arc<dyn ManifestAnchor>>,
+    /// Audit A30: readers handed out hold only a weak link; dropping (locking) the vault ends them.
+    alive: std::sync::Arc<()> }
 
 impl ParanoicVault {
     /// Plan creating a new vault folder at `target` (must not exist).
@@ -107,7 +109,7 @@ impl ParanoicVault {
         if !keys.manifest_required {
             return Err(CoreError::new(ErrorCode::Unsupported, "encrypted folder from a test build without the version manifest; create it again"));
         }
-        Ok(Self { root, keys, anchor: None })
+        Ok(Self { root, keys, anchor: None, alive: std::sync::Arc::new(()) })
     }
     /// Check every manifest read against this device's anchor (spec §9).
     pub fn with_anchor(mut self, anchor: std::sync::Arc<dyn ManifestAnchor>) -> Self { self.anchor = Some(anchor); self }
@@ -226,7 +228,12 @@ impl ParanoicVault {
                 Ok(entry)
             }
             Err(error) => {
-                if let Some(sink) = pending.borrow_mut().take() { let _ = sink.abort(); }
+                // Audit A29: a decrypted partial output that cannot be removed is reported, not hidden.
+                if let Some(sink) = pending.borrow_mut().take() {
+                    if sink.abort().is_err() {
+                        return Err(CoreError::new(ErrorCode::NeedsAttention, "decrypted partial output could not be removed"));
+                    }
+                }
                 Err(error)
             }
         }
@@ -249,7 +256,7 @@ impl ParanoicVault {
         if before.bytes != cipher.object_len() {
             return Err(CoreError::new(ErrorCode::Integrity, "vault file length does not match its header"));
         }
-        Ok(VaultFileReader { handle, before, cipher })
+        Ok(VaultFileReader { handle, before, cipher, alive: std::sync::Arc::downgrade(&self.alive) })
     }
 
     /// New folder: its storage directories first, then the entry in the parent.
@@ -852,12 +859,15 @@ fn crypto(error: CryptoError) -> CoreError {
 }
 
 /// Random-access plaintext of one vault file, in memory (`open_reader`).
-pub struct VaultFileReader { handle: Box<dyn paranoic_core::ReadHandle>, before: Metadata, cipher: v1::FileCipher }
+pub struct VaultFileReader { handle: Box<dyn paranoic_core::ReadHandle>, before: Metadata, cipher: v1::FileCipher,
+    alive: std::sync::Weak<()> }
 impl VaultFileReader {
     pub fn size(&self) -> u64 { self.cipher.size() }
     /// Up to `len` bytes from `offset` (fewer at the end). Only the chunks
     /// needed are read and authenticated.
     pub fn read_at(&mut self, offset: u64, len: usize) -> Result<zeroize::Zeroizing<Vec<u8>>> {
+        // Audit A30: no reads after the vault that issued this reader was locked.
+        if self.alive.strong_count() == 0 { return Err(CoreError::new(ErrorCode::PermissionDenied, "vault is locked")); }
         let mut out = zeroize::Zeroizing::new(Vec::new());
         if offset >= self.size() || len == 0 { return Ok(out); }
         let end = (offset + len as u64).min(self.size());

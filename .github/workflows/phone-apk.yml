@@ -59,6 +59,18 @@ jobs:
         run: ./gradlew --no-daemon --stacktrace -Pparanoic.androidAbis=arm64-v8a -Pparanoic.pdfium=fetch :composeApp:assembleDebug
       - name: Verify complete native payload
         run: python3 tools/validation/android_apk.py ui/composeApp/build/outputs/apk/debug/composeApp-debug.apk --abis arm64-v8a --profile pdf --packaging extracted
+      - name: Release checks on the APK (audit A51)
+        run: |
+          apk=ui/composeApp/build/outputs/apk/debug/composeApp-debug.apk
+          aapt2="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)aapt2"
+          if [ -n "${PARANOIC_KEYSTORE:-}" ]; then
+            # Signed with the project key: it must not be debuggable.
+            if "$aapt2" dump badging "$apk" | grep -q application-debuggable; then
+              echo "::error::Project-signed APK is debuggable"; exit 1
+            fi
+          else
+            echo "::warning::No project key: this APK is a debuggable test build and must not be handed out."
+          fi
       - name: Remove the decoded key
         if: always()
         run: rm -f "$RUNNER_TEMP/paranoic.p12"

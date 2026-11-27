@@ -268,7 +268,10 @@ impl<R: Read + Seek> IsolatedSevenZip<R> {
             let mut head = [0u8; 5];
             if stdout.read_exact(&mut head).is_err() { let _ = sender.send(None); return; }
             let len = u32::from_le_bytes([head[1], head[2], head[3], head[4]]);
-            if len > MESSAGE_MAX { let _ = sender.send(None); return; }
+            // Audit A22: the frame type bounds its length before anything is allocated; only the
+            // index may use the large limit.
+            let limit = match head[0] { 1 => 12, 2 => MESSAGE_MAX, 3 => 4, 4 => DATA_MAX as u32, 5 | 6 => 0, 7 => 1, _ => { let _ = sender.send(None); return; } };
+            if len > limit { let _ = sender.send(None); return; }
             let mut payload = vec![0u8; len as usize];
             if stdout.read_exact(&mut payload).is_err() || sender.send(Some((head[0], payload))).is_err() { return; }
         }).map_err(|_| { let _ = child.kill(); unavailable() })?;

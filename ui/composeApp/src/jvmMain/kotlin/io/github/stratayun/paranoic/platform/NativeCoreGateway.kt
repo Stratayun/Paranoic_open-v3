@@ -156,8 +156,22 @@ class NativeCoreGateway private constructor(
             // Persist identity BEFORE native registration. An uncertain reply must
             // never assign a fresh UUID to the same grant on the next startup.
             val updated = saved.filterNot { it.id == grant.id } + grant
-            grants.write(updated)
-            runtime.attach(grant).ui(androidTree = android, localContainer = grant.localContainer()).labelled(grant)
+            val isNew = saved.none { it.id == grant.id }
+            // Audit A40: a grant this request created must not outlive a definite failure
+            // (the OS permission was taken by the picker before this call).
+            fun rollback() {
+                if (!isNew) return
+                try { grants.write(saved) } catch (_: Exception) {}
+                if (android) try { releaseGrant(grant) } catch (_: Exception) {}
+            }
+            try { grants.write(updated) } catch (error: Exception) { if (isNew && android) try { releaseGrant(grant) } catch (_: Exception) {}; throw error }
+            try {
+                runtime.attach(grant).ui(androidTree = android, localContainer = grant.localContainer()).labelled(grant)
+            } catch (error: Exception) {
+                // Only refusals are rolled back; a lost or uncertain reply keeps the grant for reconciliation.
+                if (error.javaClass.simpleName in setOf("Invalid", "Unsupported", "Denied", "Conflict", "Limit", "Changed")) rollback()
+                throw error
+            }
         }
     }
     /** Idempotent (У-17): 1. withdraw from Core (refused while jobs use it; nothing

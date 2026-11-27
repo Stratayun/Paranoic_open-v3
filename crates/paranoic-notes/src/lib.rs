@@ -186,6 +186,10 @@ pub struct NotesStore {
     quick: Option<Arc<dyn DeviceKey>>,
     limits: NotesLimits,
     inner: Arc<Mutex<Inner>>,
+    /// Audit A37: not `Sync`. A session check and the I/O after it are not one atomic step, so
+    /// the store must be used by one thread at a time (the bridge keeps it behind a mutex); the
+    /// compiler now refuses sharing it between threads without one.
+    _single_user: std::marker::PhantomData<std::cell::Cell<()>>,
 }
 
 /// Unlocked notes. Holds the notes key; invalidated by `lock`/Clear on the store.
@@ -195,7 +199,8 @@ impl NotesStore {
     /// `directory`: app-private, excluded from backup, 0700 on Unix, dedicated to notes.
     pub fn open(directory: impl AsRef<Path>, device: Option<Arc<dyn DeviceKey>>, limits: NotesLimits) -> Result<Self> {
         let directory = PrivateDirectory::open(directory).map_err(io)?;
-        Ok(Self { directory, device, quick: None, limits, inner: Arc::new(Mutex::new(Inner { generation: 0, pending: Default::default() })) })
+        Ok(Self { directory, device, quick: None, limits, inner: Arc::new(Mutex::new(Inner { generation: 0, pending: Default::default() })),
+            _single_user: std::marker::PhantomData })
     }
     /// Register the platform's quick-unlock key (before any other call).
     /// Clear and auto-wipe then destroy it as well (register У-27).
@@ -647,6 +652,9 @@ impl NotesStore {
         let generation = self.inner.lock().map_err(|_| NotesError::Io)?.generation;
         Ok(NotesSession { key, generation, inner: Arc::clone(&self.inner) })
     }
+    /// Whether `session` is still valid for this store (not revoked by a lock, Clear or a
+    /// password change). Audit A12.
+    pub fn is_current(&self, session: &NotesSession) -> bool { self.check(session).is_ok() }
     fn check(&self, session: &NotesSession) -> Result<()> {
         if !Arc::ptr_eq(&session.inner, &self.inner) { return Err(NotesError::Locked); }
         let current = self.inner.lock().map_err(|_| NotesError::Io)?.generation;
