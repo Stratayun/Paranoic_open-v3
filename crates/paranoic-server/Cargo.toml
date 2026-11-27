@@ -18,6 +18,7 @@ rustls-pemfile = "2"
 blake3.workspace = true
 base64 = "0.22"
 bytes = "1"
+http-body = "1"
 serde.workspace = true
 serde_json.workspace = true
 

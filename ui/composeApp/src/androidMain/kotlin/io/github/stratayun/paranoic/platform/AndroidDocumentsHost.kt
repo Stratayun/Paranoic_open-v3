@@ -42,7 +42,12 @@ class AndroidDocumentsHost(private val resolver: ContentResolver,
         DocumentsContract.Document.COLUMN_LAST_MODIFIED,
     )
     private class ListingLimit : Exception()
-    private companion object { const val STALL_MILLIS = 30_000L }
+    private companion object {
+        const val STALL_MILLIS = 30_000L
+        val deadlines: java.util.concurrent.ScheduledExecutorService = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { task ->
+            Thread(task, "paranoic-saf-deadline").apply { isDaemon = true }
+        }
+    }
     private fun error(e: Exception): UInt = when (e) {
         is SecurityException -> 1u
         is UnsupportedOperationException -> 2u
@@ -214,7 +219,11 @@ class AndroidDocumentsHost(private val resolver: ContentResolver,
     override fun openWrite(tree: String, document: String): HostOpened {
         var descriptor: ParcelFileDescriptor? = null
         return try {
-            descriptor = resolver.openFileDescriptor(document(tree, document), "w") ?: throw java.io.IOException("open failed")
+            // Audit A38: a provider that never answers cannot hold the single Core worker forever.
+            val signal = android.os.CancellationSignal()
+            val timer = deadlines.schedule({ signal.cancel() }, STALL_MILLIS, java.util.concurrent.TimeUnit.MILLISECONDS)
+            descriptor = try { resolver.openFileDescriptor(document(tree, document), "w", signal) } finally { timer.cancel(false) }
+                ?: throw java.io.IOException("open failed")
             val file = Opened(descriptor, null, FileOutputStream(descriptor.fileDescriptor), false, HostInfo(0u, 1u, 0uL, null))
             val id = next.getAndIncrement().toULong()
             handles[id] = file
@@ -227,10 +236,38 @@ class AndroidDocumentsHost(private val resolver: ContentResolver,
     override fun write(handle: ULong, data: ByteArray): UInt = try {
         val file = handles[handle] ?: throw java.io.IOException("closed handle")
         val output = file.output ?: throw UnsupportedOperationException("read handle")
-        synchronized(file) { output.write(data); file.offset += data.size }
-        data.fill(0)
+        try {
+            synchronized(file) {
+                if (isPipe(file.descriptor)) {
+                    // Audit A38: a pipe to a provider may stop draining. Write in PIPE_BUF pieces
+                    // after a bounded wait for room, so a stalled provider fails instead of hanging.
+                    var at = 0
+                    while (at < data.size) {
+                        awaitWritable(file.descriptor)
+                        val n = minOf(4096, data.size - at)
+                        output.write(data, at, n); at += n
+                    }
+                } else output.write(data)
+                file.offset += data.size
+            }
+        } finally { data.fill(0) }
         0u
-    } catch (e: Exception) { error(e) }
+    } catch (e: Exception) { data.fill(0); error(e) }
+    private fun isPipe(descriptor: ParcelFileDescriptor): Boolean = try {
+        val mode = Os.fstat(descriptor.fileDescriptor).st_mode
+        OsConstants.S_ISFIFO(mode) || OsConstants.S_ISSOCK(mode)
+    } catch (_: Exception) { true }
+    private fun awaitWritable(descriptor: ParcelFileDescriptor) {
+        val deadline = System.nanoTime() + STALL_MILLIS * 1_000_000
+        while (true) {
+            val remaining = (deadline - System.nanoTime()) / 1_000_000
+            if (remaining <= 0) throw java.io.IOException("document provider stalled")
+            val poll = StructPollfd().apply { fd = descriptor.fileDescriptor; events = OsConstants.POLLOUT.toShort() }
+            val ready = try { Os.poll(arrayOf(poll), remaining.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()) }
+                catch (e: ErrnoException) { if (e.errno == OsConstants.EINTR) continue else throw java.io.IOException(e) }
+            if (ready > 0) return
+        }
+    }
     override fun finishWrite(handle: ULong): UInt {
         val file = handles.remove(handle) ?: return 3u
         return synchronized(file) {

@@ -225,6 +225,8 @@ impl DavFileSystem for BeneathFs {
                     let Ok(fd) = rfs::openat(&dir, OsStr::from_bytes(&name), OFlags::PATH | OFlags::NOFOLLOW | OFlags::CLOEXEC, Mode::empty()) else { continue };
                     let Ok(meta) = File::from(fd).metadata() else { continue };
                     if meta.file_type().is_symlink() || !(meta.is_file() || meta.is_dir()) { continue; }
+                    // Audit A35: bounded listing memory; a folder this large is refused, not half-shown.
+                    if out.len() >= 100_000 { return Err(FsError::TooLarge); }
                     out.push(Box::new(Entry { name, meta: Meta(meta) }) as Box<dyn DavDirEntry>);
                 }
                 Ok(out)

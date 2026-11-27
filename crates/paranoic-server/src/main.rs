@@ -44,6 +44,39 @@ const TRASH: &str = ".paranoic-trash";
 const MAX_CONNECTIONS: usize = 128;
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 const HEADER_TIMEOUT: Duration = Duration::from_secs(30);
+/// Audit A35: no body data for this long ends the request.
+const BODY_IDLE: Duration = Duration::from_secs(60);
+/// Space left free on the served volume after an upload.
+const DISK_RESERVE: u64 = 512 << 20;
+static FREE_ROOT: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+fn free_space(root: &std::path::Path) -> Option<u64> {
+    #[cfg(unix)] { rustix::fs::statvfs(root).ok().map(|s| s.f_bavail.saturating_mul(s.f_frsize)) }
+    #[cfg(not(unix))] { let _ = root; None }
+}
+
+/// Request body with an idle deadline, reset by every frame.
+struct IdleBody<B> { inner: B, timer: std::pin::Pin<Box<tokio::time::Sleep>> }
+impl<B> http_body::Body for IdleBody<B> where B: http_body::Body + Unpin, B::Error: std::fmt::Display {
+    type Data = B::Data;
+    type Error = std::io::Error;
+    fn poll_frame(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>)
+        -> std::task::Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+        use std::future::Future;
+        let this = &mut *self;
+        match std::pin::Pin::new(&mut this.inner).poll_frame(cx) {
+            std::task::Poll::Ready(frame) => {
+                this.timer.as_mut().reset(tokio::time::Instant::now() + BODY_IDLE);
+                std::task::Poll::Ready(frame.map(|r| r.map_err(|e| std::io::Error::other(e.to_string()))))
+            }
+            std::task::Poll::Pending => if this.timer.as_mut().poll(cx).is_ready() {
+                std::task::Poll::Ready(Some(Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "request body idle"))))
+            } else { std::task::Poll::Pending },
+        }
+    }
+    fn is_end_stream(&self) -> bool { self.inner.is_end_stream() }
+    fn size_hint(&self) -> http_body::SizeHint { self.inner.size_hint() }
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -144,6 +177,7 @@ async fn serve(config: Config) {
     let fs = beneath::BeneathFs::open(&root).unwrap_or_else(|_| fail("root folder unavailable"));
     #[cfg(not(any(target_os = "linux", target_os = "android")))]
     let fs = SafeFs { inner: *LocalFs::new(&root, false, false, false), root: root.clone() };
+    let _ = FREE_ROOT.set(root.clone());
     let mut builder = DavHandler::builder().filesystem(Box::new(fs)).locksystem(MemLs::new()).hide_symlinks(true);
     if config.read_only { builder = builder.methods(DavMethodSet::WEBDAV_RO); }
     let handler = builder.build_handler();
@@ -186,6 +220,18 @@ async fn handle(handler: DavHandler, auth: &(String, blake3::Hash), announce_tra
     }
     let mut request = request;
     force_no_overwrite(&mut request);
+    // Audit A35: refuse an upload that would leave the disk nearly full (trash included).
+    if let Some(length) = request.headers().get(hyper::header::CONTENT_LENGTH).and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok()) {
+        if let Some(free) = free_space(&FREE_ROOT.get().cloned().unwrap_or_default()) {
+            if length.saturating_add(DISK_RESERVE) > free {
+                let mut response = Response::new(dav_server::body::Body::from(String::new()));
+                *response.status_mut() = StatusCode::INSUFFICIENT_STORAGE;
+                return response;
+            }
+        }
+    }
+    // Audit A35: a body that stops arriving ends the request instead of holding a slot.
+    let request = request.map(|body| IdleBody { inner: body, timer: Box::pin(tokio::time::sleep(BODY_IDLE)) });
     let mut response = handler.handle(request).await;
     if announce_trash { response.headers_mut().insert("x-paranoic-trash", hyper::header::HeaderValue::from_static("1")); }
     response

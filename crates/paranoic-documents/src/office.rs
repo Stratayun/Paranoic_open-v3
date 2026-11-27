@@ -716,11 +716,16 @@ fn ods(package: &Package, limits: OfficeLimits, budget: &mut Budget, check: &mut
                         if !row_cells.is_empty() {
                             let rows = row_repeat.min((limits.rows as u64).saturating_sub(row));
                             if rows < row_repeat { g.truncated = true; }
-                            for r in 0..rows {
+                            // Audit A21: stop expanding as soon as the cell budget is spent; slots
+                            // that can no longer be stored are not walked.
+                            'rows: for r in 0..rows {
                                 for (start, count, value) in &row_cells {
                                     let columns = (*count).min((limits.columns as u64).saturating_sub(*start));
                                     if columns < *count { g.truncated = true; }
-                                    for c in 0..columns { g.put(row + r, start + c, value, budget); }
+                                    for c in 0..columns {
+                                        if budget.cells == 0 { g.truncated = true; budget.truncated = true; break 'rows; }
+                                        g.put(row + r, start + c, value, budget);
+                                    }
                                 }
                             }
                         }

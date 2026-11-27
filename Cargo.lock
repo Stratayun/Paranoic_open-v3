@@ -2178,6 +2178,7 @@ dependencies = [
  "bytes",
  "dav-server",
  "futures-util",
+ "http-body",
  "hyper",
  "hyper-util",
  "paranoic-windows",

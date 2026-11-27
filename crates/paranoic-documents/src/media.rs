@@ -74,11 +74,17 @@ impl Default for ImageLimits {
 }
 
 /// Decoded RGBA8 pixels, row-major. Pixels are zeroized on drop.
-pub struct DecodedImage { pub width: u32, pub height: u32, pub rgba: Zeroizing<Vec<u8>> }
+pub struct DecodedImage { pub width: u32, pub height: u32, pub rgba: Zeroizing<Vec<u8>>,
+    /// Audit A19: the pixel budget stays taken while the pixels live.
+    _reserved: Option<DecodeReservationHandle> }
+/// Opaque holder of a decode reservation (released when the image is dropped).
+pub struct DecodeReservationHandle(#[allow(dead_code)] DecodeReservation);
 
 /// Decoded pixels allowed at once across all requests (audit 26): one 50 MP
 /// photo, or several smaller ones, but never two 256 MiB decodes together.
-const DECODE_BUDGET: u64 = 288 << 20;
+/// Audit A19: the reservation covers the frame and one working copy, so a 50 MP phone photo
+/// (2 × 200 MB) still fits on the phone; desktops have more room.
+const DECODE_BUDGET: u64 = if cfg!(target_os = "android") { 448 << 20 } else { 1024 << 20 };
 static DECODE_USED: std::sync::Mutex<u64> = std::sync::Mutex::new(0);
 static DECODE_FREE: std::sync::Condvar = std::sync::Condvar::new();
 /// Reservation of decoded-pixel memory; released on drop.
@@ -95,6 +101,17 @@ impl DecodeReservation {
         }
         *used += bytes;
         Ok(Self(bytes))
+    }
+}
+impl DecodeReservation {
+    /// Give back everything above `bytes`.
+    fn shrink_to(mut self, bytes: u64) -> Self {
+        if bytes < self.0 {
+            if let Ok(mut used) = DECODE_USED.lock() { *used = used.saturating_sub(self.0 - bytes); }
+            DECODE_FREE.notify_all();
+            self.0 = bytes;
+        }
+        self
     }
 }
 impl Drop for DecodeReservation {
@@ -117,9 +134,11 @@ fn decode(bytes: &[u8], limits: ImageLimits) -> Result<(DynamicImage, DecodeRese
     let (width, height) = decoder.dimensions();
     if width == 0 || height == 0 || width > limits.max_width || height > limits.max_height
         || (width as u64) * (height as u64) * 4 > limits.max_alloc { return Err(large()); }
-    // Reserved before the pixels exist; held while the caller uses the image.
-    // Orientation may need a second buffer of the same size.
-    let reservation = DecodeReservation::take((width as u64) * (height as u64) * 4)?;
+    // Reserved before the pixels exist; held while the caller uses the image. Audit A19: the
+    // peak is the decoded frame plus one more frame for orientation or RGBA conversion, so both
+    // are reserved up front (the second part is released once the work is done by the caller).
+    let frame = (width as u64) * (height as u64) * 4;
+    let reservation = DecodeReservation::take(frame.saturating_mul(2))?;
     let orientation = decoder.orientation().ok();
     let mut image = DynamicImage::from_decoder(decoder).map_err(image_error)?;
     if let Some(orientation) = orientation { image.apply_orientation(orientation); }
@@ -135,10 +154,12 @@ fn image_error(error: image::ImageError) -> CoreError {
 
 /// Full-resolution view for the image viewer (first frame of animations).
 pub fn decode_image(bytes: &[u8], limits: ImageLimits) -> Result<DecodedImage> {
-    let (image, _reserved) = decode(bytes, limits)?;
+    let (image, reserved) = decode(bytes, limits)?;
     let image = image.into_rgba8();
     let (width, height) = image.dimensions();
-    Ok(DecodedImage { width, height, rgba: Zeroizing::new(image.into_raw()) })
+    // Keep one frame reserved for as long as the returned pixels live.
+    let kept = reserved.shrink_to((width as u64) * (height as u64) * 4);
+    Ok(DecodedImage { width, height, rgba: Zeroizing::new(image.into_raw()), _reserved: Some(DecodeReservationHandle(kept)) })
 }
 
 /// PNG fitting `max_side` (16..=2048: thumbnails and the full-screen viewer), metadata stripped.
@@ -154,6 +175,8 @@ pub fn thumbnail_image(bytes: &[u8], max_side: u32, limits: ImageLimits) -> Resu
 pub fn thumbnail_rgba(width: u32, height: u32, rgba: &[u8], max_side: u32) -> Result<Zeroizing<Vec<u8>>> {
     if !(16..=1024).contains(&max_side) || width == 0 || height == 0 || width > 16_384 || height > 16_384
         || rgba.len() as u64 != width as u64 * height as u64 * 4 { return Err(CoreError::new(ErrorCode::InvalidInput, "invalid RGBA frame")); }
+    // Audit A19: the copy of the frame counts against the shared pixel budget too.
+    let _reserved = DecodeReservation::take(rgba.len() as u64 * 2)?;
     let frame = image::RgbaImage::from_raw(width, height, rgba.to_vec()).ok_or_else(unsupported)?;
     let mut frame = DynamicImage::ImageRgba8(frame);
     let thumb = frame.thumbnail(max_side, max_side);
