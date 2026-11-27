@@ -72,8 +72,9 @@ class LoopbackMedia(private val source: MediaSource, private val mime: String) :
                 while (!closed.get() && remaining > 0) {
                     val data = source.readAt(offset, minOf(65536L, remaining).toInt())
                     if (data.isEmpty()) throw java.io.IOException("media truncated")
-                    output.write(data)
-                    offset += data.size; remaining -= data.size; data.fill(0)
+                    // Audit A48: the decrypted chunk is wiped even when the socket write fails.
+                    try { output.write(data) } finally { data.fill(0) }
+                    offset += data.size; remaining -= data.size
                 }
             }
         } catch (_: Exception) {

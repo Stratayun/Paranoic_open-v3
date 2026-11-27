@@ -21,8 +21,15 @@ fn portable(title: &str, fallback: &str) -> String {
     let cleaned: String = title.chars()
         .map(|c| if c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') { '_' } else { c })
         .take(NAME_CHARS).collect();
-    let trimmed = cleaned.trim().trim_end_matches(['.', ' ']).to_owned();
-    let reserved = ["CON", "PRN", "AUX", "NUL", "COM1", "LPT1"].iter().any(|r| r.eq_ignore_ascii_case(&trimmed));
+    let mut trimmed = cleaned.trim().trim_end_matches(['.', ' ']).to_owned();
+    // Audit A11: the same rules as Core's names. At most 200 UTF-8 bytes (room for " (n)" and
+    // ".md" within 255), and every Windows device name, also before a dot ("CON.txt", "COM2").
+    while trimmed.len() > 200 { trimmed.pop(); }
+    let trimmed = trimmed.trim_end_matches(['.', ' ']).to_owned();
+    let stem = trimmed.split('.').next().unwrap_or("").to_ascii_uppercase();
+    let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$")
+        || ["COM", "LPT"].iter().any(|p| stem.strip_prefix(p).is_some_and(|d| matches!(d, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³")))
+        || trimmed.to_ascii_uppercase().starts_with(".PARANOIC-");
     if trimmed.is_empty() || trimmed.starts_with('.') || reserved { fallback.to_owned() } else { trimmed }
 }
 /// `name`, then `name (2)`, `name (3)`… unique ignoring case.
@@ -130,5 +137,18 @@ mod tests {
         assert!(matches!(import_plain(&files, "T", &limits, 0), Err(NotesError::Limit)));
         let small = NotesLimits { notebook_bytes: 3, ..NotesLimits::default() };
         assert!(matches!(import_plain(&[("a.md".into(), b"1234".to_vec())], "T", &small, 0), Err(NotesError::Limit)));
+    }
+}
+
+#[cfg(test)]
+mod export_name_tests {
+    /// Audit A11: names the exporter makes must pass Core's own name rules.
+    #[test] fn device_names_and_long_titles_are_portable() {
+        assert_eq!(super::portable("COM2", "x"), "x");
+        assert_eq!(super::portable("CON.txt", "x"), "x");
+        assert_eq!(super::portable("conin$", "x"), "x");
+        assert_eq!(super::portable("Console", "x"), "Console");
+        let long = super::portable(&"界".repeat(100), "x");
+        assert!(long.len() <= 200 && long.chars().all(|c| c == '界'));
     }
 }

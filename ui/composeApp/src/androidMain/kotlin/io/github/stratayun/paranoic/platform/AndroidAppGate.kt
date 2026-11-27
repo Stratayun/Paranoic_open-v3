@@ -32,8 +32,11 @@ import java.io.File
 class AndroidSecurityState(context: Context) {
     private val setting = AtomicFile(File(context.noBackupFilesDir, "app-auth-v1"))
     val available = context.getSystemService(KeyguardManager::class.java).isDeviceSecure
+    // Audit A39: only 0 and 1 are valid. A damaged or unreadable record asks for the system sign-in
+    // while the phone has a screen lock, and never demands a credential the phone no longer has.
     var enabled by mutableStateOf(if (setting.baseFile.exists() || File(setting.baseFile.path + ".bak").exists())
-        setting.openRead().use { it.read() != 0 } else false)
+        try { when (setting.openRead().use { it.read() }) { 0 -> false; 1 -> true; else -> available } } catch (_: Exception) { available }
+        else false)
         private set
     fun set(value: Boolean) {
         val output = setting.startWrite()
