@@ -207,23 +207,12 @@ impl Journal {
             Ok(())
         })
     }
-    pub fn bind_storage(&self, bindings: &[(crate::StorageId, String)]) -> Result<()> {
+    /// Replace a binding. Only for a storage no unfinished job refers to
+    /// (checked by the caller under the same start-up or registration path).
+    pub fn rebind_storage(&self, id: crate::StorageId, digest: &str) -> Result<()> {
         self.transaction(|tx| {
-            for (id, digest) in bindings {
-                let existing: Option<String> = tx.query_row(
-                    "SELECT digest FROM storage_bindings WHERE id=?1", [id.0.to_string()], |row| row.get(0),
-                ).optional().map_err(CoreError::journal)?;
-                match existing {
-                    Some(existing) if existing != *digest => {
-                        return Err(CoreError::new(ErrorCode::PermissionDenied, "storage ID cannot be rebound to another root"));
-                    }
-                    Some(_) => {},
-                    None => {
-                        tx.execute("INSERT INTO storage_bindings(id,digest) VALUES(?1,?2)", params![id.0.to_string(), digest])
-                            .map_err(CoreError::journal)?;
-                    }
-                }
-            }
+            tx.execute("UPDATE storage_bindings SET digest=?2 WHERE id=?1", params![id.0.to_string(), digest])
+                .map_err(CoreError::journal)?;
             Ok(())
         })
     }

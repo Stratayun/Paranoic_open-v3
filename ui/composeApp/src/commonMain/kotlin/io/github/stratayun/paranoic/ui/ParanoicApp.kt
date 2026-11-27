@@ -227,7 +227,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                     onOpenPath = { space, path -> leaveDocument { session.openPath(space, path); destination = Destination.Files }; scope.launch { placesDrawer.close() } },
                                     onOpenCategory = { space, category -> leaveDocument { session.categories.open(space, category); destination = Destination.Files }; scope.launch { placesDrawer.close() } },
                                     onOpenTrash = { space -> session.trashView = space; scope.launch { placesDrawer.close() } }, trashFilled = session.trashFilled,
-                                    onOpenCleanup = { space -> session.cleanupView = space; scope.launch { placesDrawer.close() } })
+                                    onOpenCleanup = { space -> session.cleanupView = space; scope.launch { placesDrawer.close() } },
+                                    bookmarkCore = core)
                                 }
                                 drawerFooter(true)
                             }
@@ -343,7 +344,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                         onOpenPath = { space, path -> leaveDocument { session.openPath(space, path); destination = Destination.Files } },
                                         onOpenCategory = { space, category -> leaveDocument { session.categories.open(space, category); destination = Destination.Files } },
                                         onOpenTrash = { space -> session.trashView = space }, trashFilled = session.trashFilled,
-                                        onOpenCleanup = { space -> session.cleanupView = space })
+                                        onOpenCleanup = { space -> session.cleanupView = space },
+                                        bookmarkCore = core)
                                     }
                                     drawerFooter(false)
                                 }

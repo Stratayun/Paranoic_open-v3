@@ -96,6 +96,10 @@ pub trait Storage: Send + Sync {
     /// A journal binding equal to one of them is upgraded once to the current
     /// key at registration; any other mismatch is still refused.
     fn legacy_binding_keys(&self) -> Result<Vec<String>> { Ok(Vec::new()) }
+    /// A removable volume (USB drive, SD card) whose root may legitimately get a
+    /// new identity between mounts. Core rebinds such a grant when no unfinished
+    /// job refers to it; every other grant keeps its first binding for good.
+    fn rebindable_root(&self) -> bool { false }
     /// Provider revision of a file (cloud ETag), if the storage has one.
     /// Jobs that carry an expected revision compare it with this (У-24).
     fn provider_revision(&self, _path: &ResourcePath) -> Result<Option<String>> { Ok(None) }
@@ -239,14 +243,17 @@ impl StorageRegistry {
         Ok(self.get(id)?.capabilities())
     }
 
-    pub(crate) fn bindings(&self) -> Result<Vec<(StorageId, String)>> {
+    /// (id, digest, digests of earlier identity formats of the same root, rebindable).
+    pub(crate) fn bindings_with_legacy(&self) -> Result<Vec<(StorageId, String, Vec<String>, bool)>> {
         let providers = self.providers.read().map_err(|_| CoreError::new(ErrorCode::Internal, "storage registry unavailable"))?;
         providers.values().map(|provider| {
             let key = provider.binding_key()?;
             if key.is_empty() {
                 return Err(CoreError::new(ErrorCode::InvalidInput, "storage binding cannot be empty"));
             }
-            Ok((provider.id(), blake3::hash(key.as_bytes()).to_hex().to_string()))
+            let legacy = provider.legacy_binding_keys()?.iter().filter(|k| !k.is_empty() && **k != key)
+                .map(|k| blake3::hash(k.as_bytes()).to_hex().to_string()).collect();
+            Ok((provider.id(), blake3::hash(key.as_bytes()).to_hex().to_string(), legacy, provider.rebindable_root()))
         }).collect()
     }
 }

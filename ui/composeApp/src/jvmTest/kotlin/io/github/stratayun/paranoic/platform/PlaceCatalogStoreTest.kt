@@ -36,6 +36,21 @@ class PlaceCatalogStoreTest {
             assertEquals(1L, Files.list(dir).use { it.count() })
         }
     }
+    @Test fun pinnedFoldersRoundtripAndOldFormatStillReads() = runBlocking {
+        inDirectory { _, path ->
+            val store = ProtectedPlaceCatalogStore(path, envelope)
+            val old = ByteArrayOutputStream().use { bytes ->
+                DataOutputStream(bytes).use { out -> out.writeInt(0x50504331); out.writeInt(1); out.writeUTF("grant"); out.writeByte(0); out.writeByte(1) }
+                byteArrayOf(91) + bytes.toByteArray()
+            }
+            Files.write(path, old)
+            assertEquals(PlaceCatalogSnapshot(listOf(PlacePreference("grant", hidden = true))), store.read())
+            val pinned = store.read().pin(PlaceBookmark("grant", "Documents/Work", "Work"))
+            assertSame(pinned, pinned.pin(PlaceBookmark("grant", "Documents/Work", "Again")), "same folder pinned once")
+            store.write(pinned); assertEquals(pinned, store.read())
+            store.write(pinned.unpin("grant", "Documents/Work")); assertTrue(store.read().bookmarks.isEmpty())
+        }
+    }
     @Test fun corruptionDuplicateIdsAndTrailingBytesDoNotResetTheStore() = runBlocking {
         inDirectory { _, path ->
             val duplicate = ByteArrayOutputStream().use { bytes ->

@@ -17,6 +17,39 @@ struct Shared {
     config: CoreConfig,
     gate: Mutex<Gate>,
     wake: Condvar,
+    /// Grants left out at start: their root no longer matches the binding and
+    /// unfinished jobs still refer to them.
+    unbound: Mutex<Vec<crate::StorageId>>,
+}
+
+/// Whether a queued, running or needs-attention job refers to `id`.
+fn storage_referenced(journal: &Journal, id: crate::StorageId) -> Result<bool> {
+    for state in [JobState::Queued, JobState::Running, JobState::NeedsAttention] {
+        let mut after = 0;
+        loop {
+            let page = journal.page(after, Some(state), 500)?;
+            if page.jobs.iter().any(|job| job.operation.locations().iter().any(|l| l.storage == id)) { return Ok(true); }
+            match page.next_cursor { Some(next) => after = next, None => break }
+        }
+    }
+    Ok(false)
+}
+
+/// Bind one storage. A removable volume whose identity changed (a USB drive
+/// gets a new device number on every mount) is rebound when no unfinished job
+/// refers to it: the binding exists to stop a persisted job from resuming
+/// against another root, and there is none. Every other mismatch keeps the
+/// binding and returns `Ok(false)`.
+fn bind_or_rebind(journal: &Journal, id: crate::StorageId, digest: &str, legacy: &[String], rebindable: bool) -> Result<bool> {
+    match journal.bind_storage_upgrading(id, digest, legacy) {
+        Ok(()) => Ok(true),
+        Err(error) if error.code == ErrorCode::PermissionDenied => {
+            if !rebindable || storage_referenced(journal, id)? { return Ok(false); }
+            journal.rebind_storage(id, digest)?;
+            Ok(true)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 /// One durable mutation worker. Poll job snapshots from the UI or a host adapter;
@@ -40,12 +73,21 @@ impl Core {
         sealer: Option<Arc<dyn crate::JournalSealer>>) -> Result<Self> {
         config.validate()?;
         let journal = Journal::open(state_directory.as_ref(), sealer, config.journal_retention_days)?;
-        journal.bind_storage(&storage.bindings()?)?;
+        // One grant whose root changed must not stop the whole Core (owner 27.11:
+        // a USB drive plugged in at start made the app unusable). It is left out.
+        let mut unbound = Vec::new();
+        for (id, digest, legacy, rebindable) in storage.bindings_with_legacy()? {
+            if !bind_or_rebind(&journal, id, &digest, &legacy, rebindable)? {
+                storage.unregister(id)?;
+                unbound.push(id);
+            }
+        }
         journal.recover()?;
         let shared = Arc::new(Shared {
             journal, storage, config,
             gate: Mutex::new(Gate { stopping: false, fault: None }),
             wake: Condvar::new(),
+            unbound: Mutex::new(unbound),
         });
         let worker_shared = Arc::clone(&shared);
         let worker = thread::Builder::new().name("paranoic-files".into()).spawn(move || {
@@ -88,8 +130,17 @@ impl Core {
         }
         // Not registered, so no job of this ID can be running; an identity
         // format upgrade of the same root is applied once (e.g. WebDAV v2).
-        self.shared.journal.bind_storage_upgrading(provider.id(), &digest, &legacy)?;
-        self.shared.storage.register_shared(provider)
+        if !bind_or_rebind(&self.shared.journal, provider.id(), &digest, &legacy, provider.rebindable_root())? {
+            return Err(if provider.rebindable_root() {
+                CoreError::new(ErrorCode::NeedsAttention, "this place changed while unfinished operations still refer to it")
+            } else {
+                CoreError::new(ErrorCode::PermissionDenied, "storage ID cannot be rebound to another root")
+            });
+        }
+        let id = provider.id();
+        self.shared.storage.register_shared(provider)?;
+        if let Ok(mut unbound) = self.shared.unbound.lock() { unbound.retain(|u| *u != id); }
+        Ok(())
     }
 
     /// Withdraw a grant from the registry (user revoked it). Refused while a
@@ -162,6 +213,11 @@ impl Core {
         self.shared.journal.mark_reviewed(id)
     }
     /// Compare a caller-held grant with the immutable provider registered here.
+    /// Grants left out at start (see `open_sealed`).
+    pub fn unbound_storages(&self) -> Vec<crate::StorageId> {
+        self.shared.unbound.lock().map(|u| u.clone()).unwrap_or_default()
+    }
+
     pub fn storage_binding_fingerprint(&self, storage: StorageId) -> Result<String> {
         let key = self.shared.storage.get(storage)?.binding_key()?;
         Ok(blake3::hash(key.as_bytes()).to_hex().to_string())

@@ -49,6 +49,8 @@ class PlaceCatalog(private val store: PlaceCatalogStore, private val scope: Coro
         val removal = removed ?: return
         change({ it.undo(removal) }) { removed = null; removedTitle = null }
     }
+    fun pin(bookmark: PlaceBookmark) = change({ it.pin(bookmark) })
+    fun unpin(bookmark: PlaceBookmark) = change({ it.unpin(bookmark.storageId, bookmark.path) })
     fun show(storageId: String) = change({ it.show(storageId) }) {
         if (removed?.hidden?.storageId == storageId) { removed = null; removedTitle = null }
     }

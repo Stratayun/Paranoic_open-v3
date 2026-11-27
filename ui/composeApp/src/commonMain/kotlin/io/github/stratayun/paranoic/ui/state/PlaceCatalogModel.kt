@@ -12,11 +12,29 @@ fun validPlaceTitle(value: String) = value.isNotBlank() && value.length <= 120 &
 
 data class PlaceRemoval(val before: PlacePreference?, val hidden: PlacePreference)
 
-data class PlaceCatalogSnapshot(val entries: List<PlacePreference> = emptyList()) {
+/** A pinned folder (owner 27.11): a shortcut to a folder inside a connected place.
+ *  Not a grant: it opens through the place's own storage. */
+data class PlaceBookmark(val storageId: String, val path: String, val title: String) {
+    init {
+        require(storageId.isNotBlank() && storageId.length <= 128 && storageId.none { it.isISOControl() })
+        require(path.isNotEmpty() && path.length <= 4096 && path.none { it.isISOControl() })
+        require(validPlaceTitle(title))
+    }
+}
+
+data class PlaceCatalogSnapshot(val entries: List<PlacePreference> = emptyList(), val bookmarks: List<PlaceBookmark> = emptyList()) {
     init {
         require(entries.size <= 256)
         require(entries.map { it.storageId }.distinct().size == entries.size)
+        require(bookmarks.size <= MAX_BOOKMARKS)
+        require(bookmarks.map { it.storageId to it.path }.distinct().size == bookmarks.size)
     }
+    fun pin(bookmark: PlaceBookmark): PlaceCatalogSnapshot {
+        if (bookmarks.any { it.storageId == bookmark.storageId && it.path == bookmark.path }) return this
+        require(bookmarks.size < MAX_BOOKMARKS)
+        return copy(bookmarks = bookmarks + bookmark)
+    }
+    fun unpin(storageId: String, path: String) = copy(bookmarks = bookmarks.filterNot { it.storageId == storageId && it.path == path })
     fun find(storageId: String) = entries.singleOrNull { it.storageId == storageId }
     private fun replace(storageId: String, entry: PlacePreference?): PlaceCatalogSnapshot {
         require(entry == null || entry.storageId == storageId)
@@ -46,6 +64,8 @@ data class PlaceCatalogSnapshot(val entries: List<PlacePreference> = emptyList()
         return replace(storageId, if (entry.title == null) null else entry.copy(hidden = false))
     }
 }
+
+const val MAX_BOOKMARKS = 64
 
 interface PlaceCatalogStore {
     suspend fun read(): PlaceCatalogSnapshot

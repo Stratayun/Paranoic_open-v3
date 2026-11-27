@@ -131,6 +131,14 @@ impl Storage for LocalStorage {
     fn id(&self) -> StorageId { self.id }
 
     fn binding_key(&self) -> Result<String> {
+        // Android shared storage is a FUSE mount: its device number is assigned per
+        // mount (a USB drive gets a new one every time it is plugged in) and the
+        // root inode is constant, so dev:ino says nothing stable. The volume path
+        // (/storage/<filesystem UUID>, /storage/emulated/N) is the identity there.
+        #[cfg(unix)]
+        if self.shared_root {
+            return Ok(format!("android-shared:{}", self.root_path.display()));
+        }
         #[cfg(unix)]
         {
             use cap_std::fs::MetadataExt;
@@ -156,6 +164,21 @@ impl Storage for LocalStorage {
             Err(CoreError::new(ErrorCode::Unsupported, "stable native root identity is not implemented on this platform"))
         }
     }
+
+    /// Shared-storage grants were bound by dev:ino before; the same root is
+    /// upgraded to the path identity once.
+    fn legacy_binding_keys(&self) -> Result<Vec<String>> {
+        #[cfg(unix)]
+        if self.shared_root {
+            use cap_std::fs::MetadataExt;
+            let metadata = self.root.dir_metadata().map_err(CoreError::io)?;
+            return Ok(vec![format!("native-unix:{}:{}", metadata.dev(), metadata.ino())]);
+        }
+        Ok(Vec::new())
+    }
+
+    /// Android volumes (USB drives, SD cards) change identity between mounts.
+    fn rebindable_root(&self) -> bool { self.shared_root }
 
     fn domain(&self) -> StorageDomain { StorageDomain::Files }
 

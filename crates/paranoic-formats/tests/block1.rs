@@ -199,14 +199,56 @@ impl Harness {
     assert!(matches!(h.core.inspect_prepared_tree(job.id, &AtomicBool::new(false))?, PreparedTreeObservation::Differs { .. }));
     assert_eq!(h.core.job(job.id)?.state, JobState::Succeeded); Ok(())
 }
-#[test] fn grant_cannot_be_rebound_and_core_has_exclusive_lease() -> TestResult {
+#[test] fn changed_root_never_stops_core_and_core_has_exclusive_lease() -> TestResult {
     let h = Harness::new(); let mut registry = StorageRegistry::new(); registry.register(h.storage.clone())?;
     assert!(matches!(Core::open(h.temp.0.join("state"), Default::default(), registry), Err(CoreError { code: ErrorCode::Busy, .. })));
-    h.core.close()?;
-    std::fs::create_dir(h.temp.0.join("different"))?;
+    let Harness { core, storage, temp } = h;
+    core.close()?;
+    // A folder grant under the same ID with another root is never rebound; only
+    // that grant is left out, the rest of Core starts (owner 27.11).
+    std::fs::create_dir(temp.0.join("different"))?;
     let mut registry = StorageRegistry::new();
-    registry.register(Arc::new(LocalStorage::open(h.storage.id(), h.temp.0.join("different"), Access::ReadWrite)?))?;
-    assert!(matches!(Core::open(h.temp.0.join("state"), Default::default(), registry), Err(CoreError { code: ErrorCode::PermissionDenied, .. }))); Ok(())
+    registry.register(Arc::new(LocalStorage::open(storage.id(), temp.0.join("different"), Access::ReadWrite)?))?;
+    let core = Core::open(temp.0.join("state"), Default::default(), registry)?;
+    assert_eq!(core.unbound_storages(), vec![storage.id()]);
+    assert!(core.list(&Location { storage: storage.id(), path: ResourcePath::root() }).is_err(), "left-out grant is not reachable");
+    assert!(matches!(core.register_storage(Arc::new(LocalStorage::open(storage.id(), temp.0.join("different"), Access::ReadWrite)?)),
+        Err(CoreError { code: ErrorCode::PermissionDenied, .. })));
+    core.register_storage(storage.clone())?;
+    assert!(core.unbound_storages().is_empty(), "the bound root comes back");
+    core.close()?;
+    Ok(())
+}
+/// A USB drive gets a new identity on every mount: an Android volume grant is
+/// rebound when no unfinished job refers to it, and left out otherwise.
+#[test] fn android_volume_rebinds_only_without_unfinished_jobs() -> TestResult {
+    let temp = Temp::new();
+    for d in ["usb1", "usb2", "state"] { std::fs::create_dir(temp.0.join(d))?; }
+    let id = StorageId(uuid::Uuid::new_v4());
+    let volume = |dir: &str| -> Result<Arc<LocalStorage>, CoreError> { Ok(Arc::new(LocalStorage::open_shared(id, temp.0.join(dir), Access::ReadWrite)?)) };
+    let mut registry = StorageRegistry::new(); registry.register(volume("usb1")?)?;
+    let core = Core::open(temp.0.join("state"), Default::default(), registry)?;
+    let target = Location { storage: id, path: ResourcePath::parse("made")? };
+    let mut job = core.submit(Operation::CreateDirectory { target })?;
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while matches!(core.job(job.id)?.state, JobState::Queued | JobState::Running) { assert!(std::time::Instant::now() < until); std::thread::sleep(std::time::Duration::from_millis(5)); }
+    core.close()?;
+    let mut registry = StorageRegistry::new(); registry.register(volume("usb2")?)?;
+    let core = Core::open(temp.0.join("state"), Default::default(), registry)?;
+    assert!(core.unbound_storages().is_empty(), "rebound without unfinished jobs");
+    core.close()?;
+    job = { let db = rusqlite::Connection::open(temp.0.join("state/operations.sqlite3"))?;
+        let text: String = db.query_row("SELECT record FROM jobs WHERE id=?1", [job.id.0.to_string()], |r| r.get(0))?;
+        let mut record: JobRecord = serde_json::from_str(&text)?; record.state = JobState::NeedsAttention; record.result = None;
+        db.execute("UPDATE jobs SET state='needs_attention', record=?1 WHERE id=?2", rusqlite::params![serde_json::to_string(&record)?, job.id.0.to_string()])?;
+        record };
+    let mut registry = StorageRegistry::new(); registry.register(volume("usb1")?)?;
+    let core = Core::open(temp.0.join("state"), Default::default(), registry)?;
+    assert_eq!(core.unbound_storages(), vec![id], "kept for the unfinished job");
+    assert!(matches!(core.register_storage(volume("usb1")?), Err(CoreError { code: ErrorCode::NeedsAttention, .. })));
+    core.register_storage(volume("usb2")?)?;
+    assert_eq!(core.job(job.id)?.state, JobState::NeedsAttention);
+    Ok(())
 }
 #[test] fn keyring_password_revision_and_background_revocation() -> TestResult {
     use paranoic_crypto::{PasswordKeyring, SessionManager, LifecycleEvent, ObjectId};
@@ -288,4 +330,21 @@ impl Harness {
     let mut duplicate = directory.stage(object)?; duplicate.write_all(b"replacement")?; assert!(duplicate.commit().is_err());
     let mut data = Vec::new(); directory.open_object(object)?.read_to_end(&mut data)?; assert_eq!(data, b"private contents");
     directory.remove_object(object)?; assert!(directory.open_object(object).is_err()); Ok(())
+}
+/// Android shared storage moves from dev:ino to the volume path identity; an
+/// existing binding of the same root upgrades in place, even with unfinished jobs.
+#[test] fn shared_storage_binding_upgrades_to_path_identity() -> TestResult {
+    let h = Harness::new();
+    let mut job = h.run(Operation::CreateDirectory { target: h.loc("made") });
+    let Harness { core, storage, temp } = h;
+    core.close()?;
+    job.state = JobState::NeedsAttention; job.result = None;
+    let db = rusqlite::Connection::open(temp.0.join("state/operations.sqlite3"))?;
+    db.execute("UPDATE jobs SET state='needs_attention', record=?1 WHERE id=?2", rusqlite::params![serde_json::to_string(&job)?, job.id.0.to_string()])?; drop(db);
+    let shared = Arc::new(LocalStorage::open_shared(storage.id(), temp.0.join("files"), Access::ReadWrite)?);
+    assert!(shared.binding_key()?.starts_with("android-shared:"));
+    let mut registry = StorageRegistry::new(); registry.register(shared)?;
+    let core = Core::open(temp.0.join("state"), Default::default(), registry)?;
+    assert!(core.unbound_storages().is_empty(), "same root kept its grant");
+    Ok(())
 }

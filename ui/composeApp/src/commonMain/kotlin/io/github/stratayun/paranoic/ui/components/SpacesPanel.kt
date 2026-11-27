@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.github.stratayun.paranoic.bridge.CoreGateway
 import io.github.stratayun.paranoic.bridge.Space
 import io.github.stratayun.paranoic.resources.*
 import org.jetbrains.compose.resources.DrawableResource
@@ -26,8 +27,12 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
     onOpen: (Space) -> Unit, onDetach: (Space) -> Unit, modifier: Modifier = Modifier,
     onConnectServer: ((String, String, String) -> Unit)? = null, onOpenPath: ((Space, String) -> Unit)? = null,
     onOpenCategory: ((Space, FileCategory) -> Unit)? = null, onOpenTrash: ((Space) -> Unit)? = null, trashFilled: Set<String> = emptySet(),
-    onOpenCleanup: ((Space) -> Unit)? = null) {
+    onOpenCleanup: ((Space) -> Unit)? = null,
+    /** Android (owner 27.11): pin a folder chosen inside the app as a menu shortcut. */
+    bookmarkCore: CoreGateway? = null) {
     var serverDialog by remember { mutableStateOf(false) }
+    var pickingBookmark by remember { mutableStateOf(false) }
+    var bookmarkMenu by remember { mutableStateOf<PlaceBookmark?>(null) }
     var confirm by remember { mutableStateOf<Space?>(null) }
     var renaming by remember { mutableStateOf<Space?>(null) }
     var name by remember { mutableStateOf("") }
@@ -98,6 +103,30 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
             QuickPlaces(enabled = connected && !busy, onCategory = { c -> onOpenCategory?.invoke(device.copy(name = title(device)), c) },
                 onTrash = onOpenTrash?.let { open -> { open(device.copy(name = title(device))) } }, trashFull = device.root.storageId in trashFilled) { path -> onOpenPath(device.copy(name = title(device)), path) }
         }
+        // Pinned folders: shortcuts into connected places (not grants).
+        val bookmarks = catalog.snapshot.bookmarks
+        if (bookmarks.isNotEmpty()) {
+            SectionLabel(tr("Закладки", "Pinned folders"))
+            GroupedList(bookmarks) { bookmark, position ->
+                val space = spaces.firstOrNull { it.id == bookmark.storageId }
+                GroupedRow(displayName(bookmark.title), position,
+                    subtitle = space?.let { displayName(title(it)) + " · " + bookmark.path }
+                        ?: tr("Недоступно — место не подключено", "Unavailable — place not connected"),
+                    enabled = connected && !busy && space != null,
+                    leading = { BrandIcon(Res.drawable.ic_folder, size = 52.dp) },
+                    trailing = {
+                        Box {
+                            IconButton(onClick = { bookmarkMenu = bookmark },
+                                modifier = Modifier.actionDescription(tr("Действия: ", "Actions: ") + displayName(bookmark.title))) { AppIcon(AppSymbol.More) }
+                            DropdownMenu(bookmarkMenu == bookmark, { bookmarkMenu = null }) {
+                                DropdownMenuItem(text = { Text(tr("Убрать из закладок", "Unpin")) }, enabled = editable,
+                                    leadingIcon = { AppIcon(AppSymbol.Close) }, onClick = { bookmarkMenu = null; catalog.unpin(bookmark) })
+                            }
+                        }
+                    },
+                    onClick = { if (space != null) onOpenPath?.invoke(space.copy(name = title(space)), bookmark.path) })
+            }
+        }
         val others = visible.filter { it != device }
         if (others.isNotEmpty()) SectionLabel(if (device != null) tr("Другие места", "Other places") else tr("Подключённые места", "Connected places"))
         GroupedList(others) { space, position ->
@@ -134,12 +163,15 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
         }
         SectionLabel(tr("Подключить", "Connect"))
         val connectRows = buildList {
+            if (bookmarkCore != null && onOpenPath != null)
+                add(Triple(tr("Закрепить папку", "Pin a folder"), Res.drawable.ic_folder, { pickingBookmark = true }))
             add(Triple(tr("Подключить место", "Connect location"), Res.drawable.ic_folder_add, onConnect))
             if (onConnectServer != null) add(Triple(tr("Свой сервер", "Own server"), Res.drawable.ic_cloud, { serverDialog = true }))
         }
         GroupedList(connectRows) { (label, icon, action), position ->
             GroupedRow(label, position, enabled = connected && !busy,
-                subtitle = if (icon == Res.drawable.ic_folder_add) tr("Папка, флешка или карта памяти", "Folder, USB drive or memory card")
+                subtitle = if (icon == Res.drawable.ic_folder) tr("Папка в меню для быстрого доступа", "A folder in the menu for quick access")
+                    else if (icon == Res.drawable.ic_folder_add) tr("Папка, флешка или карта памяти", "Folder, USB drive or memory card")
                     else tr("paranoic-server, Nextcloud", "paranoic-server, Nextcloud"),
                 leading = { BrandIcon(icon, size = 52.dp) },
                 onClick = action)
@@ -158,6 +190,18 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
                         }
                     }
                 }
+            }
+        }
+    }
+    if (pickingBookmark && bookmarkCore != null) {
+        CoreFilePickerDialog(bookmarkCore, spaces, tr("Закрепить папку", "Pin a folder"), CorePickKind.Directory,
+            onDismiss = { pickingBookmark = false }) { picked ->
+            pickingBookmark = false
+            val folder = picked.firstOrNull() ?: return@CoreFilePickerDialog
+            // A place root is already in the menu; only folders inside it are pinned.
+            if (folder.location.path.isNotEmpty() && editable) {
+                val label = folder.name.take(120).ifBlank { folder.location.path.substringAfterLast('/') }
+                if (validPlaceTitle(label)) catalog.pin(PlaceBookmark(folder.location.storageId, folder.location.path, label))
             }
         }
     }

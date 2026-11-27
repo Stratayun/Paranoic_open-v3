@@ -225,6 +225,10 @@ impl NativeRuntime {
         let journal_key: Option<Arc<dyn paranoic_core::JournalSealer>> =
             if sealer.available() { Some(Arc::new(JournalKey(Arc::clone(&sealer)))) } else { None };
         let core = Core::open_sealed(&state_root, CoreConfig::default(), registry, journal_key)?;
+        // A place whose root changed while unfinished jobs still refer to it is
+        // left out (not shown) instead of stopping the whole start.
+        let unbound: Vec<String> = core.unbound_storages().iter().map(|id| id.0.to_string()).collect();
+        spaces.retain(|space| !unbound.contains(&space.id));
         features::sweep_spools_at_start(app.as_ref(), &core);
         let thumbnails = thumbnail_cache(&state_root);
         Ok(Arc::new(Self { core, thumbnails, state_root, workspace_root, pdfium: PathBuf::from(pdfium_library),
