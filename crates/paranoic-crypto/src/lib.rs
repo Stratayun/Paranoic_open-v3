@@ -4,6 +4,7 @@
 use argon2::{Algorithm, Argon2, Params, Version};
 use chacha20poly1305::{aead::{Aead, KeyInit, Payload}, XChaCha20Poly1305, XNonce};
 pub mod passphrase;
+pub mod kdf_gate;
 pub use passphrase::{contains_common, generate_passphrase, generate_password, has_repeats, has_sequence};
 use rand_core::{OsRng, RngCore};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
@@ -165,6 +166,7 @@ impl SecretKey {
 
 fn derive(password: &[u8], salt: &[u8; 16]) -> Result<SecretKey> {
     // 64 MiB, three passes, one lane; exactly 32 output bytes.
+    let _permit = kdf_gate::admit(65_536, &mut || Ok(()))?;
     let params = Params::new(65_536, 3, 1, Some(32)).map_err(|_| CryptoError::Derivation)?;
     let argon = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
     let mut key = SecretKey([0; 32]);

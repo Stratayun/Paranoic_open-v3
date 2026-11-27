@@ -114,7 +114,7 @@ fn remove_own<D: AsFd>(dir: D, name: &str, st: &rustix::fs::Stat) {
 }
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
-fn getrandom_fill(out: &mut [u8]) -> std::io::Result<()> {
+pub(crate) fn getrandom_fill(out: &mut [u8]) -> std::io::Result<()> {
     use std::io::Read;
     std::fs::File::open("/dev/urandom")?.read_exact(out)
 }

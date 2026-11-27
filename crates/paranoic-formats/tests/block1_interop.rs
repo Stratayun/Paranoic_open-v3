@@ -12,8 +12,8 @@ use paranoic_formats::*;
 use paranoic_local::{Access, LocalStorage};
 use zeroize::Zeroizing;
 
-// The production KDF gate intentionally returns Busy for concurrent derivations.
-// Keep only these interop users serial; do not weaken the gate or serialize CI.
+// Derivations share the process-wide KDF budget (paranoic_crypto::kdf_gate);
+// these interop users stay serial so their timing does not depend on it.
 static KDF_INTEROP: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[derive(Default)] struct Output { bytes: Vec<u8>, committed: bool }

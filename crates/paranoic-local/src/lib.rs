@@ -166,8 +166,10 @@ impl Storage for LocalStorage {
             read: true, write: writable, delete: writable,
             atomic_move_no_replace: writable && cfg!(any(target_os = "linux", target_os = "android", windows)) && self.shared_noreplace(),
             durable_directory_sync: cfg!(unix),
-            // Check-then-act leases (see MoveLease/PinnedFile): the object is
-            // identified by dev/ino and ctime, verified immediately before unlink.
+            // Leases (see MoveLease/PinnedFile): the object is identified by dev/ino
+            // and ctime; on Linux/Android the source is detached to a hidden name
+            // and verified there before unlink. The destination is re-checked
+            // right before the source goes, but cannot be held against others.
             conditional_move_source: writable && cfg!(unix),
             pinned_destination: writable && cfg!(unix),
             // Windows has no directory flush; NTFS/ReFS journal their metadata, so a published
@@ -758,18 +760,55 @@ impl Identity {
 }
 
 /// Source lease for cross-storage moves. remove() unlinks the name only if it
-/// still refers to the leased, unmodified object. Residual race: a replacement
-/// between this final check and unlink() (microseconds) is not excluded, and
-/// writers holding an older open handle can still write to the unlinked inode.
+/// still refers to the leased, unmodified object.
+///
+/// Linux/Android (audit A32): the name is first moved atomically to a fresh
+/// hidden name, then the object found there is compared with the lease, and
+/// only then unlinked. An object that replaced the source in the meantime is
+/// moved back and kept, never deleted. Elsewhere, and where NOREPLACE is not
+/// honoured, the check-then-unlink path remains (microsecond window). Writers
+/// holding an older open handle can still write to the unlinked inode.
 #[cfg(unix)]
 struct MoveLease { parent: Dir, name: String, reader: LocalReader, identity: Identity }
+
+#[cfg(unix)]
+impl Identity {
+    /// The same object with the same content markers; ctime is excluded because
+    /// our own rename updates it.
+    fn same_object(&self, other: &Self) -> bool {
+        self.dev == other.dev && self.ino == other.ino && self.size == other.size && self.mtime == other.mtime
+    }
+}
 
 #[cfg(unix)]
 impl paranoic_core::MoveSource for MoveLease {
     fn reader(&mut self) -> &mut dyn ReadHandle { &mut self.reader }
     fn remove(self: Box<Self>) -> Result<()> {
+        let changed = || CoreError::new(ErrorCode::SourceChanged, "source changed during move; it was not removed");
         if Identity::of_fd(&self.reader.0)? != self.identity || Identity::at(&self.parent, &self.name)? != self.identity {
-            return Err(CoreError::new(ErrorCode::SourceChanged, "source changed during move; it was not removed"));
+            return Err(changed());
+        }
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        {
+            use rustix::io::Errno;
+            let mut id = [0u8; 16];
+            crate::shared::getrandom_fill(&mut id).map_err(CoreError::io)?;
+            let hidden = format!(".paranoic-rm-{}", id.iter().map(|b| format!("{b:02x}")).collect::<String>());
+            match crate::shared::rename_noreplace(&self.parent, &self.name, &self.parent, &hidden, false) {
+                Ok(()) => {
+                    if !Identity::at(&self.parent, &hidden)?.same_object(&self.identity) {
+                        return match crate::shared::rename_noreplace(&self.parent, &hidden, &self.parent, &self.name, false) {
+                            Ok(()) => Err(changed()),
+                            Err(_) => Err(CoreError::new(ErrorCode::NeedsAttention,
+                                "source was replaced during move; the replacement is kept under a hidden name")),
+                        };
+                    }
+                    self.parent.remove_file(&hidden).map_err(CoreError::io)?;
+                    return sync_directory(&self.parent);
+                }
+                Err(Errno::INVAL | Errno::NOSYS | Errno::OPNOTSUPP) => {},
+                Err(error) => return Err(CoreError::io(error.into())),
+            }
         }
         self.parent.remove_file(&self.name).map_err(CoreError::io)?;
         sync_directory(&self.parent)
@@ -790,3 +829,40 @@ impl paranoic_core::PinnedDestination for PinnedFile {
     }
 }
 
+
+#[cfg(all(test, any(target_os = "linux", target_os = "android")))]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod lease_tests {
+    use super::*;
+    use paranoic_core::{Storage, StorageId};
+
+    fn fixture() -> (std::path::PathBuf, LocalStorage) {
+        let dir = std::env::temp_dir().join(format!("paranoic-lease-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let storage = LocalStorage::open(StorageId(uuid::Uuid::new_v4()), &dir, Access::ReadWrite).unwrap();
+        (dir, storage)
+    }
+
+    /// A32: the source goes through a hidden name and nothing is left behind.
+    #[test] fn lease_removes_through_hidden_name() {
+        let (dir, storage) = fixture();
+        std::fs::write(dir.join("a.txt"), b"source").unwrap();
+        let lease = storage.prepare_move_source(&ResourcePath::parse("a.txt").unwrap()).unwrap();
+        lease.remove().unwrap();
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0, "source or hidden copy left");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A replacement under the source name is never deleted.
+    #[test] fn lease_keeps_a_replacement() {
+        let (dir, storage) = fixture();
+        std::fs::write(dir.join("a.txt"), b"source").unwrap();
+        let lease = storage.prepare_move_source(&ResourcePath::parse("a.txt").unwrap()).unwrap();
+        std::fs::write(dir.join("b.txt"), b"someone else").unwrap();
+        std::fs::rename(dir.join("b.txt"), dir.join("a.txt")).unwrap();
+        assert!(lease.remove().is_err());
+        assert_eq!(std::fs::read(dir.join("a.txt")).unwrap(), b"someone else");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}

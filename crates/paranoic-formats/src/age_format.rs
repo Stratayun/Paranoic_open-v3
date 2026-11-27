@@ -73,8 +73,11 @@ impl AgeFormat {
             checkpoint(0)?;
             let mut recipient = age::scrypt::Recipient::new(password);
             recipient.set_work_factor(limits.max_scrypt_work_factor);
+            // age 0.11 runs scrypt here; the shared KDF budget (A28) covers it.
+            let permit = paranoic_crypto::kdf_gate::admit(scrypt_kib(limits.max_scrypt_work_factor), &mut || checkpoint(0))?;
             let encryptor = age::Encryptor::with_recipients(std::iter::once(&recipient as &dyn age::Recipient))
                 .map_err(|_| CryptoError::InvalidInput)?;
+            drop(permit);
             checkpoint(0)?;
             encrypt(input, output.as_mut(), encryptor, limits, &mut checkpoint)
         })();
@@ -111,8 +114,10 @@ impl AgeFormat {
             let mut identity = age::scrypt::Identity::new(password);
             identity.set_max_work_factor(limits.max_scrypt_work_factor);
             checkpoint(0)?;
+            let permit = paranoic_crypto::kdf_gate::admit(scrypt_kib(limits.max_scrypt_work_factor), &mut || checkpoint(0))?;
             let reader = decryptor.decrypt(std::iter::once(&identity as &dyn age::Identity))
                 .map_err(|_| CryptoError::Authentication)?;
+            drop(permit);
             checkpoint(0)?;
             pump(reader, output.as_mut(), limits.max_plaintext_bytes, true, &mut checkpoint)
         })();
@@ -151,6 +156,10 @@ fn pump<R: Read, W: Write + ?Sized>(mut input: R, output: &mut W, maximum: u64, 
     checkpoint(total)?;
     Ok(total)
 }
+
+/// scrypt memory with r = 8: 128 · 8 · 2^log_n bytes = 2^log_n KiB (upper bound
+/// for decryption, whose header may ask for less).
+fn scrypt_kib(log_n: u8) -> u64 { 1u64 << log_n }
 
 fn finish(output: Box<dyn StreamSink>, result: Result<u64>) -> Result<u64> {
     match result {

@@ -10,8 +10,8 @@ fn walk(p: &std::path::Path, out: &mut Vec<PathBuf>) {
     for e in fs::read_dir(p).unwrap() { let p = e.unwrap().path(); if p.is_dir() { walk(&p, out) } else { out.push(p) } }
 }
 
-/// Cryptomator admits one scrypt derivation per process (KDF_GATE, Busy
-/// otherwise); these tests must not derive at the same time.
+/// Derivations queue on the process-wide KDF budget (paranoic_crypto::kdf_gate);
+/// these tests stay serial so their runtime does not depend on it.
 static SERIAL: Mutex<()> = Mutex::new(());
 fn serial() -> std::sync::MutexGuard<'static, ()> { SERIAL.lock().unwrap_or_else(|e| e.into_inner()) }
 

@@ -468,7 +468,7 @@ fn validate_password(password: &[u8]) -> Result<()> {
     if password.is_empty() || password.len() > 4096 { Err(CryptoError::InvalidInput) } else { Ok(()) }
 }
 fn password_kek(password: &[u8], header: &Header, checkpoint: &mut dyn FnMut() -> Result<()>) -> Result<Zeroizing<[u8; 32]>> {
-    let _permit = crate::kdf_gate::admit(u64::from(header.kdf.memory_kib), checkpoint)?;
+    let _permit = paranoic_crypto::kdf_gate::admit(u64::from(header.kdf.memory_kib), checkpoint)?;
     let params = argon2::Params::new(header.kdf.memory_kib, header.kdf.iterations, header.kdf.lanes, Some(32))
         .map_err(|_| CryptoError::Derivation)?;
     let argon = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);

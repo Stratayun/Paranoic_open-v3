@@ -202,7 +202,7 @@ impl CryptomatorVault {
         // Never weaken imported parameters; new wrapping has at least the
         // standard creation work factor, while retaining its admitted r.
         let cost = self.cost.max(65536);
-        let kek = derive_password(&password, &salt, cost, self.block_size)?;
+        let kek = derive_password(&password, &salt, cost, self.block_size, &mut checkpoint)?;
         checkpoint()?;
         let wrapper = KekAes256::try_from(&kek[..]).map_err(|_| CryptoError::InvalidInput)?;
         let mut enc = Zeroizing::new([0u8; 40]);
@@ -381,7 +381,7 @@ fn unwrap_key_file<F: FnMut() -> Result<()>>(masterkey_json: &[u8], password: &s
     let n = file.scrypt_cost_param;
     let r = file.scrypt_block_size;
     checkpoint()?;
-    let kek = derive_password(password, &salt, n, r)?;
+    let kek = derive_password(password, &salt, n, r, checkpoint)?;
     checkpoint()?;
     let wrapper = KekAes256::try_from(&kek[..]).map_err(|_| CryptoError::InvalidInput)?;
     let mut bundle = Zeroizing::new([0u8; 64]);
@@ -432,15 +432,8 @@ fn verify(alg: &str, key: &[u8], data: &[u8], signature: &[u8]) -> Result<()> {
         _ => Err(CryptoError::Unsupported) }
 }
 
-fn derive_password(password: &str, salt: &[u8], n: u64, r: u32) -> Result<Zeroizing<[u8; 32]>> {
-    // All Cryptomator unlock/create/rewrap paths share this admission. Bounded
-    // per-call memory alone would still allow unbounded concurrent scrypt RAM.
-    static KDF_GATE: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _permit = match KDF_GATE.try_lock() {
-        Ok(permit) => permit,
-        Err(std::sync::TryLockError::WouldBlock) => return Err(CryptoError::Busy),
-        Err(std::sync::TryLockError::Poisoned(_)) => return Err(CryptoError::Derivation),
-    };
+fn derive_password(password: &str, salt: &[u8], n: u64, r: u32, checkpoint: &mut dyn FnMut() -> Result<()>)
+    -> Result<Zeroizing<[u8; 32]>> {
     if password.len() > 4096 { return Err(CryptoError::LimitExceeded); }
         if !n.is_power_of_two() || n < 2 || r == 0 || r > 32 {
             return Err(CryptoError::InvalidInput);
@@ -450,6 +443,8 @@ fn derive_password(password: &str, salt: &[u8], n: u64, r: u32) -> Result<Zeroiz
         let memory = work.checked_mul(128).and_then(|v| v.checked_add(u64::from(r) * 256 + 65536))
             .ok_or(CryptoError::LimitExceeded)?;
         if work > 1_048_576 || memory > 128 * 1024 * 1024 { return Err(CryptoError::LimitExceeded); }
+        // The process-wide KDF budget (A28), shared with 1.8, Safe and age.
+        let _permit = paranoic_crypto::kdf_gate::admit(memory.div_ceil(1024), checkpoint)?;
         let mut normalized = Zeroizing::new(String::new());
         for ch in password.nfc() {
             if normalized.len() + ch.len_utf8() > 4096 { return Err(CryptoError::LimitExceeded); }
