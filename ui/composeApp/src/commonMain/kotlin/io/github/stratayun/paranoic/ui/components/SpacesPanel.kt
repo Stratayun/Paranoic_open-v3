@@ -82,7 +82,9 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
             Modifier.padding(horizontal = 12.dp), color = scheme.onSurfaceVariant)
         // Owner (25.11): internal memory, "Files" and the device row were three ways into the
         // same place. One compact card at the top opens it; the list below keeps only the rest.
-        val usage = device?.let { LocalVolumeUsage.current(title(it)) }
+        // Looked up by the volume's own label: a name changed in the menu must not hide the usage.
+        val volumeUsage = LocalVolumeUsage.current
+        val usage = device?.let { volumeUsage(it.name) }
         if (device != null) StorageCard(displayName(title(device)), usage?.takeIf { it.totalBytes > 0 },
             enabled = connected && !busy, onClick = { onOpen(device.copy(name = title(device))) })
         if (device != null && onOpenPath != null) {
@@ -104,7 +106,11 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
         GroupedList(others) { space, position ->
             val index = visible.indexOf(space)
             var menu by remember(space.id) { mutableStateOf(false) }
-            GroupedRow(displayName(title(space)), position, subtitle = kind(space), enabled = connected && !busy,
+            // Owner 27.11: SD cards and USB drives show their free space too.
+            val spaceUsage = if (appPrivate(space) || space.cloud || space.androidTree) null
+                else volumeUsage(space.name)?.takeIf { it.totalBytes > 0 }
+            val subtitle = spaceUsage?.let { tr("Свободно ", "Free ") + gb(it.freeBytes) + tr(" из ", " of ") + gb(it.totalBytes) } ?: kind(space)
+            GroupedRow(displayName(title(space)), position, subtitle = subtitle, enabled = connected && !busy,
                 leading = { BrandIcon(when {
                     appPrivate(space) -> Res.drawable.ic_shield
                     space.cloud -> Res.drawable.ic_cloud
