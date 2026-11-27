@@ -13,8 +13,17 @@
 //! providers are read-only. Residual: inside that provider the unique-name
 //! choice and the rename are separate steps (tiny window against another app
 //! creating the same name). The temporary document is addressed by its URI
-//! from creation on, never re-resolved by path. Moves are not offered (no
-//! atomic no-replace). Deletion is offered only with a host-confirmed native
+//! from creation on, never re-resolved by path.
+//!
+//! Moves (audit A02): `atomic_move_no_replace` is declared for writable grants,
+//! but SAF has no true no-replace primitive. The provider checks the name and
+//! then calls rename(2) (AOSP FileSystemProvider), so another app creating
+//! exactly the target name in that instant could be replaced. A cross-folder
+//! move with a new name is two provider calls; a stop between them leaves the
+//! object under its old name in the target folder (NeedsAttention, undone when
+//! possible). This is an Android API limit, accepted by the owner: the primary
+//! path is full storage access (kernel renameat2 NOREPLACE), SAF is for manual
+//! selection. Deletion is offered only with a host-confirmed native
 //! unlink/rmdir path; generic deleteDocument is never used for cleanup either.
 use std::{io::{self, Read, Write}, sync::Arc};
 use paranoic_core::*;

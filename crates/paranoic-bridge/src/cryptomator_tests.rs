@@ -255,3 +255,44 @@ fn serial() -> std::sync::MutexGuard<'static, ()> { SERIAL.lock().unwrap_or_else
     assert!(matches!(rt.vault_stream_read(stream.id, 0, 10), Err(BridgeError::Locked)));
     rt.shutdown().unwrap();
 }
+
+/// Audit A25: two visible folders linking to the same data directory (a damaged
+/// or tampered vault). Deleting one must not strip the other of its contents.
+#[test] fn cryptomator_delete_refuses_aliased_folder() {
+    let _serial = serial();
+    let fx = Fixture(std::env::temp_dir().join(format!("paranoic-cm-alias-{}", Uuid::new_v4())));
+    for d in ["state", "workspace"] { fs::create_dir_all(fx.0.join(d)).unwrap(); }
+    #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&fx.0, fs::Permissions::from_mode(0o700)).unwrap(); }
+    let rt = NativeRuntime::new(fx.0.join("state").to_str().unwrap().into(), fx.0.join("workspace").to_str().unwrap().into(),
+        String::new(), String::new(), vec![], Arc::new(NoDocs), Arc::new(NoSealer)).unwrap();
+    let app = rt.spaces().unwrap()[0].root.clone();
+    let at = |p: &str| NativeLocation { storage_id: app.storage_id.clone(), path: p.into() };
+    let ws = |p: &str| fx.0.join("workspace").join(p);
+    fs::write(ws("keep.txt"), b"must survive").unwrap();
+    let vault = rt.cryptomator_create(at(""), "Vault".into(), "cryptomator alias password".into()).unwrap();
+    rt.cryptomator_mkdir(vault.clone(), vec![], "A".into()).unwrap();
+    rt.cryptomator_add(vault.clone(), vec!["A".into()], at("keep.txt")).unwrap();
+    // Make "B" link to A's data directory.
+    let links = |out: &mut Vec<PathBuf>| { let mut all = Vec::new(); walk(&ws("Vault"), &mut all);
+        out.extend(all.into_iter().filter(|f| f.ends_with("dir.c9r"))); };
+    let mut a_links = Vec::new(); links(&mut a_links);
+    rt.cryptomator_mkdir(vault.clone(), vec![], "B".into()).unwrap();
+    let mut all_links = Vec::new(); links(&mut all_links);
+    let link = a_links[0].clone();
+    let b_link = all_links.into_iter().find(|f| !a_links.contains(f)).unwrap();
+    fs::copy(&link, &b_link).unwrap();
+    let mut files = Vec::new(); walk(&ws("Vault"), &mut files);
+    let before = files.len();
+
+    let wrapper = link.parent().unwrap().file_name().unwrap().to_owned();
+    let names: Vec<String> = rt.cryptomator_list(vault.clone(), vec![]).unwrap().entries.into_iter().map(|e| e.name).collect();
+    assert!(names.contains(&"A".to_string()));
+    assert!(rt.cryptomator_delete(vault.clone(), vec![], "A".into()).is_err(), "aliased folder deleted");
+    assert!(link.parent().unwrap().parent().unwrap().join(&wrapper).join("dir.c9r").exists(), "wrapper detached");
+    let mut after = Vec::new(); walk(&ws("Vault"), &mut after);
+    assert_eq!(after.len(), before, "vault data changed");
+    assert_eq!(rt.cryptomator_list(vault.clone(), vec!["A".into()]).unwrap().entries.len(), 1);
+    assert!(rt.cryptomator_delete(vault.clone(), vec![], "B".into()).is_err(), "alias deleted");
+    assert_eq!(rt.cryptomator_list(vault.clone(), vec!["B".into()]).unwrap().entries.len(), 1);
+    rt.shutdown().unwrap();
+}

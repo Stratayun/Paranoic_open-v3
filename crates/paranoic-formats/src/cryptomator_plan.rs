@@ -58,6 +58,8 @@ pub struct CryptomatorTreeLimits {
     pub max_directories: usize,
     pub max_entries_per_directory: usize,
 }
+/// Whole-vault scan before a directory deletion (A25).
+const VAULT_SCAN: CryptomatorTreeLimits = CryptomatorTreeLimits { max_directories: 100_000, max_entries_per_directory: 100_000 };
 impl Default for CryptomatorTreeLimits {
     fn default() -> Self { Self { max_directories: 4096, max_entries_per_directory: 4096 } }
 }
@@ -182,6 +184,7 @@ impl CryptomatorReader {
     {
         if limits.max_directories == 0 || limits.max_entries_per_directory == 0 { return Err(CryptoError::InvalidInput); }
         let mut found = vec![(start.clone(), 0_usize)];
+        let mut seen = std::collections::HashSet::from([start.clone()]);
         let mut index = 0;
         while index < found.len() {
             check()?;
@@ -200,13 +203,23 @@ impl CryptomatorReader {
                 let link = read_small(self.storage.as_ref(), &join(&row.location.path, "dir.c9r")?, 36, check)?;
                 let id = CryptomatorDirectoryId::parse(std::str::from_utf8(&link).map_err(|_| CryptoError::InvalidInput)?)?;
                 let child = self.data_path(&id)?;
-                if found.iter().any(|(seen, _)| *seen == child) { return Err(CryptoError::InvalidInput); }
+                if seen.contains(&child) { return Err(CryptoError::InvalidInput); }
                 if depth + 1 > 64 { return Err(CryptoError::LimitExceeded); }
                 if found.len() >= limits.max_directories { return Err(CryptoError::LimitExceeded); }
+                seen.insert(child.clone());
                 found.push((child, depth + 1));
             }
         }
         Ok(found)
+    }
+
+    /// Every data directory reachable from the vault root through visible
+    /// links. Fails (InvalidInput) if two visible links point at the same data
+    /// directory anywhere in the vault (audit A25): deleting through one of
+    /// them would strip the other folder of its contents.
+    fn vault_directories<F: FnMut() -> Result<()>>(&self, check: &mut F) -> Result<Vec<(ResourcePath, usize)>> {
+        let root = self.data_path(&CryptomatorDirectoryId::root())?;
+        self.subtree_directories(&root, VAULT_SCAN, check)
     }
 
     /// Prepare deletion of a file or a whole directory subtree. The first step
@@ -238,6 +251,8 @@ impl CryptomatorReader {
                 self.require_absent(&detached)?;
                 let mut steps = vec![Operation::Move { source: self.location(source.clone()), target: self.location(detached.clone()) }];
                 if kind == CryptomatorListedKind::Directory {
+                    // No other visible folder may share any directory of this subtree.
+                    self.vault_directories(&mut check)?;
                     let mut components = parent.to_vec();
                     components.push(name.to_owned());
                     let (_, data) = self.resolve_directory(&components, &mut check)?;
@@ -425,6 +440,19 @@ impl CryptomatorReader {
             .map_err(|_| CoreError::new(ErrorCode::SourceChanged, "detached directory subtree changed"))?;
         if current.len() != planned.len() || current.iter().any(|(path, _)| !planned.contains(&path)) {
             return Err(CoreError::new(ErrorCode::SourceChanged, "detached directory subtree changed"));
+        }
+        // A25: the detached wrapper must still link to this subtree, and no
+        // visible folder may have come to link into it since preparation.
+        let changed = || CoreError::new(ErrorCode::SourceChanged, "detached directory link changed");
+        let Operation::Move { target: detached, .. } = &plan.steps[0] else { return Err(changed()) };
+        let link = read_small(self.storage.as_ref(), &join(&detached.path, "dir.c9r").map_err(|_| changed())?, 36, &mut || Ok(()))
+            .map_err(|_| changed())?;
+        let id = std::str::from_utf8(&link).ok().and_then(|text| CryptomatorDirectoryId::parse(text).ok()).ok_or_else(changed)?;
+        if self.data_path(&id).map_err(|_| changed())? != *start { return Err(changed()); }
+        let visible = self.vault_directories(&mut || Ok(()))
+            .map_err(|_| CoreError::new(ErrorCode::SourceChanged, "vault directory links are inconsistent"))?;
+        if visible.iter().any(|(path, _)| planned.contains(&path)) {
+            return Err(CoreError::new(ErrorCode::SourceChanged, "a visible folder links into the detached subtree"));
         }
         Ok(())
     }
