@@ -247,8 +247,14 @@ impl NativeRuntime {
         let source = spool.handoff();
         let job = if target.storage == self.app.id() {
             self.core.submit_with_id(preparation.id, Operation::Move { source, target: target.clone() })?
-        } else {
+        } else if self.core.storage(target.storage).map(|s| { let c = s.capabilities(); c.pinned_destination && c.durable_directory_sync }).unwrap_or(false) {
             prepared.submit_new(&self.core, source, target.clone(), preparation.id)?
+        } else {
+            // Audit A31 (Windows): the destination cannot pin the copy during a move, so the
+            // spool is copied, the copy is checked against the manifest below, and only then
+            // does the private spool go (spool.completed). The archive itself is never touched.
+            self.core.submit_with_id(preparation.id, Operation::CopyDirectory { source, target: target.clone(),
+                conflict: paranoic_core::ConflictPolicy::Fail })?
         };
         preparation.publication_started(&self.core);
         finish(run_wait(&self.core, job.id)?, 1)?;

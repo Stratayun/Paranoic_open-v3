@@ -96,3 +96,77 @@ impl Drop for WindowsStage {
     }
 }
 
+
+/// Audit A31: create a new prepared tree (a vault's bootstrap files) on Windows. Staging is
+/// owner-only like single-file staging; files are written create-new and flushed; the staging
+/// folder is published by a handle-based rename that never replaces an existing name. On
+/// failure only the entries this call created are removed. Directory power-loss durability
+/// relies on the NTFS/ReFS metadata journal (no directory flush on Windows).
+pub(super) fn publish_tree(storage: &LocalStorage, target: &ResourcePath, job: JobId,
+    files: &[paranoic_core::PreparedTreeFile], checkpoint: &mut dyn FnMut() -> Result<()>) -> Result<()> {
+    use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_DELETE;
+    storage.writable()?;
+    paranoic_core::validate_prepared_tree(files)?;
+    let (parent, name) = storage.parent(target)?;
+    let temporary = format!(".paranoic-{}", job.0);
+    checkpoint()?;
+    parent.create_dir(&temporary).map_err(CoreError::io)?;
+    let mut options = OpenOptions::new();
+    options.access_mode(FILE_GENERIC_READ | READ_CONTROL | WRITE_DAC | WRITE_OWNER | DELETE)
+        .follow(FollowSymlinks::No).maybe_dir(true).custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE);
+    let opened = match parent.open_with(&temporary, &options) {
+        Ok(opened) => opened,
+        Err(error) => { let _ = parent.remove_dir(&temporary); return Err(CoreError::io(error)); }
+    };
+    if !opened.metadata().map_err(CoreError::io)?.is_dir() {
+        return Err(CoreError::new(ErrorCode::PermissionDenied, "staging is not a directory"));
+    }
+    let root = Dir::from_std_file(opened.into_std());
+    let private = paranoic_windows::ensure_owner_only_handle(root.as_handle())
+        .and_then(|_| paranoic_windows::is_owner_only_handle(root.as_handle()));
+    if !matches!(private, Ok(true)) {
+        drop(root);
+        let _ = parent.remove_dir(&temporary);
+        return Err(CoreError::new(ErrorCode::PermissionDenied, "staging folder could not be made private"));
+    }
+    let mut created_dirs: Vec<String> = Vec::new();
+    let mut created_files: Vec<String> = Vec::new();
+    let result = (|| -> Result<()> {
+        for file in files {
+            checkpoint()?;
+            let (relative_parent, _) = file.path.parent_and_name()?;
+            if !relative_parent.is_root() {
+                let mut prefix = String::new();
+                for component in relative_parent.as_str().split('/') {
+                    if !prefix.is_empty() { prefix.push('/'); }
+                    prefix.push_str(component);
+                    if created_dirs.iter().any(|d| d == &prefix) { continue; }
+                    root.create_dir(&prefix).map_err(CoreError::io)?;
+                    created_dirs.push(prefix.clone());
+                }
+            }
+            let mut options = OpenOptions::new();
+            options.write(true).create_new(true);
+            let mut output = root.open_with(file.path.as_str(), &options).map_err(CoreError::io)?;
+            created_files.push(file.path.as_str().to_owned());
+            output.write_all(&file.bytes).map_err(CoreError::io)?;
+            output.sync_all().map_err(CoreError::io)?;
+        }
+        checkpoint()?;
+        // The publication boundary: the held staging handle is renamed, never a name looked up again.
+        paranoic_windows::rename_handle_no_replace(root.as_handle(), parent.as_handle(), name.as_ref()).map_err(CoreError::io)
+    })();
+    if let Err(error) = result {
+        for path in created_files.iter().rev() {
+            match root.remove_file(path) { Ok(()) => {}, Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}, Err(e) => return Err(CoreError::io(e)) }
+        }
+        for path in created_dirs.iter().rev() {
+            match root.remove_dir(path) { Ok(()) => {}, Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}, Err(e) => return Err(CoreError::io(e)) }
+        }
+        drop(root);
+        parent.remove_dir(&temporary).map_err(CoreError::io)?;
+        return Err(error);
+    }
+    Ok(())
+}

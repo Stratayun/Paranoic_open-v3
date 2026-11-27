@@ -7,8 +7,13 @@ use crate::{BridgeError, Result};
 #[uniffi::export]
 pub fn saf_delete_at(parent_fd: i32, name: String, directory: bool) -> Result<()> {
     if parent_fd < 0 { return Err(BridgeError::Invalid); }
-    let path = paranoic_core::ResourcePath::parse(name.clone())?;
-    if path.is_root() || !path.parent_and_name()?.0.is_root() { return Err(BridgeError::Invalid); }
+    // One plain component. Not ResourcePath::parse: it refuses the reserved `.paranoic-`
+    // prefix, which is exactly how our own SAF staging files are named (audit A01), so
+    // an aborted write could never clean them up.
+    if name.is_empty() || name.len() > 255 || name == "." || name == ".."
+        || name.chars().any(|c| c == '/' || c == '\\' || c == '\0' || c.is_control()) {
+        return Err(BridgeError::Invalid);
+    }
     #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         let parent = cap_std::fs::Dir::open_ambient_dir(format!("/proc/self/fd/{parent_fd}"), cap_std::ambient_authority())
@@ -38,6 +43,12 @@ mod tests {
         assert_eq!(fs::read(root.join("folder/late-child")).unwrap(), b"keep");
         fs::write(root.join("file"), b"replacement").unwrap();
         assert!(saf_delete_at(parent.as_raw_fd(), "file".into(), true).is_err());
+        // A01: our own staging files carry the reserved prefix and must be removable.
+        fs::write(root.join(".paranoic-0123abcd"), b"staged").unwrap();
+        saf_delete_at(parent.as_raw_fd(), ".paranoic-0123abcd".into(), false).unwrap();
+        assert!(!root.join(".paranoic-0123abcd").exists());
+        assert!(saf_delete_at(parent.as_raw_fd(), "../x".into(), false).is_err());
+        assert!(saf_delete_at(parent.as_raw_fd(), "..".into(), true).is_err());
         for name in ["", "..", "../file", "folder/late-child", "/file"] {
             assert!(saf_delete_at(parent.as_raw_fd(), name.into(), false).is_err());
         }

@@ -170,7 +170,9 @@ impl Storage for LocalStorage {
             // identified by dev/ino and ctime, verified immediately before unlink.
             conditional_move_source: writable && cfg!(unix),
             pinned_destination: writable && cfg!(unix),
-            directory_sync_waived: false,
+            // Windows has no directory flush; NTFS/ReFS journal their metadata, so a published
+            // rename survives power loss. Waived explicitly for new trees (vaults), audit A31.
+            directory_sync_waived: cfg!(windows),
         }
     }
 
@@ -347,7 +349,9 @@ impl Storage for LocalStorage {
         files: &[paranoic_core::PreparedTreeFile], checkpoint: &mut dyn FnMut() -> Result<()>) -> Result<()> {
         #[cfg(any(target_os = "linux", target_os = "android"))]
         { bootstrap::publish(self, target, job, files, checkpoint) }
-        #[cfg(not(any(target_os = "linux", target_os = "android")))]
+        #[cfg(windows)]
+        { windows::publish_tree(self, target, job, files, checkpoint) }
+        #[cfg(not(any(target_os = "linux", target_os = "android", windows)))]
         {
             let _ = (target, job, files, checkpoint);
             Err(CoreError::new(ErrorCode::Unsupported, "atomic bootstrap publication unavailable"))
