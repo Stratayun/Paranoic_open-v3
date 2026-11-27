@@ -112,6 +112,22 @@ fn tree(dir: &Path) -> Vec<(String, Vec<u8>)> {
     let kept = std::fs::read_dir(server.root.join(".paranoic-trash")).unwrap().filter_map(|b| b.ok())
         .any(|b| std::fs::read(b.path().join("c.txt")).map(|d| d == b"old version").unwrap_or(false));
     assert!(kept, "the overwritten version is not in the trash");
+    // A33: a successful COPY reports success and the copy is complete.
+    assert!(req("COPY", "c.txt").header("Destination", url("c-copy.txt")).send().unwrap().status().is_success());
+    assert_eq!(std::fs::read(server.root.join("c-copy.txt")).unwrap(), b"new");
+    // A34: an upload cut off mid-body leaves the published file as it was.
+    {
+        use std::io::Write;
+        let mut raw = std::net::TcpStream::connect(("127.0.0.1", server.port)).unwrap();
+        write!(raw, "PUT /c.txt HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nAuthorization: Bearer {TOKEN}\r\nContent-Length: 1000\r\n\r\npartial", server.port).unwrap();
+        raw.flush().unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        drop(raw);
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    assert_eq!(std::fs::read(server.root.join("c.txt")).unwrap(), b"new", "a broken upload changed the file");
+    assert!(!std::fs::read_dir(&server.root).unwrap().filter_map(|e| e.ok())
+        .any(|e| e.file_name().to_string_lossy().starts_with(".paranoic-put-")), "upload temporary left behind");
     // MOVE / COPY never replace, even with Overwrite: T.
     assert!(req("PUT", "b.txt").body("other").send().unwrap().status().is_success());
     for method in ["MOVE", "COPY"] {

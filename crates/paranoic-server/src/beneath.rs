@@ -100,8 +100,18 @@ impl DavDirEntry for Entry {
     fn metadata(&self) -> FsFuture<'_, Box<dyn DavMetaData>> { let m = self.meta.clone(); async move { Ok(Box::new(m) as Box<dyn DavMetaData>) }.boxed() }
 }
 
+/// A whole-file PUT is written under a hidden temporary name and published at `flush`
+/// (sent by dav-server after the complete body): the old version goes to the trash, then the
+/// temporary is renamed without replace. A broken upload leaves the published file untouched
+/// and its temporary is removed on drop (audit A34).
+struct Publication { parent: OwnedFd, temporary: OsString, name: OsString, fs: BeneathFs }
+impl std::fmt::Debug for Publication { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("Publication") } }
+impl Drop for Publication {
+    fn drop(&mut self) { let _ = rfs::unlinkat(&self.parent, self.temporary.as_os_str(), rfs::AtFlags::empty()); }
+}
+
 #[derive(Debug)]
-struct BeneathFile(Option<File>);
+struct BeneathFile(Option<File>, Option<Publication>);
 impl BeneathFile {
     async fn with<T: Send + 'static>(&mut self, f: impl FnOnce(&mut File) -> std::io::Result<T> + Send + 'static) -> FsResult<T> {
         let mut file = self.0.take().ok_or(FsError::GeneralFailure)?;
@@ -133,7 +143,31 @@ impl DavFile for BeneathFile {
         }.boxed()
     }
     fn seek(&mut self, pos: SeekFrom) -> FsFuture<'_, u64> { async move { self.with(move |f| f.seek(pos)).await }.boxed() }
-    fn flush(&mut self) -> FsFuture<'_, ()> { async move { self.with(|f| f.sync_all()).await }.boxed() }
+    fn flush(&mut self) -> FsFuture<'_, ()> {
+        async move {
+            self.with(|f| f.sync_all()).await?;
+            let Some(publication) = self.1.take() else { return Ok(()) };
+            tokio::task::spawn_blocking(move || -> Result<(), FsError> {
+                let p = &publication;
+                match rfs::statat(&p.parent, p.name.as_os_str(), rfs::AtFlags::SYMLINK_NOFOLLOW) {
+                    Ok(stat) if rfs::FileType::from_raw_mode(stat.st_mode) == rfs::FileType::RegularFile => p.fs.move_to_trash(&p.parent, &p.name)?,
+                    Ok(_) => return Err(FsError::Forbidden),
+                    Err(_) => {}
+                }
+                no_replace_rename(&p.parent, &p.temporary, &p.parent, &p.name)?;
+                let _ = sync_dir(&p.parent);
+                // Published under the final name: nothing left for Drop to remove.
+                std::mem::forget(publication);
+                Ok(())
+            }).await.map_err(|_| FsError::GeneralFailure)?
+        }.boxed()
+    }
+}
+
+/// fsync a directory held as O_PATH (fsync on O_PATH is EBADF): reopen "." for reading (audit A33).
+fn sync_dir(dir: &OwnedFd) -> Result<(), FsError> {
+    let readable = rfs::openat(dir, ".", OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC, Mode::empty()).map_err(|e| fs_error(io(e)))?;
+    rfs::fsync(&readable).map_err(|e| fs_error(io(e)))
 }
 
 fn no_replace_rename(from: &OwnedFd, from_name: &OsStr, to: &OwnedFd, to_name: &OsStr) -> Result<(), FsError> {
@@ -152,24 +186,24 @@ impl DavFileSystem for BeneathFs {
                 (true, true) => OFlags::RDWR, (false, true) => OFlags::WRONLY, _ => OFlags::RDONLY,
             };
             if options.append { flags |= OFlags::APPEND; }
+            // Audit A34: a whole-file PUT (truncate, not create-new) is staged; see Publication.
+            let staged = options.truncate && !options.create_new && (options.write || options.append);
             let mut create_new = options.create_new;
-            // Audit 26.11: a plain PUT over an existing file used to truncate it in place, past the
-            // trash. The old version now goes to the trash and the new one is created fresh.
-            if options.truncate && !options.create_new {
+            let mut open_name = name.clone();
+            if staged {
                 match rfs::statat(&parent, name.as_os_str(), rfs::AtFlags::SYMLINK_NOFOLLOW) {
-                    Ok(stat) if rfs::FileType::from_raw_mode(stat.st_mode) == rfs::FileType::RegularFile => {
-                        this.move_to_trash(&parent, &name)?;
-                        create_new = true;
-                    }
-                    Ok(_) => return Err(FsError::Forbidden),
-                    Err(_) => {}
+                    Ok(stat) if rfs::FileType::from_raw_mode(stat.st_mode) != rfs::FileType::RegularFile => return Err(FsError::Forbidden),
+                    _ => {}
                 }
+                open_name = OsString::from(format!(".paranoic-put-{}", uuid::Uuid::new_v4().simple()));
+                create_new = true;
             }
             if create_new { flags |= OFlags::CREATE | OFlags::EXCL; } else if options.create { flags |= OFlags::CREATE; }
-            let fd = rfs::openat(&parent, name.as_os_str(), flags, Mode::from_raw_mode(0o600)).map_err(|e| fs_error(io(e)))?;
+            let fd = rfs::openat(&parent, open_name.as_os_str(), flags, Mode::from_raw_mode(0o600)).map_err(|e| fs_error(io(e)))?;
             let file = File::from(fd);
             if !file.metadata().map_err(FsError::from)?.is_file() { return Err(FsError::Forbidden); }
-            Ok(Box::new(BeneathFile(Some(file))) as Box<dyn DavFile>)
+            let publication = staged.then(|| Publication { parent, temporary: open_name, name, fs: this.clone() });
+            Ok(Box::new(BeneathFile(Some(file), publication)) as Box<dyn DavFile>)
         }).boxed()
     }
     fn read_dir<'a>(&'a self, path: &'a DavPath, _meta: ReadDirMeta) -> FsFuture<'a, FsStream<Box<dyn DavDirEntry>>> {
@@ -186,7 +220,8 @@ impl DavFileSystem for BeneathFs {
                 for entry in rfs::Dir::read_from(&readable).map_err(|e| fs_error(io(e)))? {
                     let entry = entry.map_err(|e| fs_error(io(e)))?;
                     let name = entry.file_name().to_bytes().to_vec();
-                    if name == b"." || name == b".." || top && name.eq_ignore_ascii_case(TRASH.as_bytes()) { continue; }
+                    if name == b"." || name == b".." || top && name.eq_ignore_ascii_case(TRASH.as_bytes())
+                        || name.len() >= 10 && name[..10].eq_ignore_ascii_case(b".paranoic-") { continue; }
                     let Ok(fd) = rfs::openat(&dir, OsStr::from_bytes(&name), OFlags::PATH | OFlags::NOFOLLOW | OFlags::CLOEXEC, Mode::empty()) else { continue };
                     let Ok(meta) = File::from(fd).metadata() else { continue };
                     if meta.file_type().is_symlink() || !(meta.is_file() || meta.is_dir()) { continue; }
@@ -242,9 +277,11 @@ impl DavFileSystem for BeneathFs {
             let copied = std::io::copy(&mut source, &mut target).map_err(FsError::from)
                 .and_then(|_| target.sync_all().map_err(FsError::from))
                 .and_then(|_| rfs::renameat_with(&b, temporary.as_str(), &b, bn.as_os_str(), RenameFlags::NOREPLACE).map_err(|e| fs_error(io(e))))
-                .and_then(|_| rfs::fsync(&b).map_err(|e| fs_error(io(e))));
-            if copied.is_err() { let _ = rfs::unlinkat(&b, temporary.as_str(), rfs::AtFlags::empty()); }
-            copied
+                ;
+            if copied.is_err() { let _ = rfs::unlinkat(&b, temporary.as_str(), rfs::AtFlags::empty()); return copied; }
+            // Published: a failing directory flush no longer turns the COPY into an error.
+            let _ = sync_dir(&b);
+            Ok(())
         }).boxed()
     }
     fn get_quota(&self) -> FsFuture<'_, (u64, Option<u64>)> { DavFileSystem::get_quota(&self.quota) }
