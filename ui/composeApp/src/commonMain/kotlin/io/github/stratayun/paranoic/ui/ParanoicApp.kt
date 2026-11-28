@@ -438,7 +438,9 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                         diagnostics = { DiagnosticsScreen(session, diagnosticEnvironment) { destination = Destination.Files } },
                                         tasks = { OperationsScreen(session) { location ->
                                             if (session.openAttentionFolder(location)) { openedFile = null; destination = Destination.Files }
-                                        } })
+                                        } },
+                                        overview = { openChecks -> io.github.stratayun.paranoic.ui.screens.settings.DiagnosticsOverview(session, openChecks) {
+                                            destination = Destination.Sync } })
                                     Destination.Encryption -> vaultContent()
                                     Destination.Notes -> key(session.secretsEpoch) {
                                         NotesScreen(session, notesBiometric, notesAttachmentPicker, notesImage,

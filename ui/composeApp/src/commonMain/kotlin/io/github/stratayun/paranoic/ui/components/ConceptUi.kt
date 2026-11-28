@@ -142,3 +142,16 @@ fun PillSearchField(value: String, onValueChange: (String) -> Unit, placeholder:
             unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent))
 }
 
+
+/** Small feature card under an empty state (concept: "Сквозное шифрование · Совместимость · Гибкое хранение"). */
+@Composable
+fun FeatureCard(icon: DrawableResource, title: String, text: String, modifier: Modifier = Modifier) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(modifier.fillMaxHeight(), shape = RoundedCornerShape(18.dp), color = scheme.surfaceContainer, border = BorderStroke(1.dp, scheme.outlineVariant)) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            BrandIcon(icon, size = 36.dp)
+            Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 2)
+            Text(text, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, maxLines = 3)
+        }
+    }
+}

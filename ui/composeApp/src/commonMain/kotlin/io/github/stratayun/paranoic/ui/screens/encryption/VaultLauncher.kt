@@ -178,6 +178,10 @@ internal fun VaultLauncher(core: CoreGateway, spaces: List<Space>, catalog: Vaul
         onOpen = { addSheet = false; startOpen() }, onCreate = { addSheet = false; startCreate() }, canOpen = interactive, canCreate = canCreate)
     Box(Modifier.fillMaxSize()) {
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(top = 8.dp, bottom = 112.dp)) {
+        if (creating == null) item {
+            SectionHero(Res.drawable.ic_crypto_folder, tr("Крипто-папки", "Crypto folders"), tr("Cryptomator и Paranoic", "Cryptomator and Paranoic"),
+                Modifier.sectionHeading())
+        }
         item {
             if (catalog.busy || checkingSaved) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -201,17 +205,20 @@ internal fun VaultLauncher(core: CoreGateway, spaces: List<Space>, catalog: Vaul
             }
         }
         if (creating == null && catalog.loaded && catalog.snapshot.entries.isEmpty()) item {
-            Column(Modifier.fillMaxWidth().padding(top = 72.dp, start = 24.dp, end = 24.dp), horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                BrandIcon(Res.drawable.ic_crypto_folder, size = 120.dp)
-                Text(tr("Хранилищ пока нет", "No vaults yet"), style = MaterialTheme.typography.titleLarge)
-                Text(tr("Подключите хранилище Cryptomator или Paranoic либо создайте новое.",
-                    "Connect a Cryptomator or Paranoic vault, or create a new one."),
-                    style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant, textAlign = TextAlign.Center)
-                FilledTonalButton(onClick = { addSheet = true }, enabled = interactive) { AppIcon(AppSymbol.Add); Spacer(Modifier.width(8.dp)); Text(tr("Добавить хранилище", "Add vault")) }
+            // Concept: empty state with one main button and three feature cards.
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                EmptyState(Res.drawable.ic_crypto_folder, tr("Хранилищ пока нет", "No vaults yet"),
+                    tr("Подключите хранилище Cryptomator или Paranoic либо создайте новое. Карточка появится после первого успешного открытия.",
+                        "Connect a Cryptomator or Paranoic vault, or create a new one. Its card appears after the first successful opening."),
+                    tr("Добавить хранилище", "Add vault"), enabled = interactive) { addSheet = true }
+                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FeatureCard(Res.drawable.ic_integrity, tr("Шифрование на устройстве", "Encrypted on device"), tr("Ключ только у вас", "Only you hold the key"), Modifier.weight(1f))
+                    FeatureCard(Res.drawable.ic_tabs, tr("Совместимость", "Compatible"), tr("Cryptomator и Paranoic", "Cryptomator and Paranoic"), Modifier.weight(1f))
+                    FeatureCard(Res.drawable.ic_cloud, tr("Гибкое хранение", "Store anywhere"), tr("Локально или на сервере", "Locally or on a server"), Modifier.weight(1f))
+                }
             }
         }
-        if (creating == null && catalog.snapshot.entries.isNotEmpty()) item { SectionLabel(tr("Мои хранилища", "My vaults")) }
+        if (creating == null && catalog.snapshot.entries.isNotEmpty()) item { ConceptCardTitle(tr("Мои хранилища", "My vaults")) }
         if (creating == null) itemsIndexed(catalog.snapshot.entries, key = { _, it -> "saved:" + it.location.storageId + ":" + it.location.path }) { index, saved ->
             val connected = spaces.any { it.id == saved.location.storageId }
             var menu by remember(saved.location) { mutableStateOf(false) }

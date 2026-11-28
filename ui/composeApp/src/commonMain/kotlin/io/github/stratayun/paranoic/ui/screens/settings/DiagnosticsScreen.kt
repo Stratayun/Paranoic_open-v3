@@ -1,6 +1,7 @@
 package io.github.stratayun.paranoic.ui.screens.settings
 
-import io.github.stratayun.paranoic.ui.components.FaultNotice
+import io.github.stratayun.paranoic.ui.components.*
+import io.github.stratayun.paranoic.resources.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -51,14 +52,8 @@ fun DiagnosticsScreen(session: AppSession, environment: DiagnosticEnvironment, o
         catch (_: Exception) { fault = CoreFault.Unavailable }
         finally { loading = false }
     }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item {
-            Text(tr("Диагностика", "Diagnostics"), Modifier.sectionHeading(), style = MaterialTheme.typography.headlineSmall)
-            Text(tr("В отчёте технические сведения и журнал ядра. Пароли, имена файлов, пути и содержимое не входят.",
-                "The report has technical facts and the core journal. No passwords, file names, paths or content."))
-            TextButton(enabled = !loading && !clearing, onClick = { revision++ }) { Text(tr("Обновить", "Refresh")) }
-        }
-        item { RenameProbeSection(session) }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { ConceptCard { RenameProbeSection(session) } }
         item {
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             fault?.let { FaultNotice(it) }
@@ -67,24 +62,31 @@ fun DiagnosticsScreen(session: AppSession, environment: DiagnosticEnvironment, o
         }
         bundle?.let { report ->
             item {
-                TextButton(onClick = {
-                    try { clipboard.setText(AnnotatedString(report.text)); copied = true }
-                    catch (_: Exception) { fault = CoreFault.Unavailable }
-                }) { Text(tr("Скопировать отчёт", "Copy report")) }
-                if (copied) Text(tr("Отчёт скопирован.", "Report copied."))
-                val folder = session.files.folder
-                TextButton(enabled = folder != null && session.files.loaded && session.files.writable && !session.writing &&
-                    session.directWrite?.phase != DirectWritePhase.Unknown, onClick = { if (folder != null) session.saveDiagnosticReport(folder, report) }) {
-                    Text(tr("Сохранить отчёт в текущей папке файлов", "Save report to the current Files folder"))
+                ConceptCard {
+                    ConceptCardTitle(tr("Отчёт", "Report"))
+                    Text(tr("Технические сведения и журнал ядра. Пароли, имена файлов, пути и содержимое не входят.",
+                        "Technical facts and the core journal. No passwords, file names, paths or content."),
+                        Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    val folder = session.files.folder
+                    ActionTiles(
+                        Triple(tr("Скопировать", "Copy"), AppSymbol.Copy, true to {
+                            try { clipboard.setText(AnnotatedString(report.text)); copied = true }
+                            catch (_: Exception) { fault = CoreFault.Unavailable }
+                        }),
+                        Triple(tr("Сохранить", "Save"), AppSymbol.Save, (folder != null && session.files.loaded && session.files.writable && !session.writing &&
+                            session.directWrite?.phase != DirectWritePhase.Unknown) to { if (folder != null) session.saveDiagnosticReport(folder, report) }),
+                        Triple(tr("Папка", "Folder"), AppSymbol.Folder, true to onChooseFolder),
+                        Triple(if (fullReport) tr("Свернуть", "Collapse") else tr("Показать", "Show"), AppSymbol.Document, true to { fullReport = !fullReport }),
+                    )
+                    if (copied) Text(tr("Отчёт скопирован.", "Report copied."), Modifier.padding(horizontal = 8.dp))
+                    if (folder != null) Text(tr("Сохранение в: /", "Saves to: /") + displayName(folder.path), Modifier.padding(horizontal = 8.dp),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (fullReport) Text(report.text, Modifier.padding(8.dp), style = MaterialTheme.typography.bodySmall)
                 }
-                TextButton(onClick = onChooseFolder) { Text(tr("Выбрать папку в «Файлах»", "Choose a folder in Files")) }
-                if (folder != null) Text(tr("Папка назначения: /", "Destination folder: /") + displayName(folder.path))
-                TextButton(onClick = { fullReport = !fullReport }) { Text(if (fullReport) tr("Свернуть отчёт", "Collapse report") else tr("Показать отчёт", "Show report")) }
             }
-            if (fullReport) item { Text(report.text) }
         }
         item {
-            Text(tr("Последние события ядра", "Recent Core events"), Modifier.sectionHeading(), style = MaterialTheme.typography.titleMedium)
+            ConceptCardTitle(tr("Последние события ядра", "Recent Core events"), tr("Обновить", "Refresh"), { if (!loading && !clearing) revision++ })
             Text(tr("Это общий журнал; события могут относиться к разным операциям.", "This journal is shared; events can belong to different operations."))
             Text(tr("Журнал очищается после Clear и каждого входа в Сейф. Ваши сохранённые отчёты остаются.",
                 "The journal clears after Clear and each Safe sign-in. Reports you saved stay."), style = MaterialTheme.typography.bodySmall)
@@ -92,10 +94,7 @@ fun DiagnosticsScreen(session: AppSession, environment: DiagnosticEnvironment, o
             if (diagnostics.isEmpty() && !loading) Text(tr("Событий нет.", "No events."))
         }
         items(diagnostics.sortedByDescending { it.atMs }, key = null) { entry ->
-            OutlinedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp)) {
-                Text(entry.code); Text(entry.message)
-                fileModifiedLabel(entry.atMs.coerceAtLeast(0).toULong())?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            } }
+            ConceptRow(entry.message, listOfNotNull(entry.code, fileModifiedLabel(entry.atMs.coerceAtLeast(0).toULong())).joinToString(" · "))
         }
     }
     if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false }, title = { Text(tr("Очистить диагностику?", "Clear diagnostics?")) },

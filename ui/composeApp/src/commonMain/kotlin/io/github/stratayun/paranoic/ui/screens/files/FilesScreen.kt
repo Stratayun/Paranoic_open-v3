@@ -102,13 +102,18 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
         state.fault?.let { FaultNotice(it) }
         if (state.hidden > 0) Text(tr("Скрыто объектов с недопустимыми или повторяющимися именами: ${state.hidden}",
             "Hidden entries with unsupported or duplicate names: ${state.hidden}"))
-        if (state.folder == null && session.core.connected) Column(Modifier.fillMaxWidth().padding(top = 48.dp),
-            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            BrandIcon(Res.drawable.ic_folder, size = 116.dp)
-            Text(tr("Выберите место", "Choose a place"), style = MaterialTheme.typography.titleLarge)
-            Text(tr("Память устройства, SD-карта или подключённая папка — в меню ☰.", "Device storage, SD card or a connected folder — in the ☰ menu."),
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (onOpenPlaces != null) FilledTonalButton(onClick = { inTab { onOpenPlaces() } }) { AppIcon(AppSymbol.Menu); Spacer(Modifier.width(8.dp)); Text(tr("Открыть места", "Open places")) }
+        if (state.folder == null && session.core.connected) Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // Concept: header, empty state and two entry cards.
+            SectionHero(Res.drawable.ic_folder, tr("Файлы", "Files"), tr("Память, папки и облака", "Storage, folders and clouds"))
+            EmptyState(Res.drawable.ic_folder, tr("Выберите место", "Choose a place"),
+                tr("Добавьте папку, чтобы начать работу с файлами. Поддерживаются память устройства, SD-карты, флешки и свой сервер.",
+                    "Add a place to start working with files. Device storage, SD cards, USB drives and your own server are supported."))
+            if (onOpenPlaces != null) Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ConceptRow(tr("Места", "Places"), tr("Память, SD, флешки, закладки", "Storage, SD, USB, pinned"), Res.drawable.ic_folder_add,
+                    Modifier.weight(1f).fillMaxHeight()) { inTab { onOpenPlaces() } }
+                ConceptRow(tr("Свой сервер", "Own server"), tr("WebDAV и paranoic-server", "WebDAV and paranoic-server"), Res.drawable.ic_cloud,
+                    Modifier.weight(1f).fillMaxHeight()) { inTab { onOpenPlaces() } }
+            }
         }
         if (state.loaded && visible.isEmpty() && !state.loading) Column(Modifier.fillMaxWidth().padding(top = 48.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {

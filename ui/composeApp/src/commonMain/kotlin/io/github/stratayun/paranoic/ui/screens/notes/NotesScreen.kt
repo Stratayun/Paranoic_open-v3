@@ -3,6 +3,7 @@ package io.github.stratayun.paranoic.ui.screens.notes
 import io.github.stratayun.paranoic.resources.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -445,11 +446,19 @@ private fun CreateNotes(session: AppSession, status: NotesStatus, busy: Boolean,
     var password by remember { mutableStateOf("") }
     var repeat by remember { mutableStateOf("") }
     DisposableEffect(Unit) { onDispose { password = ""; repeat = "" } }
-    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        BrandIcon(Res.drawable.ic_safe, size = 96.dp)
-        Text(tr("Защищённые заметки", "Protected notes"), Modifier.sectionHeading(), style = MaterialTheme.typography.headlineSmall)
-        Text(tr("Свой пароль для заметок и личной папки. Сейф скрыт из файлов и не синхронизируется. Забытый пароль не восстановить.",
-            "A separate password for notes and the personal folder. The Safe is hidden and never synced. A forgotten password cannot be recovered."))
+    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionHero(Res.drawable.ic_safe, tr("Сейф", "Safe"), tr("Защищённые заметки и личная папка", "Protected notes and personal folder"),
+            Modifier.sectionHeading())
+        ConceptCard(padding = 16.dp) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            BrandIcon(Res.drawable.ic_safe, size = 88.dp)
+            Spacer(Modifier.width(12.dp))
+            Text(tr("Создайте пароль сейфа", "Create the Safe password"), style = MaterialTheme.typography.titleLarge,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+        }
+        Text(tr("Один отдельный пароль для заметок и личной папки. Содержимое Сейфа скрыто из файлового менеджера, не уходит в облако и не синхронизируется. Забытый пароль не восстановить.",
+            "One separate password for notes and the personal folder. The Safe is hidden from the file manager, never leaves for the cloud and is not synced. A forgotten password cannot be recovered."),
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), singleLine = true,
             label = { Text(tr("Пароль", "Password")) }, visualTransformation = peek("NotesScreen:8"), trailingIcon = { PeekToggle("NotesScreen:8") }, keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
         val strength = PasswordTools(session.core, password, !busy) {
@@ -463,7 +472,9 @@ private fun CreateNotes(session: AppSession, status: NotesStatus, busy: Boolean,
         Text(tr("Биометрия по умолчанию выключена; её можно включить после входа в настройках заметок. Пароль надёжнее биометрии.",
             "Biometrics are off by default; enable them in notes settings after unlocking. A password is safer than biometrics."), style = MaterialTheme.typography.bodySmall)
         Button(enabled = !busy && password == repeat && strength != null && strength != PasswordStrength.Weak,
-            onClick = { val p = password; password = ""; repeat = ""; onCreate(p) }) { Text(tr("Создать заметки", "Create notes")) }
+            modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(26.dp),
+            onClick = { val p = password; password = ""; repeat = ""; onCreate(p) }) { Text(tr("Создать сейф", "Create the Safe")) }
+        }
     }
 }
 
@@ -475,8 +486,16 @@ private fun UnlockNotes(status: NotesStatus, busy: Boolean, onRefresh: () -> Uni
     LaunchedEffect(status) {
         while (wait > 0) { delay(minOf(wait, 1000L)); wait = (wait - 1000L).coerceAtLeast(0) }
     }
-    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(tr("Заметки заблокированы", "Notes are locked"), Modifier.sectionHeading(), style = MaterialTheme.typography.headlineSmall)
+    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionHero(Res.drawable.ic_safe, tr("Сейф", "Safe"), tr("Защищённые заметки и личная папка", "Protected notes and personal folder"),
+            Modifier.sectionHeading())
+        ConceptCard(padding = 16.dp) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            BrandIcon(Res.drawable.ic_key, size = 64.dp)
+            Spacer(Modifier.width(12.dp))
+            Text(tr("Сейф заблокирован", "The Safe is locked"), style = MaterialTheme.typography.titleLarge,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+        }
         OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), singleLine = true,
             label = { Text(tr("Пароль", "Password")) }, visualTransformation = peek("NotesScreen:10"), trailingIcon = { PeekToggle("NotesScreen:10") }, keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
         // The attempt counter is deliberately not shown; only the wait and the auto-wipe state.
@@ -489,6 +508,7 @@ private fun UnlockNotes(status: NotesStatus, busy: Boolean, onRefresh: () -> Uni
                 Text(tr("Открыть", "Unlock"))
             }
             if (wait > 0) TextButton(enabled = !busy, onClick = onRefresh) { Text(tr("Обновить", "Refresh")) }
+        }
         }
     }
 }
