@@ -54,7 +54,8 @@ class HomePreviewShot {
                     }
                 }
             }
-            File(out, "$name.png").writeBytes(scene.render().encodeToData(EncodedImageFormat.PNG)!!.bytes)
+            for (t in 0..16) scene.render(t * 100_000_000L)
+            File(out, "$name.png").writeBytes(scene.render(1_600_000_000L).encodeToData(EncodedImageFormat.PNG)!!.bytes)
             scene.close()
         }
     }

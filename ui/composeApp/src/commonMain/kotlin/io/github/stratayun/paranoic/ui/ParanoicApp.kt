@@ -238,6 +238,7 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                         }
                     }) {
                 val searchPlace = session.files.spaces.userPlaces().firstOrNull { it.detachable && !it.cloud }
+                val brandTabs = setOf(Destination.Home, Destination.Modules, Destination.Sync, Destination.Settings)
                 val runningTasks = session.jobs.count { it.phase == JobPhase.Queued || it.phase == JobPhase.Running }
                 Scaffold(
                     bottomBar = {
@@ -261,7 +262,7 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                     topBar = {
                         TopAppBar(title = {
                                 // Concept: the brand in the top bar; the page itself carries its large title.
-                                if (destination in setOf(Destination.Home, Destination.Modules, Destination.Sync, Destination.Settings))
+                                if (destination in brandTabs)
                                     Text("Paranoic", Modifier.sectionHeading(), maxLines = 1,
                                     fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
                                 else Text(destination.label(), Modifier.sectionHeading(), maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -275,13 +276,21 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                 if (incomingDocuments.documents.isNotEmpty()) TextButton(onClick = {
                                     leaveDocument { destination = Destination.Notes }
                                 }) { Text(tr("Входящие (${incomingDocuments.documents.size})", "Incoming (${incomingDocuments.documents.size})")) }
-                                if (destination == Destination.Home) {
-                                    if (searchPlace != null) IconButton(onClick = { leaveDocument { session.categories.open(searchPlace, FileCategory.All); destination = Destination.Files } },
-                                        modifier = Modifier.actionDescription(tr("Поиск в Paranoic", "Search in Paranoic"))) { AppIcon(AppSymbol.Search) }
+                                if (destination in brandTabs) {
+                                    // Concept top bar: search pill and the bell (tasks and events).
+                                    if (searchPlace != null) Surface(onClick = { leaveDocument { session.categories.open(searchPlace, FileCategory.All); destination = Destination.Files } },
+                                        shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        modifier = Modifier.padding(end = 4.dp).actionDescription(tr("Поиск в Paranoic", "Search in Paranoic"))) {
+                                        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            AppIcon(AppSymbol.Search); Spacer(Modifier.width(6.dp))
+                                            Text(tr("Поиск", "Search"), style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
                                     IconButton(onClick = { leaveDocument { destination = Destination.Operations } },
                                         modifier = Modifier.actionDescription(tr("Задачи и события", "Tasks and events"))) {
-                                        if (runningTasks > 0) BadgedBox(badge = { Badge { Text("$runningTasks") } }) { AppIcon(AppSymbol.Tasks) }
-                                        else AppIcon(AppSymbol.Tasks)
+                                        if (runningTasks > 0) BadgedBox(badge = { Badge { Text("$runningTasks") } }) { AppIcon(AppSymbol.Bell) }
+                                        else AppIcon(AppSymbol.Bell)
                                     }
                                 }
                                 if (destination == Destination.Files && searchPlace != null && session.categories.state == null)
@@ -289,7 +298,7 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                         modifier = Modifier.actionDescription(tr("Поиск по всем файлам", "Search all files"))) { AppIcon(AppSymbol.Search) }
                                 // Tasks appear here only while something runs; everything else lives in the ☰ menu.
                                 val running = runningTasks
-                                if (running > 0 && destination != Destination.Home) IconButton(onClick = { leaveDocument { destination = Destination.Operations } },
+                                if (running > 0 && destination !in brandTabs) IconButton(onClick = { leaveDocument { destination = Destination.Operations } },
                                     modifier = Modifier.actionDescription(tr("Задачи: $running", "Tasks: $running"))) {
                                     BadgedBox(badge = { Badge { Text("$running") } }) { AppIcon(AppSymbol.Tasks) }
                                 }
@@ -409,7 +418,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                         onFiles = { destination = Destination.Files },
                                         onCleanup = searchPlace?.let { place -> { session.cleanupView = place } },
                                         onTrash = searchPlace?.let { place -> { session.trashView = place } },
-                                        onSearch = searchPlace?.let { place -> { session.categories.open(place, FileCategory.All); destination = Destination.Files } })
+                                        onSearch = searchPlace?.let { place -> { session.categories.open(place, FileCategory.All); destination = Destination.Files } },
+                                        onMedia = searchPlace?.let { place -> { session.categories.open(place, FileCategory.Videos); destination = Destination.Files } })
                                     Destination.Files -> FileWorkspaceScreen(session, settings.fileView, { openedFile = it }, pngImage,
                                         onOpenPlaces = if (wide) null else ({ scope.launch { placesDrawer.open() }; Unit }),
                                         onNewVault = { leaveDocument { destination = Destination.Encryption } },

@@ -87,8 +87,12 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
         // Looked up by the volume's own label: a name changed in the menu must not hide the usage.
         val volumeUsage = LocalVolumeUsage.current
         val usage = device?.let { volumeUsage(it.name) }
-        if (device != null) StorageCard(displayName(title(device)), usage?.takeIf { it.totalBytes > 0 },
-            enabled = connected && !busy, onClick = { onOpen(device.copy(name = title(device))) })
+        if (device != null) {
+            val total = usage?.takeIf { it.totalBytes > 0 }
+            if (total != null) StorageUsageCard(displayName(title(device)), total, modifier = Modifier.padding(top = 8.dp),
+                onClick = { if (connected && !busy) onOpen(device.copy(name = title(device))) })
+            else StorageCard(displayName(title(device)), null, enabled = connected && !busy, onClick = { onOpen(device.copy(name = title(device))) })
+        }
         if (device != null && onOpenPath != null) {
             SectionLabel(tr("Места", "Places"))
             // Owner 26.11: search and cleanup side by side, one row.

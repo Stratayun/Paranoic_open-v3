@@ -73,27 +73,36 @@ fun HomeScreen(
             }
         }
 
-        // Storages and connections.
-        HomeCard {
-            CardHeader(tr("Хранилища и подключения", "Storage and connections"), null, null)
-            val usageOf = LocalVolumeUsage.current
+        // Storages and connections: device volumes as storage cards, other places in one card.
+        Text(tr("Хранилища и подключения", "Storage and connections"), Modifier.padding(start = 4.dp, top = 4.dp),
+            style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp), fontWeight = FontWeight.SemiBold)
+        val usageOf = LocalVolumeUsage.current
+        val others = mutableListOf<Space>()
+        places.forEach { space ->
+            val private = space.localContainer && !space.detachable && !space.cloud
+            val usage = if (space.cloud || private) null else usageOf(space.name)?.takeIf { it.totalBytes > 0 }
+            if (usage != null) {
+                val removable = space.name.contains("SD", true) || space.name.contains("USB", true)
+                StorageUsageCard(displayName(title(space)), usage, if (removable) AppSymbol.Usb else AppSymbol.Storage) {
+                    onOpenSpace(space.copy(name = title(space)))
+                }
+            } else others += space
+        }
+        if (places.isEmpty() || others.isNotEmpty()) HomeCard {
             if (places.isEmpty()) CardRow(Res.drawable.ic_folder_add, tr("Нет подключённых мест", "No connected places"),
                 tr("Разрешите доступ к файлам или подключите сервер", "Allow file access or connect a server"), onClick = onShowPlaces)
-            places.forEach { space ->
+            others.forEach { space ->
                 val private = space.localContainer && !space.detachable && !space.cloud
                 val icon = when {
                     space.cloud -> Res.drawable.ic_cloud
                     private -> Res.drawable.ic_shield
-                    space.name.contains("SD", true) || space.name.contains("USB", true) -> Res.drawable.ic_external_disk
                     else -> Res.drawable.ic_tiles
                 }
-                val usage = if (space.cloud || private) null else usageOf(space.name)?.takeIf { it.totalBytes > 0 }
-                StorageRow(icon, displayName(if (private) tr("Файлы приложения", "App files") else title(space)), usage,
+                StorageRow(icon, displayName(if (private) tr("Файлы приложения", "App files") else title(space)), null,
                     status = when {
                         space.cloud -> tr("Подключено", "Connected")
                         private -> tr("Данные Paranoic на устройстве", "Paranoic data on this device")
-                        usage == null -> tr("Память устройства", "Device storage")
-                        else -> null
+                        else -> tr("Память устройства", "Device storage")
                     }, connected = space.cloud) { onOpenSpace(space.copy(name = title(space))) }
             }
         }
@@ -101,7 +110,9 @@ fun HomeScreen(
     }
 }
 
-private data class HomeTile(val title: String, val subtitle: String, val icon: DrawableResource, val onClick: () -> Unit)
+private data class HomeTile(val title: String, val subtitle: String, val icon: DrawableResource, val onClick: () -> Unit,
+    /** An idea from the concept that has no screen yet: shown with a "Soon" badge. */
+    val planned: Boolean = false)
 
 @Composable
 private fun SectionTile(tile: HomeTile, modifier: Modifier) {
@@ -208,7 +219,9 @@ private fun gigabytes(bytes: Long): String {
 fun ModulesScreen(
     onVaults: () -> Unit, onSafe: () -> Unit, onDiagnostics: () -> Unit, onTasks: () -> Unit, onSync: () -> Unit,
     onSettings: () -> Unit, onFiles: () -> Unit, onCleanup: (() -> Unit)?, onTrash: (() -> Unit)?, onSearch: (() -> Unit)?,
+    onMedia: (() -> Unit)? = null,
 ) {
+    var planned by remember { mutableStateOf<String?>(null) }
     val modules = listOf(
         HomeTile(tr("Файлы", "Files"), tr("Память, папки и облака", "Storage, folders and clouds"), Res.drawable.ic_folder, onFiles),
         HomeTile(tr("Крипто-папки", "Crypto folders"), tr("Зашифрованные хранилища", "Encrypted vaults"), Res.drawable.ic_crypto_folder, onVaults),
@@ -219,8 +232,17 @@ fun ModulesScreen(
         HomeTile(tr("Очистка", "Cleanup"), tr("Дубли и мусор", "Duplicates and junk"), Res.drawable.ic_cleanup, onCleanup ?: {}),
         HomeTile(tr("Корзина", "Trash"), tr("Удалённые файлы", "Deleted files"), Res.drawable.ic_trash_empty, onTrash ?: {}),
         HomeTile(tr("Поиск", "Search"), tr("По всем файлам", "All files"), Res.drawable.ic_search, onSearch ?: {}),
+        HomeTile(tr("Медиа", "Media"), tr("Видео, музыка и фото", "Video, music and photos"), Res.drawable.ic_video, onMedia ?: {}),
         HomeTile(tr("Настройки", "Settings"), tr("Параметры и безопасность", "Preferences and security"), Res.drawable.ic_settings, onSettings),
+        // Concept ideas without a screen yet (owner 28.11: the buttons stay visible).
+        HomeTile(tr("Передача", "Transfer"), tr("Между своими устройствами", "Between your devices"), Res.drawable.ic_transfer,
+            { planned = "transfer" }, planned = true),
+        HomeTile(tr("Подключения", "Connect"), tr("SFTP, SMB, NAS", "SFTP, SMB, NAS"), Res.drawable.ic_cloud, { planned = "connect" }, planned = true),
+        HomeTile(tr("Терминал", "Terminal"), tr("Shell и SSH", "Shell and SSH"), Res.drawable.ic_terminal, { planned = "terminal" }, planned = true),
+        HomeTile(tr("Уведомления", "Notifications"), tr("События приложения", "App events"), Res.drawable.ic_notifications,
+            { planned = "notifications" }, planned = true),
     )
+    planned?.let { PlannedDialog { planned = null } }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(tr("Модули Paranoic", "Paranoic modules"), Modifier.padding(start = 4.dp, top = 4.dp),
@@ -240,9 +262,24 @@ private fun ModuleTile(tile: HomeTile, modifier: Modifier, iconSize: Dp = 52.dp)
     val scheme = MaterialTheme.colorScheme
     Surface(modifier, shape = RoundedCornerShape(22.dp), color = scheme.surfaceContainer, border = BorderStroke(1.dp, scheme.outlineVariant)) {
         Column(Modifier.clickable(role = Role.Button, onClick = tile.onClick).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            BrandIcon(tile.icon, size = iconSize)
+            Row(verticalAlignment = Alignment.Top) {
+                BrandIcon(tile.icon, size = iconSize)
+                Spacer(Modifier.weight(1f))
+                if (tile.planned) Surface(shape = RoundedCornerShape(10.dp), color = scheme.secondaryContainer) {
+                    Text(tr("Скоро", "Soon"), Modifier.padding(horizontal = 8.dp, vertical = 3.dp), style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSecondaryContainer)
+                }
+            }
             Text(tile.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
             Text(tile.subtitle, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 2)
         }
     }
+}
+
+/** Concept idea without an implementation yet. */
+@Composable
+internal fun PlannedDialog(onClose: () -> Unit) {
+    AlertDialog(onDismissRequest = onClose, title = { Text(tr("Скоро", "Coming soon")) },
+        text = { Text(tr("Этот модуль есть в концепте и ещё в разработке.", "This module is part of the concept and is still in development.")) },
+        confirmButton = { TextButton(onClick = onClose) { Text(tr("Понятно", "OK")) } })
 }
