@@ -11,7 +11,20 @@
 
 `main` is the working code, not a stable release. Status: [ROADMAP.md](ROADMAP.md).
 
-![Paranoic](docs/images/app-preview.png)
+### Interface concept / Концепт интерфейса
+
+The target look of the app on phone, foldable, tablet and desktop (design concept, being implemented).
+Целевой вид приложения на телефоне, складном телефоне, планшете и компьютере (концепт, в работе).
+
+<p>
+  <img src="docs/images/concept-phone.jpg" alt="Phone" height="420">
+  <img src="docs/images/concept-foldable.jpg" alt="Foldable" height="420">
+</p>
+<p>
+  <img src="docs/images/concept-tablet.jpg" alt="Tablet" width="49%">
+  <img src="docs/images/concept-desktop.jpg" alt="Desktop" width="49%">
+</p>
+<p><img src="docs/images/concept-icons.jpg" alt="Icons" width="60%"></p>
 
 ## Collaboration / Сотрудничество
 
