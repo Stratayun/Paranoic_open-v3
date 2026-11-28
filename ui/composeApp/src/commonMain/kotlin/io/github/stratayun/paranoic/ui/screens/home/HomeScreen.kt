@@ -42,6 +42,10 @@ fun HomeScreen(
     onPinFolder: () -> Unit,
 ) {
     val places = spaces.userPlaces()
+    // Tile width decides the tile layout (measured once here, not inside intrinsic rows).
+    val screenWidth = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize.width
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val narrowTiles = with(density) { ((screenWidth.toDp() - 44.dp) / 2) < 200.dp }
     fun title(space: Space) = catalog.title(space.id, space.name)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -54,7 +58,7 @@ fun HomeScreen(
         )
         tiles.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                row.forEach { tile -> SectionTile(tile, Modifier.weight(1f)) }
+                row.forEach { tile -> SectionTile(tile, Modifier.weight(1f), narrowTiles) }
             }
         }
 
@@ -115,19 +119,26 @@ private data class HomeTile(val title: String, val subtitle: String, val icon: D
     val planned: Boolean = false)
 
 @Composable
-private fun SectionTile(tile: HomeTile, modifier: Modifier) {
+private fun SectionTile(tile: HomeTile, modifier: Modifier, narrow: Boolean) {
     val scheme = MaterialTheme.colorScheme
-    Surface(modifier.height(124.dp), shape = RoundedCornerShape(24.dp), color = scheme.surfaceContainer,
+    Surface(modifier.height(if (narrow) 148.dp else 124.dp), shape = RoundedCornerShape(24.dp), color = scheme.surfaceContainer,
         border = BorderStroke(1.dp, scheme.outlineVariant)) {
-        Row(Modifier.clickable(role = Role.Button, onClick = tile.onClick).padding(start = 8.dp, end = 10.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            BrandIcon(tile.icon, size = 50.dp)
-            Spacer(Modifier.width(6.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(tile.title, style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, lineHeight = 19.sp),
-                    fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(tile.subtitle, style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 15.sp),
-                    color = scheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        Box(Modifier.clickable(role = Role.Button, onClick = tile.onClick)) {
+            val titleStyle = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, lineHeight = 19.sp)
+            val subtitleStyle = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 15.sp)
+            // Narrow tiles (folded phone, large system fonts) stack the icon above the text so
+            // words are never broken in the middle; wider tiles follow the mockup (icon left).
+            if (narrow) Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                BrandIcon(tile.icon, size = 48.dp)
+                Text(tile.title, style = titleStyle, fontWeight = FontWeight.SemiBold, maxLines = 2, softWrap = true)
+                Text(tile.subtitle, style = subtitleStyle, color = scheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            } else Row(Modifier.fillMaxSize().padding(start = 8.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                BrandIcon(tile.icon, size = 56.dp)
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(tile.title, style = titleStyle, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(tile.subtitle, style = subtitleStyle, color = scheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
     }
@@ -248,7 +259,7 @@ fun ModulesScreen(
         Text(tr("Модули Paranoic", "Paranoic modules"), Modifier.padding(start = 4.dp, top = 4.dp),
             style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         modules.chunked(2).forEach { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 row.forEach { tile -> ModuleTile(tile, Modifier.weight(1f)) }
                 if (row.size == 1) Spacer(Modifier.weight(1f))
             }
@@ -260,7 +271,7 @@ fun ModulesScreen(
 @Composable
 private fun ModuleTile(tile: HomeTile, modifier: Modifier, iconSize: Dp = 52.dp) {
     val scheme = MaterialTheme.colorScheme
-    Surface(modifier, shape = RoundedCornerShape(22.dp), color = scheme.surfaceContainer, border = BorderStroke(1.dp, scheme.outlineVariant)) {
+    Surface(modifier.fillMaxHeight(), shape = RoundedCornerShape(22.dp), color = scheme.surfaceContainer, border = BorderStroke(1.dp, scheme.outlineVariant)) {
         Column(Modifier.clickable(role = Role.Button, onClick = tile.onClick).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.Top) {
                 BrandIcon(tile.icon, size = iconSize)

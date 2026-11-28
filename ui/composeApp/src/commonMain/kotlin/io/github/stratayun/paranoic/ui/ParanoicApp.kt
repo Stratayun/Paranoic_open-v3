@@ -213,7 +213,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                         onSafe = { go(Destination.Notes) }, onVaults = { go(Destination.Encryption) }, onFiles = { go(Destination.Files) },
                         current = destination,
                         onSync = { go(Destination.Sync) }, onDiagnostics = { go(Destination.Diagnostics) },
-                        onTasks = { go(Destination.Operations) }, onSettings = { go(Destination.Settings) })
+                        onTasks = { go(Destination.Operations) }, onSettings = { go(Destination.Settings) },
+                        onHome = { go(Destination.Home) })
                 }
                 ModalNavigationDrawer(drawerState = placesDrawer, gesturesEnabled = !wide && !documentExit.busy,
                     drawerContent = {

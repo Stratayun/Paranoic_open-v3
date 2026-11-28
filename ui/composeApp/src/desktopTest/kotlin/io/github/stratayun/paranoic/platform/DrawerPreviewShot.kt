@@ -28,7 +28,7 @@ import kotlin.test.Test
  */
 class DrawerPreviewShot {
     @Test fun drawer() {
-        val out = System.getenv("PARANOIC_PREVIEW_OUT") ?: return
+        val out = (System.getenv("PARANOIC_PREVIEW_OUT") ?: return) + "/drawer.png"
         val places = runBlocking { PlaceCatalog(MemoryPlaceCatalogStore(), kotlinx.coroutines.CoroutineScope(Dispatchers.Unconfined)) }
         fun space(id: String, name: String, detachable: Boolean = true, cloud: Boolean = false, local: Boolean = false) =
             Space(id, name, Location(id, ""), true, detachable = detachable, localContainer = local, cloud = cloud)
@@ -44,14 +44,16 @@ class DrawerPreviewShot {
                                 onConnectServer = { _, _, _ -> }, onOpenPath = { _, _ -> }, onOpenCategory = { _, _ -> }, onOpenTrash = {}, onOpenCleanup = {},
                                 trashFilled = setOf("dev"))
                             DrawerFooter(enabled = true, runningTasks = 0, onSafe = {}, onVaults = {}, onSync = {}, onDiagnostics = {},
-                                onTasks = {}, onSettings = {}, showFiles = false)
+                                onTasks = {}, onSettings = {}, showFiles = false, onHome = {},
+                                current = io.github.stratayun.paranoic.ui.navigation.Destination.Home)
                             Spacer(Modifier.height(24.dp))
                         }
                     }
                 }
             }
         }
-        val image = scene.render()
+        for (t in 0..16) scene.render(t * 100_000_000L)
+        val image = scene.render(1_700_000_000L)
         File(out).writeBytes(image.encodeToData(EncodedImageFormat.PNG)!!.bytes)
         scene.close()
     }

@@ -22,10 +22,28 @@ fun DrawerHeader(onClose: () -> Unit) {
     }
 }
 
+/** One sidebar entry (owner's concept): small glass icon, label, highlighted when selected. */
+@Composable
+fun SidebarRow(label: String, icon: org.jetbrains.compose.resources.DrawableResource, selected: Boolean = false, enabled: Boolean = true,
+    badge: String? = null, onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(16.dp),
+        color = if (selected) scheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent,
+        modifier = Modifier.fillMaxWidth().actionDescription(label)) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            BrandIcon(icon, size = 36.dp)
+            Spacer(Modifier.width(12.dp))
+            Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, maxLines = 2,
+                color = if (enabled) scheme.onSurface else scheme.onSurfaceVariant)
+            if (badge != null) Badge { Text(badge) }
+        }
+    }
+}
+
 /**
- * Lower part of the drawer (owner's layout, 25.11): sections Files /
- * Crypto folders / Safe, tools Sync, "Diagnostics and tasks" (tasks live
- * inside Diagnostics) and Settings, all rows in one style.
+ * Lower part of the menu after the owner's concept (28.11): Modules (Home, Files, Crypto folders,
+ * Safe, Diagnostics, Tasks), Tools (Sync and backup) and Settings at the end. The same block is
+ * the phone drawer and the permanent sidebar on wide screens.
  */
 @Composable
 fun DrawerFooter(
@@ -35,44 +53,27 @@ fun DrawerFooter(
     onVaults: () -> Unit,
     onSync: () -> Unit,
     onDiagnostics: () -> Unit,
-    @Suppress("UNUSED_PARAMETER") onTasks: () -> Unit,
+    onTasks: () -> Unit,
     onSettings: () -> Unit,
     modifier: Modifier = Modifier,
     onFiles: () -> Unit = {},
     current: Destination? = null,
     /** False when the internal-memory card above already opens Files (no duplicate entry). */
     showFiles: Boolean = true,
+    onHome: (() -> Unit)? = null,
 ) {
-    val scheme = MaterialTheme.colorScheme
     Column(modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        SectionLabel(tr("Разделы", "Sections"))
-        val sections = listOfNotNull(
-            Triple(Destination.Files, Res.drawable.ic_tiles, onFiles).takeIf { showFiles },
-            Triple(Destination.Encryption, Res.drawable.ic_crypto_folder, onVaults),
-            Triple(Destination.Notes, Res.drawable.ic_safe, onSafe),
-        )
-        GroupedList(sections) { (target, icon, action), position ->
-            GroupedRow(target.label(), position, enabled = enabled,
-                subtitle = when (target) {
-                    Destination.Files -> tr("Память, папки и облака", "Storage, folders and clouds")
-                    Destination.Encryption -> tr("Cryptomator и Paranoic", "Cryptomator and Paranoic")
-                    Destination.Notes -> tr("Заметки и личная папка", "Notes and personal folder")
-                    else -> null
-                },
-                container = if (target == current) scheme.secondaryContainer else scheme.surfaceContainerHigh,
-                leading = { BrandIcon(icon, size = 52.dp) }, onClick = action)
-        }
+        SectionLabel(tr("Модули", "Modules"))
+        if (onHome != null) SidebarRow(tr("Главная", "Home"), Res.drawable.ic_tiles, current == Destination.Home, enabled, onClick = onHome)
+        if (showFiles) SidebarRow(tr("Файлы", "Files"), Res.drawable.ic_folder, current == Destination.Files, enabled, onClick = onFiles)
+        SidebarRow(tr("Крипто-папки", "Crypto folders"), Res.drawable.ic_crypto_folder, current == Destination.Encryption, enabled, onClick = onVaults)
+        SidebarRow(tr("Сейф", "Safe"), Res.drawable.ic_safe, current == Destination.Notes, enabled, onClick = onSafe)
+        SidebarRow(tr("Диагностика", "Diagnostics"), Res.drawable.ic_diagnostics, current == Destination.Diagnostics, enabled, onClick = onDiagnostics)
+        SidebarRow(tr("Задачи", "Tasks"), Res.drawable.ic_tasks, current == Destination.Operations, enabled,
+            badge = runningTasks.takeIf { it > 0 }?.toString(), onClick = onTasks)
         SectionLabel(tr("Инструменты", "Tools"))
-        val rows = listOf(
-            Triple(tr("Синхронизация и бэкап", "Sync and backup"), Res.drawable.ic_sync, onSync to tr("Свой сервер", "Own server")),
-            Triple(tr("Диагностика и задачи", "Diagnostics and tasks"), Res.drawable.ic_diagnostics, onDiagnostics to
-                (if (runningTasks > 0) tr("Выполняется задач: $runningTasks", "Running tasks: $runningTasks") else tr("Журнал, отчёт, задания", "Journal, report, jobs"))),
-            // Owner (26.11): Settings is an ordinary row in the same style, not a separate button.
-            Triple(tr("Настройки", "Settings"), Res.drawable.ic_settings, onSettings to tr("Тема, язык, безопасность", "Theme, language, security")),
-        )
-        GroupedList(rows) { (label, icon, pair), position ->
-            GroupedRow(label, position, enabled = enabled, subtitle = pair.second,
-                leading = { BrandIcon(icon, size = 52.dp) }, onClick = pair.first)
-        }
+        SidebarRow(tr("Синхронизация и бэкап", "Sync and backup"), Res.drawable.ic_sync, current == Destination.Sync, enabled, onClick = onSync)
+        HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+        SidebarRow(tr("Настройки", "Settings"), Res.drawable.ic_settings, current == Destination.Settings, enabled, onClick = onSettings)
     }
 }
