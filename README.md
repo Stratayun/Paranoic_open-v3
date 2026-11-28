@@ -1,20 +1,20 @@
 # Paranoic
 
-**Paranoic** is an open-source, privacy-first file manager for **Android and Windows** with a Rust core and a Kotlin/Compose interface.
+**Paranoic** is an open-source, privacy-first file manager for **Android and Windows** (Linux planned) with a Rust core and a Kotlin/Compose interface.
 
-- **Files:** internal storage, SD/USB, categories (Downloads, Documents, Music, Videos, Pictures), search, tabs, trash, cleanup of duplicates and junk; viewer for photos, video, audio, PDF, Word, Excel, Markdown and text.
+- **Files:** internal storage, SD cards and USB drives, categories, search, tabs, pinned folders, trash, cleanup of duplicates and junk; viewer for photos, video, audio, PDF, Word, Excel, Markdown and text.
 - **Encrypted folders:** **Cryptomator**-compatible vaults (formats 7/8) and the own **Paranoic** format; single files with **age**.
 - **Safe:** notes and a personal folder behind one password, isolated from the file manager and the cloud; biometrics, duress password, auto-wipe, recovery key.
 - **Archives:** ZIP (incl. AES) and 7z — browse, extract, create.
 - **Own server:** `paranoic-server` over WebDAV (Nextcloud and other WebDAV servers work too). No third-party cloud accounts are stored; encrypted folders can be moved to any cloud by hand.
-- Decrypted data never leaves the app.
+- Decrypted data never leaves the app; every file operation goes through a crash-safe journal.
 
 `main` is the working code, not a stable release. Status: [ROADMAP.md](ROADMAP.md).
 
 ### Interface concept / Концепт интерфейса
 
-The target look of the app on phone, foldable, tablet and desktop (design concept, being implemented).
-Целевой вид приложения на телефоне, складном телефоне, планшете и компьютере (концепт, в работе).
+Target look on phone, foldable, tablet and desktop. The phone layout and the icon pack are implemented; wide layouts are in progress.
+Целевой вид на телефоне, складном, планшете и компьютере. Телефон и пак иконок уже в приложении, широкие экраны — в работе.
 
 <p>
   <img src="docs/images/concept-phone.jpg" alt="Phone" height="420">
@@ -53,7 +53,7 @@ Anyone interested in privacy, Rust, Kotlin Multiplatform, cryptography or UI des
 | `crates/paranoic-cloud`, `crates/paranoic-server` | WebDAV client, sync and backup; own WebDAV server |
 | `crates/paranoic-windows` | Windows file primitives (no-replace rename, durable replace) |
 | `crates/paranoic-bridge` | UniFFI API for Kotlin |
-| `ui/` | Kotlin Multiplatform + Compose app (Android and Windows) |
+| `ui/` | Kotlin Multiplatform + Compose app (Android and Windows); icon pack in `ui/design/icons` |
 | `tools/` | Native build, validation, Cryptomator interop fixtures |
 
 ## Build
