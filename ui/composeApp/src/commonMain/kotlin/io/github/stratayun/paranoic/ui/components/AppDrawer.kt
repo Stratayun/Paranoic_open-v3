@@ -15,9 +15,12 @@ import io.github.stratayun.paranoic.ui.state.tr
 
 /** Drawer header: app name and a close button. */
 @Composable
-fun DrawerHeader(onClose: () -> Unit) {
+fun DrawerHeader(title: String = "Paranoic", subtitle: String? = null, onClose: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 8.dp, top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("Paranoic", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+            if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         IconButton(onClick = onClose, modifier = Modifier.actionDescription(tr("Закрыть меню", "Close menu"))) { AppIcon(AppSymbol.Close) }
     }
 }
@@ -61,6 +64,7 @@ fun DrawerFooter(
     /** False when the internal-memory card above already opens Files (no duplicate entry). */
     showFiles: Boolean = true,
     onHome: (() -> Unit)? = null,
+    onModules: (() -> Unit)? = null,
 ) {
     Column(modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         SectionLabel(tr("Модули", "Modules"))
@@ -71,6 +75,7 @@ fun DrawerFooter(
         SidebarRow(tr("Диагностика", "Diagnostics"), Res.drawable.ic_diagnostics, current == Destination.Diagnostics, enabled, onClick = onDiagnostics)
         SidebarRow(tr("Задачи", "Tasks"), Res.drawable.ic_tasks, current == Destination.Operations, enabled,
             badge = runningTasks.takeIf { it > 0 }?.toString(), onClick = onTasks)
+        if (onModules != null) SidebarRow(tr("Все модули", "All modules"), Res.drawable.ic_tabs, current == Destination.Modules, enabled, onClick = onModules)
         SectionLabel(tr("Инструменты", "Tools"))
         SidebarRow(tr("Синхронизация и бэкап", "Sync and backup"), Res.drawable.ic_sync, current == Destination.Sync, enabled, onClick = onSync)
         HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)

@@ -11,7 +11,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import io.github.stratayun.paranoic.bridge.*
-import io.github.stratayun.paranoic.ui.components.DrawerFooter
 import io.github.stratayun.paranoic.ui.components.DrawerHeader
 import io.github.stratayun.paranoic.ui.components.SpacesPanel
 import io.github.stratayun.paranoic.ui.state.*
@@ -34,18 +33,15 @@ class DrawerPreviewShot {
             Space(id, name, Location(id, ""), true, detachable = detachable, localContainer = local, cloud = cloud)
         val spaces = listOf(space("app", "App", detachable = false, local = true), space("dev", "Внутренняя память"),
             space("sd", "SD-карта"), space("cloud", "Nextcloud", cloud = true))
-        val scene = ImageComposeScene(1080, 3900, Density(2.625f)) {
+        val scene = ImageComposeScene(1080, 2600, Density(2.625f)) {
             ParanoicTheme(AppearanceSettings()) {
                 CompositionLocalProvider(LocalVolumeUsage provides { VolumeUsage(41L shl 30, 128L shl 30) }) {
                     Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
                         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                            DrawerHeader {}
+                            DrawerHeader("Места", "Память, закладки и подключения") {}
                             SpacesPanel(spaces, places, connected = true, busy = false, onConnect = {}, onOpen = {}, onDetach = {},
                                 onConnectServer = { _, _, _ -> }, onOpenPath = { _, _ -> }, onOpenCategory = { _, _ -> }, onOpenTrash = {}, onOpenCleanup = {},
                                 trashFilled = setOf("dev"))
-                            DrawerFooter(enabled = true, runningTasks = 0, onSafe = {}, onVaults = {}, onSync = {}, onDiagnostics = {},
-                                onTasks = {}, onSettings = {}, showFiles = false, onHome = {},
-                                current = io.github.stratayun.paranoic.ui.navigation.Destination.Home)
                             Spacer(Modifier.height(24.dp))
                         }
                     }

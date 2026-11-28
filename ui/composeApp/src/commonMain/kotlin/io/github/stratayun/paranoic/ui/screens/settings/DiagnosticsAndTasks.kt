@@ -80,7 +80,7 @@ fun DiagnosticsOverview(session: AppSession, openChecks: () -> Unit, onSync: () 
         }
         val device = session.files.spaces.userPlaces().firstOrNull { it.detachable && !it.cloud }
         val usage = device?.let { LocalVolumeUsage.current(it.name) }?.takeIf { it.totalBytes > 0 }
-        if (device != null && usage != null) StorageUsageCard(tr("Память устройства", "Device storage"), usage)
+        if (device != null && usage != null) StorageUsageCard(tr("Память устройства", "Device storage"), usage, Res.drawable.ic_tiles)
         ConceptCard {
             ConceptRow(tr("Синхронизация", "Sync"), when (pairs) {
                 null -> tr("Состояние неизвестно", "State unknown")

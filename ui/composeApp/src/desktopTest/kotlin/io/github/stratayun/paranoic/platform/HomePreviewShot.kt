@@ -47,7 +47,7 @@ class HomePreviewShot {
                                 when (tab) {
                                     Destination.Home -> HomeScreen(spaces, places, {}, {}, {}, {}, {}, { _, _ -> }, {}, {})
                                     Destination.Settings -> io.github.stratayun.paranoic.ui.screens.settings.AppearanceScreen(AppearanceSettings(), false, null, {})
-                                    else -> ModulesScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+                                    else -> ModulesScreen({}, {}, {}, {}, {})
                                 }
                             }
                         }

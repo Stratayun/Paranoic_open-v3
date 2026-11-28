@@ -214,7 +214,7 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                         current = destination,
                         onSync = { go(Destination.Sync) }, onDiagnostics = { go(Destination.Diagnostics) },
                         onTasks = { go(Destination.Operations) }, onSettings = { go(Destination.Settings) },
-                        onHome = { go(Destination.Home) })
+                        onHome = { go(Destination.Home) }, onModules = { go(Destination.Modules) })
                 }
                 ModalNavigationDrawer(drawerState = placesDrawer, gesturesEnabled = !wide && !documentExit.busy,
                     drawerContent = {
@@ -222,7 +222,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                             drawerShape = RoundedCornerShape(topEnd = 32.dp, bottomEnd = 32.dp),
                             drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
                             Column(Modifier.fillMaxHeight().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-                                DrawerHeader { scope.launch { placesDrawer.close() } }
+                                DrawerHeader(tr("Места", "Places"), tr("Память, закладки и подключения", "Storage, pinned folders and connections")) {
+                                    scope.launch { placesDrawer.close() } }
                                 key(session.secretsEpoch) {
                                 SpacesPanel(session.files.spaces, session.places, core.connected, session.writing || documentExit.busy,
                                     onConnect = { scope.launch { placesDrawer.close() }; guardedPickFolder() },
@@ -234,7 +235,7 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                     onOpenCleanup = { space -> session.cleanupView = space; scope.launch { placesDrawer.close() } },
                                     bookmarkCore = core)
                                 }
-                                drawerFooter(true)
+                                // Phone: sections live in the bottom tabs and Modules; the drawer is places only.
                             }
                         }
                     }) {
@@ -413,13 +414,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                         onVaults = { destination = Destination.Encryption },
                                         onSafe = { destination = Destination.Notes },
                                         onDiagnostics = { destination = Destination.Diagnostics },
-                                        onTasks = { destination = Destination.Operations },
-                                        onSync = { destination = Destination.Sync },
-                                        onSettings = { destination = Destination.Settings },
-                                        onFiles = { destination = Destination.Files },
                                         onCleanup = searchPlace?.let { place -> { session.cleanupView = place } },
                                         onTrash = searchPlace?.let { place -> { session.trashView = place } },
-                                        onSearch = searchPlace?.let { place -> { session.categories.open(place, FileCategory.All); destination = Destination.Files } },
                                         onMedia = searchPlace?.let { place -> { session.categories.open(place, FileCategory.Videos); destination = Destination.Files } })
                                     Destination.Files -> FileWorkspaceScreen(session, settings.fileView, { openedFile = it }, pngImage,
                                         onOpenPlaces = if (wide) null else ({ scope.launch { placesDrawer.open() }; Unit }),

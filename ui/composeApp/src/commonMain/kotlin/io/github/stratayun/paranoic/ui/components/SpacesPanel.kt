@@ -89,21 +89,14 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
         val usage = device?.let { volumeUsage(it.name) }
         if (device != null) {
             val total = usage?.takeIf { it.totalBytes > 0 }
-            if (total != null) StorageUsageCard(displayName(title(device)), total, modifier = Modifier.padding(top = 8.dp),
+            if (total != null) StorageUsageCard(displayName(title(device)), total, Res.drawable.ic_tiles, modifier = Modifier.padding(top = 8.dp),
                 onClick = { if (connected && !busy) onOpen(device.copy(name = title(device))) })
             else StorageCard(displayName(title(device)), null, enabled = connected && !busy, onClick = { onOpen(device.copy(name = title(device))) })
         }
         if (device != null && onOpenPath != null) {
+            // Owner 28.11: one home per action. Search lives in the top bar and Cleanup in Modules;
+            // the menu keeps only places.
             SectionLabel(tr("Места", "Places"))
-            // Owner 26.11: search and cleanup side by side, one row.
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ToolTile(tr("Поиск", "Search"), tr("по всем файлам", "all files"), Res.drawable.ic_search, connected && !busy, Modifier.weight(1f)) {
-                    onOpenCategory?.invoke(device.copy(name = title(device)), FileCategory.All)
-                }
-                if (onOpenCleanup != null) ToolTile(tr("Очистка", "Cleanup"), tr("дубли и мусор", "duplicates, junk"), Res.drawable.ic_cleanup,
-                    connected && !busy, Modifier.weight(1f)) { onOpenCleanup(device.copy(name = title(device))) }
-            }
-            Spacer(Modifier.height(8.dp))
             QuickPlaces(enabled = connected && !busy, onCategory = { c -> onOpenCategory?.invoke(device.copy(name = title(device)), c) },
                 onTrash = onOpenTrash?.let { open -> { open(device.copy(name = title(device))) } }, trashFull = device.root.storageId in trashFilled) { path -> onOpenPath(device.copy(name = title(device)), path) }
         }
@@ -140,14 +133,7 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
             val spaceUsage = if (appPrivate(space) || space.cloud) null
                 else volumeUsage(space.name)?.takeIf { it.totalBytes > 0 }
             val subtitle = spaceUsage?.let { tr("Свободно ", "Free ") + gb(it.freeBytes) + tr(" из ", " of ") + gb(it.totalBytes) } ?: kind(space)
-            GroupedRow(displayName(title(space)), position, subtitle = subtitle, enabled = connected && !busy,
-                leading = { BrandIcon(when {
-                    appPrivate(space) -> Res.drawable.ic_shield
-                    space.cloud -> Res.drawable.ic_cloud
-                    space.name.contains("SD", ignoreCase = true) || space.name.contains("USB", ignoreCase = true) -> Res.drawable.ic_external_disk
-                    else -> Res.drawable.ic_tiles
-                }, size = 52.dp) },
-                trailing = {
+            val placeMenu: @Composable () -> Unit = {
                     Box {
                         IconButton(onClick = { menu = true },
                             modifier = Modifier.actionDescription(tr("Действия: ", "Actions: ") + displayName(title(space)))) { AppIcon(AppSymbol.More) }
@@ -162,7 +148,19 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
                                 enabled = connected && !busy, leadingIcon = { AppIcon(AppSymbol.Trash) }, onClick = { menu = false; confirm = space })
                         }
                     }
-                },
+            }
+            val placeIcon = when {
+                appPrivate(space) -> Res.drawable.ic_shield
+                space.cloud -> Res.drawable.ic_cloud
+                space.name.contains("SD", ignoreCase = true) || space.name.contains("USB", ignoreCase = true) -> Res.drawable.ic_external_disk
+                else -> Res.drawable.ic_tiles
+            }
+            // Volumes with known usage get the compact storage card (owner 28.11), the rest a row.
+            if (spaceUsage != null) StorageUsageCard(displayName(title(space)), spaceUsage, placeIcon, compact = true, trailing = placeMenu,
+                onClick = { if (connected && !busy) onOpen(space.copy(name = title(space))) })
+            else GroupedRow(displayName(title(space)), position, subtitle = subtitle, enabled = connected && !busy,
+                leading = { BrandIcon(placeIcon, size = 52.dp) },
+                trailing = placeMenu,
                 onClick = { onOpen(space.copy(name = title(space))) })
         }
         SectionLabel(tr("Подключить", "Connect"))

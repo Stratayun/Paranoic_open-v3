@@ -36,8 +36,8 @@ import io.github.stratayun.paranoic.ui.state.tr
  * Sizes are decimal GB, as Android's own storage screen shows them.
  */
 @Composable
-fun StorageUsageCard(title: String, usage: VolumeUsage, symbol: AppSymbol = AppSymbol.Storage,
-    modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+fun StorageUsageCard(title: String, usage: VolumeUsage, icon: org.jetbrains.compose.resources.DrawableResource,
+    modifier: Modifier = Modifier, compact: Boolean = false, trailing: (@Composable () -> Unit)? = null, onClick: (() -> Unit)? = null) {
     val scheme = MaterialTheme.colorScheme
     val used = (usage.totalBytes - usage.freeBytes).coerceAtLeast(0)
     val fraction = if (usage.totalBytes > 0) (used.toDouble() / usage.totalBytes).toFloat().coerceIn(0f, 1f) else 0f
@@ -53,14 +53,12 @@ fun StorageUsageCard(title: String, usage: VolumeUsage, symbol: AppSymbol = AppS
         color = Color.Transparent, border = BorderStroke(1.dp, scheme.outline.copy(alpha = 0.55f))) {
         Column(Modifier.background(Brush.verticalGradient(listOf(scheme.surfaceContainerHigh, scheme.surfaceContainer)))
             .let { if (onClick != null) it.clickable(role = Role.Button, onClick = onClick) else it }
-            .padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            .padding(horizontal = if (compact) 14.dp else 18.dp, vertical = if (compact) 12.dp else 16.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(46.dp).clip(RoundedCornerShape(14.dp)).background(scheme.surfaceContainerLowest)
-                    .border(1.dp, scheme.outline.copy(alpha = 0.6f), RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
-                    if (symbol == AppSymbol.Storage) DriveGlyph(scheme.onSurface)
-                    else Icon(symbol.vector(), null, Modifier.size(24.dp), tint = scheme.onSurface)
-                }
-                Spacer(Modifier.width(14.dp))
+                // Same glass icon family as the rest of the app (owner 28.11).
+                BrandIcon(icon, size = if (compact) 44.dp else 52.dp)
+                Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp), fontWeight = FontWeight.SemiBold,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -68,9 +66,11 @@ fun StorageUsageCard(title: String, usage: VolumeUsage, symbol: AppSymbol = AppS
                         color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Spacer(Modifier.width(8.dp))
-                Text(percent, style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp), fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text(percent, style = MaterialTheme.typography.titleLarge.copy(fontSize = if (compact) 18.sp else 24.sp),
+                    fontWeight = FontWeight.SemiBold, maxLines = 1)
+                if (trailing != null) trailing()
             }
-            Canvas(Modifier.fillMaxWidth().height(14.dp)) {
+            Canvas(Modifier.fillMaxWidth().height(if (compact) 10.dp else 14.dp)) {
                 val r = CornerRadius(size.height / 2, size.height / 2)
                 drawRoundRect(scheme.surfaceContainerLowest, cornerRadius = r)
                 drawRoundRect(scheme.outline.copy(alpha = 0.6f), cornerRadius = r, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
@@ -86,34 +86,13 @@ fun StorageUsageCard(title: String, usage: VolumeUsage, symbol: AppSymbol = AppS
                         topLeft = Offset(left, 0f), size = Size(right - left, size.height), cornerRadius = r)
                 }
             }
-            HorizontalDivider(color = scheme.outlineVariant)
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            if (!compact) HorizontalDivider(color = scheme.outlineVariant)
+            if (!compact) Row(verticalAlignment = Alignment.CenterVertically) {
                 Legend(fillEnd, tr("Занято", "Used"), storageGb(used))
                 Spacer(Modifier.weight(1f))
                 Legend(scheme.outline, tr("Свободно", "Free"), storageGb(usage.freeBytes))
             }
         }
-    }
-}
-
-/** Outlined drive, as in the owner's animation. */
-@Composable
-private fun DriveGlyph(color: Color) {
-    Canvas(Modifier.size(26.dp, 22.dp)) {
-        val stroke = 1.8.dp.toPx()
-        val body = Size(size.width - stroke, size.height * 0.62f)
-        val top = size.height - body.height - stroke / 2
-        drawRoundRect(color, topLeft = Offset(stroke / 2, top), size = body, cornerRadius = CornerRadius(4.dp.toPx()),
-            style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
-        // Upper slanted housing.
-        val path = androidx.compose.ui.graphics.Path().apply {
-            moveTo(stroke / 2 + 2.dp.toPx(), top); lineTo(5.dp.toPx(), stroke); lineTo(size.width - 5.dp.toPx(), stroke)
-            lineTo(size.width - stroke / 2 - 2.dp.toPx(), top)
-        }
-        drawPath(path, color, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
-        val midY = top + body.height * 0.45f
-        drawLine(color, Offset(stroke / 2, midY), Offset(size.width - stroke / 2, midY), stroke * 0.8f)
-        drawCircle(color, 1.6.dp.toPx(), Offset(size.width - 5.dp.toPx(), top + body.height * 0.73f))
     }
 }
 
