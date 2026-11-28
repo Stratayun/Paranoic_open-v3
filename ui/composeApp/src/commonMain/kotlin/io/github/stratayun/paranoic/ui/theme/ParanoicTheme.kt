@@ -51,19 +51,19 @@ fun tokensFor(@Suppress("UNUSED_PARAMETER") pack: ThemePack, density: ContentDen
 
 fun paletteFor(@Suppress("UNUSED_PARAMETER") pack: ThemePack, dark: Boolean): ColorScheme = expressiveScheme(dark)
 
-/** Dark palette tuned to the owner's neon glass icon set: deep navy glass, periwinkle and cyan glow. */
+/** Dark graphite palette (owner's mockup 27.11): calm neutral surfaces, soft periwinkle accent, mint for progress. */
 private fun expressiveScheme(dark: Boolean): ColorScheme = if (dark) darkColorScheme(
-    primary = Color(0xFF9DA8FF), onPrimary = Color(0xFF14185A), primaryContainer = Color(0xFF2C338A), onPrimaryContainer = Color(0xFFDFE2FF),
-    secondary = Color(0xFF6FD8FF), onSecondary = Color(0xFF00344A), secondaryContainer = Color(0xFF183B73), onSecondaryContainer = Color(0xFFD3EEFF),
-    tertiary = Color(0xFFD29BFF), onTertiary = Color(0xFF3B0E66), tertiaryContainer = Color(0xFF3F2380), onTertiaryContainer = Color(0xFFF1DBFF),
-    error = Color(0xFFFF8FA3), onError = Color(0xFF5C0017), errorContainer = Color(0xFF7A1430), onErrorContainer = Color(0xFFFFD9DF),
-    background = Color(0xFF070B24), onBackground = Color(0xFFE6E8FF), surface = Color(0xFF070B24), onSurface = Color(0xFFE6E8FF),
-    surfaceVariant = Color(0xFF242C5C), onSurfaceVariant = Color(0xFFB4BAE6), surfaceTint = Color(0xFF9DA8FF),
-    inverseSurface = Color(0xFFE6E8FF), inverseOnSurface = Color(0xFF1A1F45), inversePrimary = Color(0xFF4A52B8),
-    outline = Color(0xFF5A63A8), outlineVariant = Color(0xFF2A3266), scrim = Color.Black,
-    surfaceDim = Color(0xFF070B24), surfaceBright = Color(0xFF2A3160), surfaceContainerLowest = Color(0xFF04071A),
-    surfaceContainerLow = Color(0xFF0C1232), surfaceContainer = Color(0xFF10173D), surfaceContainerHigh = Color(0xFF151D4A),
-    surfaceContainerHighest = Color(0xFF1C2558),
+    primary = Color(0xFFAEB6F5), onPrimary = Color(0xFF1B2050), primaryContainer = Color(0xFF353B63), onPrimaryContainer = Color(0xFFDEE1FF),
+    secondary = Color(0xFFA9B4CC), onSecondary = Color(0xFF1F2738), secondaryContainer = Color(0xFF363C4C), onSecondaryContainer = Color(0xFFDCE2F2),
+    tertiary = Color(0xFF7FD3A4), onTertiary = Color(0xFF00391E), tertiaryContainer = Color(0xFF1E4A35), onTertiaryContainer = Color(0xFFA9F0C7),
+    error = Color(0xFFFF9AA8), onError = Color(0xFF5C0017), errorContainer = Color(0xFF6E1D2C), onErrorContainer = Color(0xFFFFD9DF),
+    background = Color(0xFF16181E), onBackground = Color(0xFFE8E9EE), surface = Color(0xFF16181E), onSurface = Color(0xFFE8E9EE),
+    surfaceVariant = Color(0xFF2A2D37), onSurfaceVariant = Color(0xFFA4A8B5), surfaceTint = Color(0xFFAEB6F5),
+    inverseSurface = Color(0xFFE8E9EE), inverseOnSurface = Color(0xFF1E2027), inversePrimary = Color(0xFF4F579A),
+    outline = Color(0xFF4B4F5C), outlineVariant = Color(0xFF2D303A), scrim = Color.Black,
+    surfaceDim = Color(0xFF16181E), surfaceBright = Color(0xFF353844), surfaceContainerLowest = Color(0xFF101217),
+    surfaceContainerLow = Color(0xFF1B1D24), surfaceContainer = Color(0xFF20232B), surfaceContainerHigh = Color(0xFF282B34),
+    surfaceContainerHighest = Color(0xFF30333D),
 ) else lightColorScheme(
     primary = Color(0xFF4F5C92), onPrimary = Color.White, primaryContainer = Color(0xFFDDE1FF), onPrimaryContainer = Color(0xFF374479),
     secondary = Color(0xFF5A5D72), onSecondary = Color.White, secondaryContainer = Color(0xFFDFE1F9), onSecondaryContainer = Color(0xFF424659),

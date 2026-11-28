@@ -20,6 +20,8 @@ fun passwordMismatchText() = tr("Пароли не совпадают.", "Passwo
 
 @Composable
 fun Destination.label(): String = when (this) {
+    Destination.Home -> tr("Главная", "Home")
+    Destination.Modules -> tr("Модули", "Modules")
     Destination.Files -> tr("Файлы", "Files")
     Destination.Encryption -> tr("Крипто-папки", "Crypto folders")
     Destination.Notes -> tr("Сейф", "Safe")

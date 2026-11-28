@@ -14,6 +14,8 @@ import io.github.stratayun.paranoic.bridge.*
 import io.github.stratayun.paranoic.ui.components.*
 import io.github.stratayun.paranoic.ui.navigation.*
 import io.github.stratayun.paranoic.ui.screens.files.FilesScreen
+import io.github.stratayun.paranoic.ui.screens.home.HomeScreen
+import io.github.stratayun.paranoic.ui.screens.home.ModulesScreen
 import io.github.stratayun.paranoic.ui.screens.files.FileWorkspaceScreen
 import io.github.stratayun.paranoic.ui.screens.encryption.EncryptionScreen
 import io.github.stratayun.paranoic.ui.screens.notes.NotesScreen
@@ -62,7 +64,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
     var loaded by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf<Boolean?>(null) }
-    var destination by remember { mutableStateOf(Destination.Files) }
+    var destination by remember { mutableStateOf(Destination.Home) }
+    var pinPicking by remember { mutableStateOf(false) }
     var pickerFailed by remember { mutableStateOf(false) }
     val vaultFolderPicker = remember(session) { VaultFolderPickerFlow() }
     var vaultFolderReturn by remember(session) { mutableStateOf<Pair<Long, VaultFolderReturn>?>(null) }
@@ -143,7 +146,7 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
     val connectServer: (String, String, String) -> Unit = { url, user, token ->
         leaveDocument { session.attachWebDav(url, user, token) }
     }
-    backHandler(placesDrawer.isOpen || openedFile != null || session.categories.state != null || destination != Destination.Files ||
+    backHandler(placesDrawer.isOpen || openedFile != null || session.categories.state != null || destination != Destination.Home ||
         (destination == Destination.Files && (session.archives.state.source != null || session.files.selected.isNotEmpty() || session.files.trail.size > 1))) {
         when {
             placesDrawer.isOpen -> scope.launch { placesDrawer.close() }
@@ -152,7 +155,7 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
             destination == Destination.Files && session.categories.state != null -> session.categories.close()
             destination == Destination.Files && session.files.selected.isNotEmpty() -> session.clearSelection()
             destination == Destination.Files && session.files.trail.size > 1 -> session.breadcrumb(session.files.trail.lastIndex - 1)
-            destination != Destination.Files -> leaveDocument { destination = Destination.Files }
+            destination != Destination.Home -> leaveDocument { destination = Destination.Home }
         }
     }
     val vaultContent: @Composable () -> Unit = {
@@ -180,7 +183,7 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                     onLanguage = { changeSettings(settings.copy(language = it)) }, onBusy = { documentExit.busy = it },
                     onFinish = {
                         if (!saving && !documentExit.busy && !session.writing) {
-                            session.pause(); session.resume(); destination = Destination.Files
+                            session.pause(); session.resume(); destination = Destination.Home
                             changeSettings(settings.copy(welcomeCompleted = true))
                         }
                     }, securitySettings = securitySettings, vaultContent = vaultContent, backHandler = backHandler)
@@ -234,11 +237,34 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                             }
                         }
                     }) {
+                val searchPlace = session.files.spaces.userPlaces().firstOrNull { it.detachable && !it.cloud }
+                val runningTasks = session.jobs.count { it.phase == JobPhase.Queued || it.phase == JobPhase.Running }
                 Scaffold(
+                    bottomBar = {
+                        // Owner's phone mockup (27.11): bottom tabs; wide windows keep the side panel.
+                        if (!wide) NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+                            bottomTabs.forEach { tab ->
+                                NavigationBarItem(selected = destination == tab, enabled = !documentExit.busy,
+                                    onClick = { if (destination != tab) leaveDocument { destination = tab } },
+                                    icon = { AppIcon(when (tab) {
+                                        Destination.Home -> AppSymbol.Home
+                                        Destination.Files -> AppSymbol.Folder
+                                        Destination.Modules -> AppSymbol.ViewGrid
+                                        Destination.Sync -> AppSymbol.Sync
+                                        else -> AppSymbol.Settings
+                                    }) },
+                                    label = { Text(if (tab == Destination.Sync) tr("Синхронизация", "Sync") else tab.label(),
+                                        style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) })
+                            }
+                        }
+                    },
                     topBar = {
-                        TopAppBar(title = { Text(destination.label(), Modifier.sectionHeading(), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        TopAppBar(title = {
+                                if (destination == Destination.Home) Text("Paranoic", Modifier.sectionHeading(), maxLines = 1,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                                else Text(destination.label(), Modifier.sectionHeading(), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             navigationIcon = {
-                                if (destination !in mainDestinations) IconButton(onClick = { leaveDocument { destination = Destination.Files } },
+                                if (destination !in mainDestinations) IconButton(onClick = { leaveDocument { destination = Destination.Home } },
                                     modifier = Modifier.actionDescription(tr("Назад", "Back"))) { AppIcon(AppSymbol.Back) }
                                 else if (!wide) IconButton(onClick = { scope.launch { placesDrawer.open() } },
                                     modifier = Modifier.actionDescription(tr("Меню и места", "Menu and places"))) { AppIcon(AppSymbol.Menu) }
@@ -247,13 +273,21 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                                 if (incomingDocuments.documents.isNotEmpty()) TextButton(onClick = {
                                     leaveDocument { destination = Destination.Notes }
                                 }) { Text(tr("Входящие (${incomingDocuments.documents.size})", "Incoming (${incomingDocuments.documents.size})")) }
-                                val searchPlace = session.files.spaces.userPlaces().firstOrNull { it.detachable && !it.cloud }
+                                if (destination == Destination.Home) {
+                                    if (searchPlace != null) IconButton(onClick = { leaveDocument { session.categories.open(searchPlace, FileCategory.All); destination = Destination.Files } },
+                                        modifier = Modifier.actionDescription(tr("Поиск в Paranoic", "Search in Paranoic"))) { AppIcon(AppSymbol.Search) }
+                                    IconButton(onClick = { leaveDocument { destination = Destination.Operations } },
+                                        modifier = Modifier.actionDescription(tr("Задачи и события", "Tasks and events"))) {
+                                        if (runningTasks > 0) BadgedBox(badge = { Badge { Text("$runningTasks") } }) { AppIcon(AppSymbol.Tasks) }
+                                        else AppIcon(AppSymbol.Tasks)
+                                    }
+                                }
                                 if (destination == Destination.Files && searchPlace != null && session.categories.state == null)
                                     IconButton(onClick = { session.categories.open(searchPlace, FileCategory.All) },
                                         modifier = Modifier.actionDescription(tr("Поиск по всем файлам", "Search all files"))) { AppIcon(AppSymbol.Search) }
                                 // Tasks appear here only while something runs; everything else lives in the ☰ menu.
-                                val running = session.jobs.count { it.phase == JobPhase.Queued || it.phase == JobPhase.Running }
-                                if (running > 0) IconButton(onClick = { leaveDocument { destination = Destination.Operations } },
+                                val running = runningTasks
+                                if (running > 0 && destination != Destination.Home) IconButton(onClick = { leaveDocument { destination = Destination.Operations } },
                                     modifier = Modifier.actionDescription(tr("Задачи: $running", "Tasks: $running"))) {
                                     BadgedBox(badge = { Badge { Text("$running") } }) { AppIcon(AppSymbol.Tasks) }
                                 }
@@ -352,6 +386,28 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                             }
                             Box(Modifier.weight(1f).fillMaxHeight()) {
                                 when (destination) {
+                                    Destination.Home -> key(session.secretsEpoch) {
+                                        HomeScreen(session.files.spaces, session.places,
+                                            onFiles = { destination = Destination.Files },
+                                            onVaults = { destination = Destination.Encryption },
+                                            onSafe = { destination = Destination.Notes },
+                                            onDiagnostics = { destination = Destination.Diagnostics },
+                                            onOpenSpace = openSpace,
+                                            onOpenPath = { space, path -> leaveDocument { session.openPath(space, path); destination = Destination.Files } },
+                                            onShowPlaces = { if (!wide) scope.launch { placesDrawer.open() } },
+                                            onPinFolder = { pinPicking = true })
+                                    }
+                                    Destination.Modules -> ModulesScreen(
+                                        onVaults = { destination = Destination.Encryption },
+                                        onSafe = { destination = Destination.Notes },
+                                        onDiagnostics = { destination = Destination.Diagnostics },
+                                        onTasks = { destination = Destination.Operations },
+                                        onSync = { destination = Destination.Sync },
+                                        onSettings = { destination = Destination.Settings },
+                                        onFiles = { destination = Destination.Files },
+                                        onCleanup = searchPlace?.let { place -> { session.cleanupView = place } },
+                                        onTrash = searchPlace?.let { place -> { session.trashView = place } },
+                                        onSearch = searchPlace?.let { place -> { session.categories.open(place, FileCategory.All); destination = Destination.Files } })
                                     Destination.Files -> FileWorkspaceScreen(session, settings.fileView, { openedFile = it }, pngImage,
                                         onOpenPlaces = if (wide) null else ({ scope.launch { placesDrawer.open() }; Unit }),
                                         onNewVault = { leaveDocument { destination = Destination.Encryption } },
@@ -402,6 +458,14 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
             session.trashView?.let { space ->
                 io.github.stratayun.paranoic.ui.screens.files.TrashScreen(session, space, onClose = { session.trashView = null })
             }
+            if (pinPicking) CoreFilePickerDialog(core, session.files.spaces, tr("Закрепить папку", "Pin a folder"), CorePickKind.Directory,
+                onDismiss = { pinPicking = false }) { picked ->
+                pinPicking = false
+                picked.firstOrNull()?.takeIf { it.location.path.isNotEmpty() }?.let { folder ->
+                    val label = folder.name.take(120)
+                    if (validPlaceTitle(label)) session.places.pin(PlaceBookmark(folder.location.storageId, folder.location.path, label))
+                }
+            }
             if (pickerFailed) AlertDialog(onDismissRequest = { pickerFailed = false },
                 title = { Text(tr("Выбор места недоступен", "Location selection unavailable")) },
                 text = { Text(tr("Не удалось получить доступ к выбранному месту.", "Could not access the selected location.")) },
@@ -410,6 +474,8 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
     }
 }
 private fun Destination.symbol() = when (this) {
+    Destination.Home -> AppSymbol.Home
+    Destination.Modules -> AppSymbol.ViewGrid
     Destination.Files -> AppSymbol.Folder
     Destination.Encryption -> AppSymbol.Security
     Destination.Notes -> AppSymbol.Document
