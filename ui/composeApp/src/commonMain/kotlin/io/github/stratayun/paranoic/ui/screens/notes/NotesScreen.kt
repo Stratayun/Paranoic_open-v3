@@ -311,7 +311,7 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
                     Spacer(Modifier.height(2.dp))
                     GroupedRow(tr("Экспорт открытых копий", "Export plaintext copies"), GroupPosition.Last, enabled = ready,
                         subtitle = tr("Копии будут НЕ зашифрованы", "Copies are NOT encrypted"),
-                        leading = { ShapedIcon(AppSymbol.Up, MaterialTheme.shapes.medium, scheme.surfaceContainerHighest, scheme.onSurfaceVariant, size = 40.dp) },
+                        leading = { BrandIcon(Res.drawable.ic_export, size = 52.dp) },
                         onClick = { exporting = true })
                 }
                 // The unlocked pane scrolls as one unit; nested lists have finite height.
@@ -631,13 +631,13 @@ private fun NotesSettings(session: AppSession, status: NotesStatus, busy: Boolea
         subtitle = if (!biometricAvailable || !status.quickAvailable) tr("Нужны Android 11+ и сильная биометрия", "Needs Android 11+ and strong biometrics")
             else tr("Отпечаток или лицо вместо пароля", "Fingerprint or face instead of the password"),
         enabled = quickAllowed,
-        leading = { ShapedIcon(AppSymbol.Fingerprint, MaterialTheme.shapes.medium, scheme.secondaryContainer, scheme.onSecondaryContainer, size = 40.dp) },
+        leading = { BrandIcon(Res.drawable.ic_fingerprint, size = 52.dp) },
         trailing = { Switch(checked = status.quickEnabled, enabled = quickAllowed,
             onCheckedChange = { enable -> if (enable) enablingQuick = true else onQuick(false) }) },
         onClick = { if (status.quickEnabled) onQuick(false) else enablingQuick = true })
     Spacer(Modifier.height(2.dp))
     GroupedRow(tr("Сменить пароль", "Change password"), GroupPosition.Middle, enabled = !busy,
-        leading = { BrandIcon(Res.drawable.ic_lock, size = 52.dp) },
+        leading = { BrandIcon(Res.drawable.ic_key, size = 52.dp) },
         trailing = { AppIcon(AppSymbol.Forward) }, onClick = { changing = true })
     Spacer(Modifier.height(2.dp))
     GroupedRow(tr("Clear — стереть Сейф", "Clear — erase the Safe"), GroupPosition.Middle, enabled = !busy,
