@@ -13,10 +13,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import io.github.stratayun.paranoic.ui.components.*
 import io.github.stratayun.paranoic.ui.state.*
 import io.github.stratayun.paranoic.ui.components.fileViewLabel
 import io.github.stratayun.paranoic.ui.theme.*
+import io.github.stratayun.paranoic.resources.*
+import org.jetbrains.compose.resources.DrawableResource
 
 private enum class SettingsSection { Appearance, Files, Language, Security, Diagnostics, Setup }
 private enum class SettingId { Theme, Brightness, Density, Font, FileView, Language, Security, Diagnostics, Setup }
@@ -70,15 +73,12 @@ fun AppearanceScreen(settings: AppearanceSettings, saving: Boolean, saved: Boole
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(LocalThemeTokens.current.pagePadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Text(tr("Настройки", "Settings"), Modifier.sectionHeading(), style = MaterialTheme.typography.headlineSmall)
+            val current = section
+            if (current == null || search.isNotEmpty()) SectionHero(Res.drawable.ic_settings, tr("Настройки", "Settings"),
+                tr("Оформление, язык, защита и диагностика", "Appearance, language, security and diagnostics"), Modifier.sectionHeading())
+            else SectionHero(current.icon(), current.label(), current.summary(), Modifier.sectionHeading())
         }
-        item {
-            OutlinedTextField(query, { query = it.take(160) }, Modifier.fillMaxWidth(), singleLine = true,
-                label = { Text(tr("Поиск по настройкам", "Search settings")) },
-                trailingIcon = {
-                    if (query.isNotEmpty()) TextButton(onClick = { query = "" }) { Text(tr("Очистить", "Clear")) }
-                })
-        }
+        item { PillSearchField(query, { query = it.take(160) }, tr("Поиск по настройкам", "Search settings")) }
         if (saving) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         if (saved == false) item {
             Text(tr("Не удалось сохранить настройки.", "Preferences could not be saved."),
@@ -86,29 +86,27 @@ fun AppearanceScreen(settings: AppearanceSettings, saving: Boolean, saved: Boole
         }
         if (search.isEmpty() && section == null) {
             item {
-                val sections = SettingsSection.entries
-                GroupedList(sections) { destination, position ->
-                    val title = destination.label()
-                    val scheme = MaterialTheme.colorScheme
-                    GroupedRow(title, position, Modifier.actionDescription(tr("Открыть раздел: ", "Open section: ") + title),
-                        subtitle = destination.summary(),
-                        leading = { ShapedIcon(destination.symbol(), MaterialTheme.shapes.medium, scheme.secondaryContainer, scheme.onSecondaryContainer) },
-                        trailing = { AppIcon(AppSymbol.Forward) },
-                        onClick = { section = destination })
+                ConceptCard {
+                    SettingsSection.entries.forEach { destination ->
+                        val title = destination.label()
+                        ConceptRow(title, destination.summary(), destination.icon(),
+                            Modifier.actionDescription(tr("Открыть раздел: ", "Open section: ") + title)) { section = destination }
+                    }
                 }
             }
         } else {
             item {
-                TextButton(onClick = { query = ""; section = null }) { Text(tr("← Все разделы", "← All sections")) }
-                Text(if (search.isNotEmpty()) tr("Результаты во всех разделах", "Results from all sections")
-                    else section?.label().orEmpty(), Modifier.sectionHeading(), style = MaterialTheme.typography.titleLarge)
+                AssistChip(onClick = { query = ""; section = null }, label = { Text(tr("Все разделы", "All sections")) },
+                    leadingIcon = { AppIcon(AppSymbol.Back) }, shape = RoundedCornerShape(20.dp))
+                if (search.isNotEmpty()) Text(tr("Результаты во всех разделах", "Results from all sections"), Modifier.sectionHeading(),
+                    style = MaterialTheme.typography.titleMedium)
             }
             if (matches.isEmpty()) item {
                 Text(tr("Ничего не найдено. Попробуйте «язык», «тема» или «скриншоты».",
                     "No results. Try language, theme or screenshots."), Modifier.announceChanges())
             }
             items(matches, key = { it.id.name }) { entry ->
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ConceptCard {
                     if (search.isNotEmpty()) Text(entry.section.label(), style = MaterialTheme.typography.labelMedium)
                     when (entry.id) {
                         SettingId.Theme -> Unit
@@ -139,7 +137,9 @@ fun AppearanceScreen(settings: AppearanceSettings, saving: Boolean, saved: Boole
                             securitySettings()
                         }
                         SettingId.Diagnostics -> diagnosticsSettings()
-                        SettingId.Setup -> TextButton(enabled = !saving, onClick = onRestartWelcome) { Text(tr("Повторить мастер", "Run setup again")) }
+                        SettingId.Setup -> ConceptRow(tr("Повторить мастер", "Run setup again"),
+                            tr("Язык, защита, заметки и хранилище — заново", "Language, security, notes and storage — again"),
+                            Res.drawable.ic_settings, enabled = !saving, onClick = onRestartWelcome)
                     }
                 }
             }
@@ -153,9 +153,8 @@ private fun <T> ChoiceRow(title: String, selected: T, values: List<T>, enabled: 
     label: @Composable (T) -> String, onSelect: (T) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        OutlinedButton(onClick = { expanded = true }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
-            Text(title + ": " + label(selected))
-        }
+        ConceptRow(title, label(selected), enabled = enabled, onClick = { expanded = true },
+            trailing = { Icon(AppSymbol.Down.vector(), null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) })
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             values.forEach { value ->
                 DropdownMenuItem(text = { Text(label(value)) }, onClick = { expanded = false; onSelect(value) })
@@ -164,8 +163,8 @@ private fun <T> ChoiceRow(title: String, selected: T, values: List<T>, enabled: 
     }
 }
 
-private fun SettingsSection.symbol(): AppSymbol = when (this) {
-    SettingsSection.Appearance -> AppSymbol.Edit; SettingsSection.Files -> AppSymbol.Folder; SettingsSection.Language -> AppSymbol.Info
-    SettingsSection.Security -> AppSymbol.Security; SettingsSection.Diagnostics -> AppSymbol.Analytics
-    SettingsSection.Setup -> AppSymbol.Settings
+private fun SettingsSection.icon(): DrawableResource = when (this) {
+    SettingsSection.Appearance -> Res.drawable.ic_images; SettingsSection.Files -> Res.drawable.ic_folder
+    SettingsSection.Language -> Res.drawable.ic_rename; SettingsSection.Security -> Res.drawable.ic_integrity
+    SettingsSection.Diagnostics -> Res.drawable.ic_diagnostics; SettingsSection.Setup -> Res.drawable.ic_settings
 }

@@ -32,7 +32,7 @@ class HomePreviewShot {
             Space(id, name, Location(id, ""), true, detachable = detachable, localContainer = local, cloud = cloud)
         val spaces = listOf(space("app", "App", detachable = false, local = true), space("dev", "Внутренняя память"),
             space("usb", "USB-накопитель"), space("cloud", "Мой сервер", cloud = true))
-        for ((name, tab) in listOf("home" to Destination.Home, "modules" to Destination.Modules)) {
+        for ((name, tab) in listOf("home" to Destination.Home, "modules" to Destination.Modules, "settings" to Destination.Settings)) {
             val scene = ImageComposeScene(1080, 2400, Density(2.625f)) {
                 ParanoicTheme(AppearanceSettings()) {
                     CompositionLocalProvider(LocalVolumeUsage provides { label -> if (label.startsWith("USB")) VolumeUsage(12L shl 30, 64L shl 30) else VolumeUsage(118L shl 30, 256L shl 30) }) {
@@ -44,8 +44,11 @@ class HomePreviewShot {
                                         Destination.Modules -> AppSymbol.ViewGrid; Destination.Sync -> AppSymbol.Sync; else -> AppSymbol.Settings }) }) }
                             } }) { insets ->
                             Box(Modifier.padding(insets)) {
-                                if (tab == Destination.Home) HomeScreen(spaces, places, {}, {}, {}, {}, {}, { _, _ -> }, {}, {})
-                                else ModulesScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+                                when (tab) {
+                                    Destination.Home -> HomeScreen(spaces, places, {}, {}, {}, {}, {}, { _, _ -> }, {}, {})
+                                    Destination.Settings -> io.github.stratayun.paranoic.ui.screens.settings.AppearanceScreen(AppearanceSettings(), false, null, {})
+                                    else -> ModulesScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+                                }
                             }
                         }
                     }

@@ -63,7 +63,7 @@ fun HomeScreen(
             CardHeader(tr("Быстрый доступ", "Quick access"), tr("Показать все", "Show all"), onShowPlaces)
             val bookmarks = catalog.snapshot.bookmarks
             if (bookmarks.isEmpty()) {
-                CardRow(Res.drawable.ic_folder_add, tr("Закрепите папку", "Pin a folder"),
+                CardRow(Res.drawable.ic_star, tr("Закрепите папку", "Pin a folder"),
                     tr("Закреплённые папки появятся здесь", "Pinned folders appear here"), onClick = onPinFolder)
             } else bookmarks.take(6).forEach { bookmark ->
                 val space = places.firstOrNull { it.id == bookmark.storageId }

@@ -260,7 +260,9 @@ fun ParanoicApp(core: CoreGateway, store: AppearanceStore,
                     },
                     topBar = {
                         TopAppBar(title = {
-                                if (destination == Destination.Home) Text("Paranoic", Modifier.sectionHeading(), maxLines = 1,
+                                // Concept: the brand in the top bar; the page itself carries its large title.
+                                if (destination in setOf(Destination.Home, Destination.Modules, Destination.Sync, Destination.Settings))
+                                    Text("Paranoic", Modifier.sectionHeading(), maxLines = 1,
                                     fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
                                 else Text(destination.label(), Modifier.sectionHeading(), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             navigationIcon = {

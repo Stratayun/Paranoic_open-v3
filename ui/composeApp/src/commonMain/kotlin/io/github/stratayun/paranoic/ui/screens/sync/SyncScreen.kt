@@ -1,6 +1,7 @@
 package io.github.stratayun.paranoic.ui.screens.sync
 
-import io.github.stratayun.paranoic.ui.components.FaultNotice
+import io.github.stratayun.paranoic.resources.*
+import io.github.stratayun.paranoic.ui.components.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -77,7 +78,9 @@ fun SyncScreen(core: CoreGateway, onFiles: () -> Unit, onJobs: () -> Unit) {
     val controlsHeight = maxHeight * 0.45f
     Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Column(Modifier.fillMaxWidth().heightIn(max = controlsHeight).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(tr("Синхронизация и бэкап", "Sync and backup"), Modifier.sectionHeading(), style = MaterialTheme.typography.titleLarge)
+        SectionHero(Res.drawable.ic_sync, tr("Синхронизация и бэкап", "Sync and backup"),
+            tr("Пары папок: копия на свой сервер или двусторонняя синхронизация", "Folder pairs: backup to your server or two-way sync"),
+            Modifier.sectionHeading())
         if (busy) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
             Text(tr("Операция выполняется. Задания копирования видны в «Операциях».",
@@ -97,19 +100,21 @@ fun SyncScreen(core: CoreGateway, onFiles: () -> Unit, onJobs: () -> Unit) {
         if (uncertain) Text(tr("Ответ неизвестен. Проверьте задания и обновите список перед новой операцией. Автоматического повтора нет.",
             "The reply is unknown. Inspect jobs and refresh the list before another operation. There is no automatic retry."),
             color = MaterialTheme.colorScheme.error)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(enabled = !busy, onClick = { act { plan = null; outcome = null; refresh() } }) { Text(tr("Обновить", "Refresh")) }
-            TextButton(enabled = canChange && loaded, onClick = { adding = true }) { Text(tr("Добавить пару", "Add pair")) }
-            TextButton(onClick = onJobs) { Text(tr("К заданиям", "View jobs")) }
-            TextButton(enabled = !busy, onClick = onFiles) { Text(tr("К файлам", "View files")) }
-        }
+        ActionTiles(
+            Triple(tr("Добавить пару", "Add pair"), AppSymbol.Add, (canChange && loaded) to { adding = true }),
+            Triple(tr("Обновить", "Refresh"), AppSymbol.Refresh, !busy to { act { plan = null; outcome = null; refresh() } }),
+            Triple(tr("Задания", "Jobs"), AppSymbol.Tasks, true to onJobs),
+            Triple(tr("Файлы", "Files"), AppSymbol.Folder, !busy to onFiles),
+        )
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (loaded && pairs.isEmpty()) item { Text(tr("Пар пока нет. Подключите папку и облако в разделе файлов, затем добавьте пару.",
-                "No pairs yet. Connect a folder and a cloud in Files, then add a pair.")) }
+            if (loaded && pairs.isEmpty()) item { EmptyState(Res.drawable.ic_sync, tr("Пар пока нет", "No pairs yet"),
+                tr("Подключите папку и свой сервер в «Файлах», затем добавьте пару. Карточка появится здесь.",
+                    "Connect a folder and your server in Files, then add a pair. Its card appears here."),
+                tr("Добавить пару", "Add pair"), enabled = canChange && loaded) { adding = true } }
             items(pairs, key = { it.id }) { item ->
-                OutlinedCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp)) {
+                ConceptCard {
+                    Column {
                         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).keyboardFocusOutline().selectable(selectedId == item.id,
                             enabled = !busy, role = Role.RadioButton, onClick = { selectedId = item.id; plan = null; outcome = null }),
                             verticalAlignment = Alignment.CenterVertically) {

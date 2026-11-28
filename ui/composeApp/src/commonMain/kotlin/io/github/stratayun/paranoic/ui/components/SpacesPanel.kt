@@ -164,13 +164,13 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
         SectionLabel(tr("Подключить", "Connect"))
         val connectRows = buildList {
             if (bookmarkCore != null && onOpenPath != null)
-                add(Triple(tr("Закрепить папку", "Pin a folder"), Res.drawable.ic_folder, { pickingBookmark = true }))
+                add(Triple(tr("Закрепить папку", "Pin a folder"), Res.drawable.ic_star, { pickingBookmark = true }))
             add(Triple(tr("Подключить место", "Connect location"), Res.drawable.ic_folder_add, onConnect))
             if (onConnectServer != null) add(Triple(tr("Свой сервер", "Own server"), Res.drawable.ic_cloud, { serverDialog = true }))
         }
         GroupedList(connectRows) { (label, icon, action), position ->
             GroupedRow(label, position, enabled = connected && !busy,
-                subtitle = if (icon == Res.drawable.ic_folder) tr("Папка в меню для быстрого доступа", "A folder in the menu for quick access")
+                subtitle = if (icon == Res.drawable.ic_star) tr("Папка в меню для быстрого доступа", "A folder in the menu for quick access")
                     else if (icon == Res.drawable.ic_folder_add) tr("Папка, флешка или карта памяти", "Folder, USB drive or memory card")
                     else tr("paranoic-server, Nextcloud", "paranoic-server, Nextcloud"),
                 leading = { BrandIcon(icon, size = 52.dp) },

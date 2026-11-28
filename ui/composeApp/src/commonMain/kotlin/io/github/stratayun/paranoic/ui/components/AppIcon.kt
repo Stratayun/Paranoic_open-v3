@@ -17,6 +17,7 @@ enum class AppSymbol {
     Photo, Video, Audio, Archive, Favorite, Recent, More,
     Menu, Forward, Add, Download, Camera, Phone, SdCard, Tasks, Notes, Server, Sort, ViewList, ViewGrid, Up, Close, Info, Edit,
     Copy, MoveTo, SelectAll, NewFolder, NewFile, Refresh, Cut, Swap, ZoomIn, ZoomOut, Prev, Save, Fullscreen, Upload, Fingerprint,
+    Down,
 }
 
 /** Material Symbols (Rounded, Apache-2.0). Decorative: the labelled control owns accessibility. */
@@ -74,6 +75,7 @@ fun AppSymbol.vector(): ImageVector = when (this) {
     AppSymbol.Fullscreen -> Icons.Rounded.Fullscreen
     AppSymbol.Upload -> Icons.Rounded.Upload
     AppSymbol.Fingerprint -> Icons.Rounded.Fingerprint
+    AppSymbol.Down -> Icons.Rounded.ArrowDropDown
 }
 
 @Composable
