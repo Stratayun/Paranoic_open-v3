@@ -164,7 +164,7 @@ private fun <T> ChoiceRow(title: String, selected: T, values: List<T>, enabled: 
 }
 
 private fun SettingsSection.icon(): DrawableResource = when (this) {
-    SettingsSection.Appearance -> Res.drawable.ic_images; SettingsSection.Files -> Res.drawable.ic_folder
-    SettingsSection.Language -> Res.drawable.ic_rename; SettingsSection.Security -> Res.drawable.ic_integrity
+    SettingsSection.Appearance -> Res.drawable.ic_appearance; SettingsSection.Files -> Res.drawable.ic_folder
+    SettingsSection.Language -> Res.drawable.ic_language; SettingsSection.Security -> Res.drawable.ic_shield
     SettingsSection.Diagnostics -> Res.drawable.ic_diagnostics; SettingsSection.Setup -> Res.drawable.ic_settings
 }

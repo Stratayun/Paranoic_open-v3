@@ -76,11 +76,11 @@ fun DiagnosticsOverview(session: AppSession, openChecks: () -> Unit, onSync: () 
                     fault != null -> fault!!.label()
                     running > 0 -> tr("Выполняется операций: $running", "Running operations: $running")
                     else -> tr("Критичных проблем не найдено", "No critical problems found")
-                }, if (healthy) Res.drawable.ic_integrity else Res.drawable.ic_diagnostics)
+                }, if (healthy) Res.drawable.ic_check else Res.drawable.ic_diagnostics)
         }
         val device = session.files.spaces.userPlaces().firstOrNull { it.detachable && !it.cloud }
         val usage = device?.let { LocalVolumeUsage.current(it.name) }?.takeIf { it.totalBytes > 0 }
-        if (device != null && usage != null) StorageUsageCard(tr("Память устройства", "Device storage"), usage, Res.drawable.ic_tiles)
+        if (device != null && usage != null) StorageUsageCard(tr("Память устройства", "Device storage"), usage, Res.drawable.ic_internal_storage)
         ConceptCard {
             ConceptRow(tr("Синхронизация", "Sync"), when (pairs) {
                 null -> tr("Состояние неизвестно", "State unknown")
@@ -91,7 +91,7 @@ fun DiagnosticsOverview(session: AppSession, openChecks: () -> Unit, onSync: () 
         ConceptCard {
             ConceptCardTitle(tr("Проверки", "Checks"))
             ConceptRow(tr("Атомарная запись", "Atomic writes"), tr("Целостность и безопасность файлов", "File integrity and safety"),
-                Res.drawable.ic_integrity, onClick = openChecks)
+                Res.drawable.ic_shield, onClick = openChecks)
             ConceptRow(tr("Целостность хранилищ", "Vault integrity"), tr("Крипто-папки и Сейф проверяются при каждом открытии", "Crypto folders and the Safe are verified on every opening"),
                 Res.drawable.ic_crypto_folder)
             Button(onClick = openChecks, modifier = Modifier.fillMaxWidth()) {

@@ -307,7 +307,7 @@ fun NotesScreen(session: AppSession, biometric: NotesBiometric = NoNotesBiometri
                     SectionLabel(tr("Обмен", "Exchange"))
                     GroupedRow(tr("Импорт .txt / .md", "Import .txt / .md"), GroupPosition.First, enabled = ready,
                         subtitle = tr("Добавить текстовые файлы как заметки", "Add text files as notes"),
-                        leading = { BrandIcon(Res.drawable.ic_downloads, size = 52.dp) },
+                        leading = { BrandIcon(Res.drawable.ic_import, size = 52.dp) },
                         onClick = { importing = true })
                     Spacer(Modifier.height(2.dp))
                     GroupedRow(tr("Экспорт открытых копий", "Export plaintext copies"), GroupPosition.Last, enabled = ready,

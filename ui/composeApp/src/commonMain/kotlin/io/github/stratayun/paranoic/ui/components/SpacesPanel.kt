@@ -89,7 +89,7 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
         val usage = device?.let { volumeUsage(it.name) }
         if (device != null) {
             val total = usage?.takeIf { it.totalBytes > 0 }
-            if (total != null) StorageUsageCard(displayName(title(device)), total, Res.drawable.ic_tiles, modifier = Modifier.padding(top = 8.dp),
+            if (total != null) StorageUsageCard(displayName(title(device)), total, Res.drawable.ic_internal_storage, modifier = Modifier.padding(top = 8.dp),
                 onClick = { if (connected && !busy) onOpen(device.copy(name = title(device))) })
             else StorageCard(displayName(title(device)), null, enabled = connected && !busy, onClick = { onOpen(device.copy(name = title(device))) })
         }
@@ -150,10 +150,11 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
                     }
             }
             val placeIcon = when {
-                appPrivate(space) -> Res.drawable.ic_shield
+                appPrivate(space) -> Res.drawable.ic_app_files
                 space.cloud -> Res.drawable.ic_cloud
-                space.name.contains("SD", ignoreCase = true) || space.name.contains("USB", ignoreCase = true) -> Res.drawable.ic_external_disk
-                else -> Res.drawable.ic_tiles
+                space.name.contains("SD", ignoreCase = true) -> Res.drawable.ic_sd_card
+                space.name.contains("USB", ignoreCase = true) -> Res.drawable.ic_usb_drive
+                else -> Res.drawable.ic_internal_storage
             }
             // Volumes with known usage get the compact storage card (owner 28.11), the rest a row.
             if (spaceUsage != null) StorageUsageCard(displayName(title(space)), spaceUsage, placeIcon, compact = true, trailing = placeMenu,
@@ -167,7 +168,7 @@ fun SpacesPanel(spaces: List<Space>, catalog: PlaceCatalog, connected: Boolean, 
         if (bookmarkCore != null && onOpenPath != null)
             SidebarRow(tr("Закрепить папку", "Pin a folder"), Res.drawable.ic_star, enabled = connected && !busy) { pickingBookmark = true }
         SidebarRow(tr("Подключить место", "Connect location"), Res.drawable.ic_folder_add, enabled = connected && !busy, onClick = onConnect)
-        if (onConnectServer != null) SidebarRow(tr("Сервер WebDAV", "WebDAV server"), Res.drawable.ic_cloud, enabled = connected && !busy) { serverDialog = true }
+        if (onConnectServer != null) SidebarRow(tr("Сервер WebDAV", "WebDAV server"), Res.drawable.ic_server, enabled = connected && !busy) { serverDialog = true }
         if (hidden.isNotEmpty()) {
             TextButton(onClick = { showHidden = !showHidden }) {
                 Text(if (showHidden) tr("Свернуть скрытые места", "Collapse hidden places")
@@ -242,7 +243,7 @@ private fun StorageCard(title: String, usage: VolumeUsage?, enabled: Boolean, on
         Column(Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                BrandIcon(Res.drawable.ic_tiles, size = 44.dp)
+                BrandIcon(Res.drawable.ic_internal_storage, size = 44.dp)
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.titleMedium)
                     Text(usage?.let { tr("Свободно ", "Free ") + gb(it.freeBytes) + tr(" из ", " of ") + gb(it.totalBytes) }

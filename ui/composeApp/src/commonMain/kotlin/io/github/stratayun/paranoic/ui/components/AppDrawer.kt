@@ -68,14 +68,14 @@ fun DrawerFooter(
 ) {
     Column(modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         SectionLabel(tr("Модули", "Modules"))
-        if (onHome != null) SidebarRow(tr("Главная", "Home"), Res.drawable.ic_tiles, current == Destination.Home, enabled, onClick = onHome)
+        if (onHome != null) SidebarRow(tr("Главная", "Home"), Res.drawable.ic_home, current == Destination.Home, enabled, onClick = onHome)
         if (showFiles) SidebarRow(tr("Файлы", "Files"), Res.drawable.ic_folder, current == Destination.Files, enabled, onClick = onFiles)
         SidebarRow(tr("Крипто-папки", "Crypto folders"), Res.drawable.ic_crypto_folder, current == Destination.Encryption, enabled, onClick = onVaults)
         SidebarRow(tr("Сейф", "Safe"), Res.drawable.ic_safe, current == Destination.Notes, enabled, onClick = onSafe)
         SidebarRow(tr("Диагностика", "Diagnostics"), Res.drawable.ic_diagnostics, current == Destination.Diagnostics, enabled, onClick = onDiagnostics)
         SidebarRow(tr("Задачи", "Tasks"), Res.drawable.ic_tasks, current == Destination.Operations, enabled,
             badge = runningTasks.takeIf { it > 0 }?.toString(), onClick = onTasks)
-        if (onModules != null) SidebarRow(tr("Все модули", "All modules"), Res.drawable.ic_tabs, current == Destination.Modules, enabled, onClick = onModules)
+        if (onModules != null) SidebarRow(tr("Все модули", "All modules"), Res.drawable.ic_modules, current == Destination.Modules, enabled, onClick = onModules)
         SectionLabel(tr("Инструменты", "Tools"))
         SidebarRow(tr("Синхронизация и бэкап", "Sync and backup"), Res.drawable.ic_sync, current == Destination.Sync, enabled, onClick = onSync)
         HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)

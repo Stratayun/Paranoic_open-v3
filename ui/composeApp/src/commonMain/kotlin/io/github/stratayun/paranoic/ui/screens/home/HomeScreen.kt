@@ -87,7 +87,7 @@ fun HomeScreen(
             val usage = if (space.cloud || private) null else usageOf(space.name)?.takeIf { it.totalBytes > 0 }
             if (usage != null) {
                 val removable = space.name.contains("SD", true) || space.name.contains("USB", true)
-                StorageUsageCard(displayName(title(space)), usage, if (removable) Res.drawable.ic_external_disk else Res.drawable.ic_tiles) {
+                StorageUsageCard(displayName(title(space)), usage, if (space.name.contains("SD", true)) Res.drawable.ic_sd_card else if (removable) Res.drawable.ic_usb_drive else Res.drawable.ic_internal_storage) {
                     onOpenSpace(space.copy(name = title(space)))
                 }
             } else others += space
@@ -99,8 +99,8 @@ fun HomeScreen(
                 val private = space.localContainer && !space.detachable && !space.cloud
                 val icon = when {
                     space.cloud -> Res.drawable.ic_cloud
-                    private -> Res.drawable.ic_shield
-                    else -> Res.drawable.ic_tiles
+                    private -> Res.drawable.ic_app_files
+                    else -> Res.drawable.ic_internal_storage
                 }
                 StorageRow(icon, displayName(if (private) tr("Файлы приложения", "App files") else title(space)), null,
                     status = when {
@@ -238,13 +238,13 @@ fun ModulesScreen(
         HomeTile(tr("Крипто-папки", "Crypto folders"), tr("Зашифрованные хранилища", "Encrypted vaults"), Res.drawable.ic_crypto_folder, onVaults),
         HomeTile(tr("Сейф", "Safe"), tr("Заметки и личная папка", "Notes and personal folder"), Res.drawable.ic_safe, onSafe),
         HomeTile(tr("Диагностика", "Diagnostics"), tr("Проверка системы и данных", "System and data checks"), Res.drawable.ic_diagnostics, onDiagnostics),
-        HomeTile(tr("Медиа", "Media"), tr("Видео, музыка и фото", "Video, music and photos"), Res.drawable.ic_video, onMedia ?: {}),
+        HomeTile(tr("Медиа", "Media"), tr("Видео, музыка и фото", "Video, music and photos"), Res.drawable.ic_media, onMedia ?: {}),
         HomeTile(tr("Очистка", "Cleanup"), tr("Дубли и мусор", "Duplicates and junk"), Res.drawable.ic_cleanup, onCleanup ?: {}),
         HomeTile(tr("Корзина", "Trash"), tr("Удалённые файлы", "Deleted files"), Res.drawable.ic_trash_empty, onTrash ?: {}),
         // Concept ideas without a screen yet (owner 28.11: the buttons stay visible).
         HomeTile(tr("Передача", "Transfer"), tr("Между своими устройствами", "Between your devices"), Res.drawable.ic_transfer,
             { planned = "transfer" }, planned = true),
-        HomeTile(tr("Подключения", "Connect"), tr("SFTP, SMB, NAS", "SFTP, SMB, NAS"), Res.drawable.ic_cloud, { planned = "connect" }, planned = true),
+        HomeTile(tr("Подключения", "Connect"), tr("SFTP, SMB, NAS", "SFTP, SMB, NAS"), Res.drawable.ic_connect, { planned = "connect" }, planned = true),
         HomeTile(tr("Терминал", "Terminal"), tr("Shell и SSH", "Shell and SSH"), Res.drawable.ic_terminal, { planned = "terminal" }, planned = true),
         HomeTile(tr("Уведомления", "Notifications"), tr("События приложения", "App events"), Res.drawable.ic_notifications,
             { planned = "notifications" }, planned = true),

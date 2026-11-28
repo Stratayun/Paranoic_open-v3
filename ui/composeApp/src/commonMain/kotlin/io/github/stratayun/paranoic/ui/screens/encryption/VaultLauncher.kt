@@ -212,9 +212,9 @@ internal fun VaultLauncher(core: CoreGateway, spaces: List<Space>, catalog: Vaul
                         "Connect a Cryptomator or Paranoic vault, or create a new one. Its card appears after the first successful opening."),
                     tr("Добавить хранилище", "Add vault"), enabled = interactive) { addSheet = true }
                 Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FeatureCard(Res.drawable.ic_integrity, tr("Шифрование на устройстве", "Encrypted on device"), tr("Ключ только у вас", "Only you hold the key"), Modifier.weight(1f))
-                    FeatureCard(Res.drawable.ic_tabs, tr("Совместимость", "Compatible"), tr("Cryptomator и Paranoic", "Cryptomator and Paranoic"), Modifier.weight(1f))
-                    FeatureCard(Res.drawable.ic_cloud, tr("Гибкое хранение", "Store anywhere"), tr("Локально или на сервере", "Locally or on a server"), Modifier.weight(1f))
+                    FeatureCard(Res.drawable.ic_lock, tr("Шифрование на устройстве", "Encrypted on device"), tr("Ключ только у вас", "Only you hold the key"), Modifier.weight(1f))
+                    FeatureCard(Res.drawable.ic_check, tr("Совместимость", "Compatible"), tr("Cryptomator и Paranoic", "Cryptomator and Paranoic"), Modifier.weight(1f))
+                    FeatureCard(Res.drawable.ic_server, tr("Гибкое хранение", "Store anywhere"), tr("Локально или на сервере", "Locally or on a server"), Modifier.weight(1f))
                 }
             }
         }

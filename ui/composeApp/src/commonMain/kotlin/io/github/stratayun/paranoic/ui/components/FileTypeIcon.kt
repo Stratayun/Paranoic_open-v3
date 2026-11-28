@@ -32,6 +32,15 @@ private val documents = setOf("pdf", "doc", "docx", "xls", "xlsx", "ods", "odt",
 fun fileTypeIcon(name: String, folder: Boolean): DrawableResource {
     if (folder) return Res.drawable.ic_folder
     return when (name.substringAfterLast('.', "").lowercase()) {
+        "pdf" -> Res.drawable.ic_pdf
+        "doc", "docx", "odt", "rtf" -> Res.drawable.ic_docx
+        "xls", "xlsx", "ods" -> Res.drawable.ic_xlsx
+        "txt", "log" -> Res.drawable.ic_txt
+        "md" -> Res.drawable.ic_md
+        "csv" -> Res.drawable.ic_csv
+        "json" -> Res.drawable.ic_json
+        "age" -> Res.drawable.ic_age
+        "exe", "msi" -> Res.drawable.ic_exe
         in images -> Res.drawable.ic_images
         in videos -> Res.drawable.ic_video
         in audio -> Res.drawable.ic_music
@@ -39,7 +48,7 @@ fun fileTypeIcon(name: String, folder: Boolean): DrawableResource {
         in encrypted -> Res.drawable.ic_lock
         in apks -> Res.drawable.ic_apk
         in code -> Res.drawable.ic_code
-        in programs -> Res.drawable.ic_app_settings
+        in programs -> Res.drawable.ic_exe
         in documents -> Res.drawable.ic_documents
         else -> Res.drawable.ic_file
     }

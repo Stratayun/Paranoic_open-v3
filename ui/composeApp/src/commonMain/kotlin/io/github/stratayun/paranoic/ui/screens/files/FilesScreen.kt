@@ -111,7 +111,7 @@ fun FilesScreen(session: AppSession, view: FileView, onView: (FileView) -> Unit,
             if (onOpenPlaces != null) Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ConceptRow(tr("Места", "Places"), tr("Память, SD, флешки, закладки", "Storage, SD, USB, pinned"), Res.drawable.ic_folder_add,
                     Modifier.weight(1f).fillMaxHeight()) { inTab { onOpenPlaces() } }
-                ConceptRow(tr("Свой сервер", "Own server"), tr("WebDAV и paranoic-server", "WebDAV and paranoic-server"), Res.drawable.ic_cloud,
+                ConceptRow(tr("Свой сервер", "Own server"), tr("WebDAV и paranoic-server", "WebDAV and paranoic-server"), Res.drawable.ic_server,
                     Modifier.weight(1f).fillMaxHeight()) { inTab { onOpenPlaces() } }
             }
         }
